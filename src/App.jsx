@@ -70,18 +70,18 @@ const DEFAULT_BLOCKS = [
     overrides:{ Fri:{ Manager:1, Waiter:4, Kitchen:2, Bartender:1, Other:0 }, Sat:{ Manager:1, Waiter:4, Kitchen:2, Bartender:1, Other:0 } } },
 ];
 const DEFAULT_EMPLOYEES = [
-  {id:'1', name:'Mads Larsen',       roles:['Manager'],   salaryPct:100, palIdx:0, maxHours:40, availability:{Mon:{from:'09:00',to:'16:00'},Tue:{from:'09:00',to:'16:00'},Wed:{from:'09:00',to:'16:00'},Thu:{from:'09:00',to:'16:00'},Fri:{from:'09:00',to:'16:00'},Sat:null,Sun:null}},
-  {id:'2', name:'Sofie Hansen',      roles:['Manager'],   salaryPct:100, palIdx:1, maxHours:40, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'3', name:'Jonas Møller',      roles:['Waiter'],    salaryPct:80,  palIdx:2, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'4', name:'Emma Nielsen',      roles:['Waiter'],    salaryPct:80,  palIdx:3, maxHours:40, availability:{Mon:{from:'10:00',to:'00:00'},Tue:{from:'10:00',to:'00:00'},Wed:{from:'10:00',to:'00:00'},Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'5', name:'Tobias Jensen',     roles:['Kitchen'],   salaryPct:80,  palIdx:4, maxHours:40, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
-  {id:'6', name:'Laura Christensen', roles:['Kitchen'],   salaryPct:80,  palIdx:5, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:null,Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'16:00'}}},
-  {id:'7', name:'Mikkel Andersen',   roles:['Bartender'], salaryPct:80,  palIdx:6, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:null,Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'8', name:'Ida Pedersen',      roles:['Waiter'],    salaryPct:50,  palIdx:0, maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'9', name:'Oliver Thomsen',    roles:['Waiter'],    salaryPct:50,  palIdx:1, maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:null,Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'10',name:'Maja Kristensen',   roles:['Kitchen'],   salaryPct:55,  palIdx:2, maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
-  {id:'11',name:'Rasmus Olsen',      roles:['Bartender'], salaryPct:50,  palIdx:3, maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'12',name:'Freja Madsen',      roles:['Bartender'], salaryPct:60,  palIdx:4, maxHours:24, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:null,Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
+  {id:'1', name:'Mads Larsen',       roles:['Manager'],   salaryPct:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:40, availability:{Mon:{from:'09:00',to:'16:00'},Tue:{from:'09:00',to:'16:00'},Wed:{from:'09:00',to:'16:00'},Thu:{from:'09:00',to:'16:00'},Fri:{from:'09:00',to:'16:00'},Sat:null,Sun:null}},
+  {id:'2', name:'Sofie Hansen',      roles:['Manager'],   salaryPct:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:40, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
+  {id:'3', name:'Jonas Møller',      roles:['Waiter'],    salaryPct:80,  palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:28000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
+  {id:'4', name:'Emma Nielsen',      roles:['Waiter'],    salaryPct:80,  palIdx:3, contractType:'fixed',  contractPeriod:'month', wage:28000, maxHours:40, availability:{Mon:{from:'10:00',to:'00:00'},Tue:{from:'10:00',to:'00:00'},Wed:{from:'10:00',to:'00:00'},Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
+  {id:'5', name:'Tobias Jensen',     roles:['Kitchen'],   salaryPct:80,  palIdx:4, contractType:'fixed',  contractPeriod:'month', wage:27000, maxHours:40, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
+  {id:'6', name:'Laura Christensen', roles:['Kitchen'],   salaryPct:80,  palIdx:5, contractType:'fixed',  contractPeriod:'month', wage:27000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:null,Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'16:00'}}},
+  {id:'7', name:'Mikkel Andersen',   roles:['Bartender'], salaryPct:80,  palIdx:6, contractType:'fixed',  contractPeriod:'month', wage:26000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:null,Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
+  {id:'8', name:'Ida Pedersen',      roles:['Waiter'],    salaryPct:50,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
+  {id:'9', name:'Oliver Thomsen',    roles:['Waiter'],    salaryPct:50,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:null,Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
+  {id:'10',name:'Maja Kristensen',   roles:['Kitchen'],   salaryPct:55,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
+  {id:'11',name:'Rasmus Olsen',      roles:['Bartender'], salaryPct:50,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
+  {id:'12',name:'Freja Madsen',      roles:['Bartender'], salaryPct:60,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:24, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:null,Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -200,6 +200,9 @@ function dayCoverage(schedule,blocks,day,allRoles){ if(!schedule||!schedule[day]
 const migrateEmployee=e=>({
   ...e,
   roles: e.roles || (e.role ? [e.role] : ['Other']),
+  contractType:   e.contractType   || 'hourly',
+  contractPeriod: e.contractPeriod || 'week',
+  wage:           e.wage           || 0,
   // offDays removed - use Time Off system instead
 });
 const load=(k,fb)=>{ 
@@ -276,7 +279,7 @@ export default function App(){
   const [openPicker,  setOpenPicker] = useState(null); // {day, blockId, role}
   const [expandedEmp, setExpandedEmp]=useState(null);
   const [showAddEmp,  setShowAddEmp]=useState(false);
-  const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],salaryPct:100,maxHours:40});
+  const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
   const [showAddTO,   setShowAddTO] = useState(false);
   const [newTO,       setNewTO]     = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,    setToFilter]  = useState('all');
@@ -401,9 +404,21 @@ export default function App(){
   const totalStats=()=>{ if(!schedule) return null; let f=0,m=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day); f+=a.length; allRoles.forEach(role=>{ const need=r[role]||0,got=a.filter(x=>x.role===role).length; if(got<need) m+=(need-got); }); })); return {filled:f,missing:m}; };
   const stats=totalStats();
   // Salary cost data — computed once per render
+  // Calculate actual wage cost per employee based on their contract type
+  const calcWageCost=(e,hours)=>{
+    const wage=e.wage||0;
+    if(!wage) return parseFloat((hours*(e.salaryPct/100)).toFixed(2)); // fallback to index
+    if((e.contractType||'hourly')==='hourly') return parseFloat((hours*wage).toFixed(2));
+    // Fixed salary: prorate by hours worked vs contracted hours
+    const contracted=e.maxHours||40;
+    const weeksInMonth=4.33;
+    const monthlyHours=(e.contractPeriod||'week')==='month'?contracted:contracted*weeksInMonth;
+    return parseFloat(((hours/monthlyHours)*(e.contractPeriod==='month'?wage:wage*weeksInMonth)).toFixed(2));
+  };
+  const hasWages=employees.some(e=>e.wage>0);
   const costData = employees.map(e=>{
     const h=empHours(e.id);
-    const costUnits=parseFloat((h*(e.salaryPct/100)).toFixed(2));
+    const costUnits=hasWages?calcWageCost(e,h):parseFloat((h*(e.salaryPct/100)).toFixed(2));
     return {emp:e, hours:h, costUnits};
   });
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
@@ -417,7 +432,8 @@ export default function App(){
       if(!ws) return;
       DAYS.forEach(day=>blocks.forEach(b=>{ if((ws[day]?.[b.id]||[]).some(a=>a.empId===e.id)) totalH+=blockHours(b); }));
     });
-    return {emp:e, hours:totalH, costUnits:parseFloat((totalH*(e.salaryPct/100)).toFixed(2))};
+    const costUnits=hasWages?calcWageCost(e,totalH):parseFloat((totalH*(e.salaryPct/100)).toFixed(2));
+    return {emp:e, hours:totalH, costUnits};
   });
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
@@ -432,7 +448,15 @@ export default function App(){
   const monthRoleCosts=buildRoleCosts(monthCostData);
 
   // Money conversion
-  const toMoney=units=>{ const val=units*hourlyRate.amount; return val>=10000?`${hourlyRate.currency} ${Math.round(val/1000)}k`:`${hourlyRate.currency} ${Math.round(val).toLocaleString('da-DK')}`; };
+  const toMoney=units=>{
+    if(hasWages){
+      // Real wages — show directly
+      return units>=10000?`kr ${Math.round(units/1000)}k`:`kr ${Math.round(units).toLocaleString('da-DK')}`;
+    }
+    // Index mode — multiply by base rate
+    const val=units*hourlyRate.amount;
+    return val>=10000?`${hourlyRate.currency} ${Math.round(val/1000)}k`:`${hourlyRate.currency} ${Math.round(val).toLocaleString('da-DK')}`;
+  };
   const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
   const filteredTO=timeOff.filter(t=>{ if(toFilter==='pending') return t.status==='Pending'; if(toFilter==='approved') return t.status==='Approved'; if(toFilter==='this-week') return wkISOs.some(iso=>t.startDate<=iso&&t.endDate>=iso); return true; }).sort((a,b)=>a.startDate.localeCompare(b.startDate));
@@ -893,9 +917,63 @@ export default function App(){
                     <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
                       <div style={{flex:'2 1 120px'}}><SectionLabel>Name</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={styles.input}/></div>
                       <div style={{flex:'2 1 160px'}}><SectionLabel>Roles (select all that apply)</SectionLabel><div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>{allRoles.map(r=>{ const active=(emp.roles||['Other']).includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=emp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) updateEmp(emp.id,'roles',next); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div></div>
-                      <div style={{flex:'1 1 70px'}}><SectionLabel>Salary %</SectionLabel><input type="number" min="10" max="200" step="5" value={emp.salaryPct} onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))} style={styles.input}/></div>
-                      <div style={{flex:'1 1 70px'}}><SectionLabel>Max h/week</SectionLabel><input type="number" min="4" max="60" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={styles.input}/></div>
                     </div>
+                  {/* Contract settings */}
+                  <div style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
+                    <SectionLabel>Contract</SectionLabel>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,alignItems:'flex-start'}}>
+                      <div style={{flex:'1 1 140px'}}>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Paid by</div>
+                        <div style={{display:'flex',gap:3}}>
+                          {[['hourly','Hourly'],['fixed','Fixed salary']].map(([k,l])=>(
+                            <button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)}
+                              style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2,boxShadow:(emp.contractType||'hourly')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{flex:'1 1 130px'}}>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Period</div>
+                        <div style={{display:'flex',gap:3}}>
+                          {[['week','Per week'],['month','Per month']].map(([k,l])=>(
+                            <button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)}
+                              style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2,boxShadow:(emp.contractPeriod||'week')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{flex:'1 1 110px'}}>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>
+                          {(emp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:5}}>
+                          <input type="number" min="0" step="1" value={emp.wage||0}
+                            onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))}
+                            style={{...styles.input,flex:1}}/>
+                          <span style={{fontSize:11,color:T.text3,flexShrink:0}}>
+                            {(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{flex:'1 1 90px'}}>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>
+                          Max h / {(emp.contractPeriod||'week')==='month'?'month':'week'}
+                        </div>
+                        <input type="number" min="4" max="250" value={emp.maxHours}
+                          onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))}
+                          style={styles.input}/>
+                      </div>
+                      <div style={{flex:'1 1 80px'}}>
+                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Priority %</div>
+                        <input type="number" min="10" max="200" step="5" value={emp.salaryPct}
+                          onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))}
+                          style={styles.input}/>
+                        <div style={{fontSize:9,color:T.text3,marginTop:3}}>Lower = scheduled first</div>
+                      </div>
+                    </div>
+                  </div>
                     <div style={{marginBottom:14}}>
                       <SectionLabel>Quick templates</SectionLabel>
                       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>
@@ -919,11 +997,61 @@ export default function App(){
             {showAddEmp&&(
               <div style={styles.card}>
                 <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>New employee</div>
-                <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
+                {/* Name + roles */}
+                <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
                   <input placeholder="Full name" value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...styles.input,flex:'2 1 130px'}}/>
-                  <div style={{flex:'2 1 200px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>Roles</div><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{ const active=newEmp.roles.includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=newEmp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) setNewEmp(p=>({...p,roles:next})); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div></div>
-                  <input type="number" placeholder="Salary %" min="10" max="200" step="5" value={newEmp.salaryPct} onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))} style={{...styles.input,flex:'1 1 80px'}}/>
-                  <input type="number" placeholder="Max h/wk" min="4" max="60" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={{...styles.input,flex:'1 1 70px'}}/>
+                  <div style={{flex:'2 1 200px'}}>
+                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>Roles</div>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{ const active=(newEmp.roles||[]).includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=newEmp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) setNewEmp(p=>({...p,roles:next})); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div>
+                  </div>
+                </div>
+                {/* Contract */}
+                <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-start'}}>
+                  <div style={{flex:'1 1 120px'}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Paid by</div>
+                    <div style={{display:'flex',gap:3}}>
+                      {[['hourly','Hourly'],['fixed','Fixed']].map(([k,l])=>(
+                        <button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))}
+                          style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{flex:'1 1 120px'}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Period</div>
+                    <div style={{display:'flex',gap:3}}>
+                      {[['week','Week'],['month','Month']].map(([k,l])=>(
+                        <button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))}
+                          style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{flex:'1 1 100px'}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>
+                      {(newEmp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}
+                    </div>
+                    <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                      <input type="number" min="0" step="1" value={newEmp.wage||0}
+                        onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))}
+                        style={{...styles.input,flex:1}}/>
+                      <span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span>
+                    </div>
+                  </div>
+                  <div style={{flex:'1 1 70px'}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Max h/{(newEmp.contractPeriod||'week')==='month'?'mo':'wk'}</div>
+                    <input type="number" min="4" max="250" value={newEmp.maxHours}
+                      onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))}
+                      style={styles.input}/>
+                  </div>
+                  <div style={{flex:'1 1 70px'}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Priority %</div>
+                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct}
+                      onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))}
+                      style={styles.input}/>
+                  </div>
                 </div>
                 <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>Add employee</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">Cancel</Btn></div>
               </div>
