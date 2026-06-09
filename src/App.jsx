@@ -65,6 +65,14 @@ const AVAIL_TEMPLATES = {
   'Not available':       Object.fromEntries(DAYS.map(d=>[d,null])),
 };
 
+const TEMPLATE_LABEL_KEYS = {
+  'Full-time (Mon–Fri)':'tpl.fulltime',
+  'Evenings only':'tpl.evenings',
+  'Weekends only':'tpl.weekends',
+  'Full availability':'tpl.full',
+  'Not available':'emp.notAvailable',
+};
+
 const DEFAULT_BLOCKS = [
   { id:'lunch',  name:'Lunch',  start:'10:00', end:'16:00', roles:{ Manager:1, Waiter:2, Kitchen:1, Bartender:0, Other:0 } },
   { id:'dinner', name:'Dinner', start:'16:30', end:'00:00', roles:{ Manager:1, Waiter:3, Kitchen:2, Bartender:1, Other:0 },
@@ -236,6 +244,22 @@ function AddRoleInline({onAdd,t}){
 }
 
 // ─── App ──────────────────────────────────────────────────────────────────────
+function SaveTemplateInline({onSave,t}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState('');
+  const commit=()=>{ if(val.trim()){ onSave(val.trim()); setVal(''); setEditing(false); } };
+  if(!editing) return (
+    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>{t('tpl.saveAs')}</button>
+  );
+  return (
+    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
+      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('tpl.namePlaceholder')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:130,outline:'none'}}/>
+      <button onClick={commit} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.save')}</button>
+      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+    </div>
+  );
+}
+
 export default function App(){
   const [view,        setView]      = useState('schedule');
   const [calMode,     setCalMode]   = useState('week');
@@ -262,6 +286,12 @@ export default function App(){
   const [costsMode,   setCostsMode]  = useState('week');
   const [hourlyRate,  setHourlyRateRaw] = useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
   const setHourlyRate=v=>{ const val=typeof v==='function'?v(hourlyRate):v; setHourlyRateRaw(val); save('sa2_rate',val); };
+
+  // ── Custom availability templates ───────────────────────────────────────────
+  const [templates,  setTemplatesRaw] = useState(()=>load('sa2_templates',{}));
+  const setTemplates=v=>{ const val=typeof v==='function'?v(templates):v; setTemplatesRaw(val); save('sa2_templates',val); };
+  const saveTemplate=(name,availability)=>{ const n=name.trim(); if(!n||AVAIL_TEMPLATES[n]) return; setTemplates(p=>({...p,[n]:JSON.parse(JSON.stringify(availability))})); };
+  const removeTemplate=name=>{ setTemplates(p=>{ const c={...p}; delete c[name]; return c; }); };
 
   // ── Language ──────────────────────────────────────────────────────────────
   const [lang, setLangRaw] = useState(()=>load('sa2_lang', detectLang()));
@@ -356,7 +386,7 @@ export default function App(){
   const updateEmp=(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
   const updateAvail=(id,day,f,v)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]||{from:'10:00',to:'18:00'}; return {...e,availability:{...e.availability,[day]:{...cur,[f]:v}}}; }));
   const toggleDay=(id,day)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]; return {...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}}; }));
-  const applyTemplate=(id,tpl)=>{ const tp=AVAIL_TEMPLATES[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
+  const applyTemplate=(id,tpl)=>{ const tp={...AVAIL_TEMPLATES,...templates}[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:String(Date.now()),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp=id=>{ setEmployees(p=>p.filter(e=>e.id!==id)); if(expandedEmp===id) setExpandedEmp(null); };
   const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,maxHours:40}); setShowAddEmp(false); };
@@ -867,15 +897,22 @@ export default function App(){
                     </div>
                     <div style={{marginBottom:14}}>
                       <SectionLabel>{t('emp.quickTemplates')}</SectionLabel>
-                      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>
-                        {Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{tpl}</button>)}
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4,alignItems:'center'}}>
+                        {Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{t(TEMPLATE_LABEL_KEYS[tpl]||tpl)}</button>)}
+                        {Object.keys(templates).map(tpl=>(
+                          <span key={tpl} style={{display:'inline-flex',alignItems:'center',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:6,overflow:'hidden'}}>
+                            <button onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 8px 4px 10px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',color:T.text2,fontFamily:'inherit'}}>{tpl}</button>
+                            <button onClick={()=>removeTemplate(tpl)} title={t('tpl.removeTitle')} style={{padding:'4px 8px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',borderLeft:`1px solid ${T.border}`,color:T.text3,fontFamily:'inherit'}}>✕</button>
+                          </span>
+                        ))}
+                        <SaveTemplateInline t={t} onSave={name=>saveTemplate(name,emp.availability)} />
                       </div>
                     </div>
                     <SectionLabel>{t('emp.weeklyAvail')}</SectionLabel>
                     <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
                       {DAYS.map(day=>{ const avail=emp.availability[day],p=pal(emp); return (
                         <div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                          <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit',transition:'all 0.15s'}}>{day}</button>
+                          <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit',transition:'all 0.15s'}}>{dl(day)}</button>
                           {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{ const s=toMin(avail.from); let e=toMin(avail.to); if(e<=s) e+=1440; return `${((e-s)/60).toFixed(1)}h`; })()}</span></>):(<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>)}
                         </div>
                       ); })}
