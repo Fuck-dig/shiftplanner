@@ -850,7 +850,7 @@ export default function App(){
                         <div style={{flex:'1 1 110px'}}>
                           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div>
                           <div style={{display:'flex',alignItems:'center',gap:5}}>
-                            <input type="number" min="0" step="1" value={emp.wage||0} onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...styles.input,flex:1}}/>
+                            <input type="number" min="0" step="1" value={emp.wage===0?'':emp.wage} placeholder="0" onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...styles.input,flex:1}}/>
                             <span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span>
                           </div>
                         </div>
@@ -906,7 +906,7 @@ export default function App(){
                   </div>
                   <div style={{flex:'1 1 100px'}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div>
-                    <div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage||0} onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...styles.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div>
+                    <div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage===0?'':newEmp.wage} placeholder="0" onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...styles.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div>
                   </div>
                   <div style={{flex:'1 1 70px'}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractPeriod||'week')==='month'?t('emp.maxHMo'):t('emp.maxHWk')}</div>
