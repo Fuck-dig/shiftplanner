@@ -59,6 +59,8 @@ const STRINGS = {
     'sched.swapHintTail':' selected — click another to swap, or a gap slot to move them.',
     'sched.confirmedBanner':'Schedule confirmed',
     'sched.confirmedBannerSub':'This rota has been published to staff.',
+    'sched.warnings.one':'{n} warning',
+    'sched.warnings.other':'{n} warnings',
 
     'month.coverage':'Coverage',
     'month.full':'Full',
@@ -247,6 +249,8 @@ const STRINGS = {
     'sched.swapHintTail':' er valgt — klik på en anden for at bytte, eller en tom plads for at flytte.',
     'sched.confirmedBanner':'Vagtplan bekræftet',
     'sched.confirmedBannerSub':'Denne vagtplan er offentliggjort til personalet.',
+    'sched.warnings.one':'{n} advarsel',
+    'sched.warnings.other':'{n} advarsler',
 
     'month.coverage':'Dækning',
     'month.full':'Fuld',
@@ -435,6 +439,8 @@ const STRINGS = {
     'sched.swapHintTail':' seleccionado — haz clic en otro para intercambiar, o en un hueco para moverlo.',
     'sched.confirmedBanner':'Horario confirmado',
     'sched.confirmedBannerSub':'Este horario se ha publicado al personal.',
+    'sched.warnings.one':'{n} aviso',
+    'sched.warnings.other':'{n} avisos',
 
     'month.coverage':'Cobertura',
     'month.full':'Completa',

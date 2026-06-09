@@ -86,7 +86,8 @@ const DEFAULT_EMPLOYEES = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function getMondayDate(off=0){ const n=new Date('2026-05-11'),dy=n.getDay(),m=new Date(n); m.setDate(n.getDate()-dy+(dy===0?-6:1)+off*7); m.setHours(0,0,0,0); return m; }
+function startOfToday(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
+function getMondayDate(off=0){ const n=startOfToday(),dy=n.getDay(),m=new Date(n); m.setDate(n.getDate()-dy+(dy===0?-6:1)+off*7); m.setHours(0,0,0,0); return m; }
 function getWeekDates(off=0){ const m=getMondayDate(off); return DAYS.map((_,i)=>{ const d=new Date(m); d.setDate(m.getDate()+i); return d; }); }
 function weekKey(off){ const m=getMondayDate(off); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; }
 function dateToISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -112,7 +113,7 @@ function getMonthOffsets(ym){
   }
   return offsets;
 }
-function todayISO(){ return dateToISO(new Date('2026-05-11')); }
+function todayISO(){ return dateToISO(startOfToday()); }
 function initials(name){ return name.split(' ').map(n=>n[0]).join(''); }
 
 // ─── Scheduler ────────────────────────────────────────────────────────────────
@@ -251,11 +252,12 @@ export default function App(){
   const [weekOffset,  setWeekOffset]= useState(0);
   const [roleStyles,  setRoleStylesRaw] = useState(()=>load('sa2_roles', DEFAULT_ROLE_STYLES));
   const allRoles = Object.keys(roleStyles);
-  const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date('2026-05-11'); return {y:n.getFullYear(),m:n.getMonth()}; });
+  const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date(); return {y:n.getFullYear(),m:n.getMonth()}; });
   const [editingRole,    setEditingRole]    = useState(null);
   const [confirmDelete,  setConfirmDelete]  = useState(null);
   const [generating,  setGenerating]= useState(false);
   const [selected,    setSelected]  = useState(null);
+  const [showWarnings,setShowWarnings]=useState(false);
   const [openPicker,  setOpenPicker] = useState(null);
   const [expandedEmp, setExpandedEmp]=useState(null);
   const [showAddEmp,  setShowAddEmp]=useState(false);
@@ -464,7 +466,7 @@ export default function App(){
                 </span>
                 <button onClick={()=>{ if(calMode==='month'){ setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1}); } else { setWeekOffset(w=>w+1); } }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
               </div>
-              <button onClick={()=>{ setWeekOffset(0); const n=new Date('2026-05-11'); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+              <button onClick={()=>{ setWeekOffset(0); const n=new Date(); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
               <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
                 {[['week',t('sched.week')],['month',t('sched.month')],['staff',t('sched.staff')]].map(([k,l])=>(
                   <button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit',transition:'all 0.15s'}}>{l}</button>
@@ -517,7 +519,19 @@ export default function App(){
             )}
 
             {notes&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8}}><span>💡</span><span>{notes}</span></div>}
-            {warnings.filter(w=>w.startsWith('⚠️')).map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px',marginBottom:8}}>{w}</div>)}
+            {(()=>{ const warns=warnings.filter(w=>w.startsWith('⚠️')); if(warns.length===0) return null; return (
+              <div style={{marginBottom:16}}>
+                <button onClick={()=>setShowWarnings(s=>!s)} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'5px 12px',borderRadius:999,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit',background:showWarnings?T.dangerLight:T.surface,color:showWarnings?T.danger:T.text2,border:`1px solid ${showWarnings?T.danger+'44':T.border}`,transition:'all 0.15s'}}>
+                  ⚠️ {t.n('sched.warnings',warns.length)}
+                  <span style={{fontSize:9,opacity:0.7}}>{showWarnings?'▲':'▼'}</span>
+                </button>
+                {showWarnings&&(
+                  <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:10}}>
+                    {warns.map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px'}}>{w}</div>)}
+                  </div>
+                )}
+              </div>
+            ); })()}
 
             {/* ── MONTH VIEW ── */}
             {calMode==='month'&&(
