@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { LANGUAGES, LOCALES, makeT, detectLang } from "./i18n";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -20,6 +21,9 @@ const T = {
   dangerLight: '#F5E2E2',
 };
 
+// Active locale for date/number formatting — updated each render from `lang`.
+let LOCALE = 'en-GB';
+
 // ─── Role system ──────────────────────────────────────────────────────────────
 const ROLE_COLOR_PALETTE = [
   { dot:'#534AB7', bg:'#F0EFFE', text:'#4039A0', border:'#C8C4F8' },
@@ -40,9 +44,7 @@ const DEFAULT_ROLE_STYLES = {
   Kitchen:   { dot:'#8A5A10', bg:'#FBF3E5', text:'#6E4809', border:'#F0CC84' },
   Other:     { dot:'#5C5A58', bg:'#F2F1EF', text:'#4A4844', border:'#C8C4BE' },
 };
-// ROLE_STYLES and ALL_ROLES are now dynamic — read from state in App
 
-// ─── Employee colour system ───────────────────────────────────────────────────
 const EMP_PALETTE = [
   { bg:'#EAF3FB', text:'#165C8C', dot:'#1A6FA8' },
   { bg:'#E8F5EE', text:'#236040', dot:'#2D7A4F' },
@@ -63,7 +65,6 @@ const AVAIL_TEMPLATES = {
   'Not available':       Object.fromEntries(DAYS.map(d=>[d,null])),
 };
 
-// ─── Default data ─────────────────────────────────────────────────────────────
 const DEFAULT_BLOCKS = [
   { id:'lunch',  name:'Lunch',  start:'10:00', end:'16:00', roles:{ Manager:1, Waiter:2, Kitchen:1, Bartender:0, Other:0 } },
   { id:'dinner', name:'Dinner', start:'16:30', end:'00:00', roles:{ Manager:1, Waiter:3, Kitchen:2, Bartender:1, Other:0 },
@@ -89,15 +90,14 @@ function getMondayDate(off=0){ const n=new Date('2026-05-11'),dy=n.getDay(),m=ne
 function getWeekDates(off=0){ const m=getMondayDate(off); return DAYS.map((_,i)=>{ const d=new Date(m); d.setDate(m.getDate()+i); return d; }); }
 function weekKey(off){ const m=getMondayDate(off); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; }
 function dateToISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function fmt(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
-function fmtLong(iso){ const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}); }
+function fmt(d){ return d.toLocaleDateString(LOCALE,{day:'2-digit',month:'short'}); }
+function fmtLong(iso){ const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString(LOCALE,{day:'numeric',month:'long',year:'numeric'}); }
 function toMin(t){ const[h,m]=t.split(':').map(Number); return h*60+m; }
 function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<=s) e+=1440; return (e-s)/60; }
 function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
 function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
 function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return list.some(t=>t.empId===empId&&t.status==='Approved'&&t.startDate<=iso&&t.endDate>=iso); }
-function getMonthOffsets(ym){ 
-  // ym can be {y,m} or a weekOffset number (legacy)
+function getMonthOffsets(ym){
   const ref = typeof ym==='object' ? new Date(ym.y, ym.m, 15) : getMondayDate(ym);
   const fom=new Date(ref.getFullYear(),ref.getMonth(),1),fd=fom.getDay(),fm=new Date(fom);
   fm.setDate(fom.getDate()-(fd===0?6:fd-1));
@@ -125,14 +125,12 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
   DAYS.forEach((day,di)=>{
     const date=weekDates[di]; result[day]={};
 
-    // ── PASS 1: Greedy fill ──────────────────────────────────────────────────
     blocks.forEach(b=>{
       const bh=blockHours(b),rr=getBlockRoles(b,day),assigned=[],assignedInBlock=new Set();
       allRoles.forEach(role=>{ const need=rr[role]||0; if(!need) return;
         const pool=byRole(role).filter(e=>coversBlock(e.availability[day],b)&&!isOnTimeOff(e.id,date,timeOffList)&&!wd[e.id].has(di)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id));
         for(let i=0;i<need;i++){ if(pool[i]){ assigned.push({empId:pool[i].id,name:pool[i].name,role}); assignedInBlock.add(pool[i].id); } else warnings.push(`${day} ${b.name}: missing ${role}`); }
       });
-      // Tentative manager add (may be pulled out in pass 2)
       const hasMgr=assigned.some(a=>isManager(employees.find(e=>e.id===a.empId)));
       if(!hasMgr&&assigned.length>0){
         const mgr=byRole('Manager').find(e=>coversBlock(e.availability[day],b)&&!isOnTimeOff(e.id,date,timeOffList)&&!wd[e.id].has(di)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id));
@@ -142,26 +140,15 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
       result[day][b.id]=assigned;
     });
 
-    // ── PASS 2: Fix manager gaps by swapping ────────────────────────────────
-    // For each block without a manager, try to fix it:
-    //  (a) Check if any assigned employee in that block is also a Manager
-    //      but was assigned under a different role label — mark them as Manager
-    //  (b) Find a manager assigned to another block on the same day who can
-    //      cover this block too (multi-role: remove from other block, add here)
-    //  (c) Find an unassigned manager who wasn't used in pass 1 (e.g. their
-    //      hours capacity was reached due to earlier blocks)
     blocks.forEach(b=>{
       const bh=blockHours(b);
       const assigned=result[day][b.id];
       const hasMgr=assigned.some(a=>isManager(employees.find(e=>e.id===a.empId)));
       if(hasMgr||assigned.length===0) return;
 
-      // (a) Any assigned employee who is also a manager? Relabel them.
       const hiddenMgr=assigned.find(a=>isManager(employees.find(e=>e.id===a.empId)));
       if(hiddenMgr){ hiddenMgr.role='Manager'; return; }
 
-      // (b) Find a manager assigned elsewhere today who also covers this block
-      // and whose hours can absorb an extra block
       let fixed=false;
       blocks.forEach(otherB=>{
         if(fixed||otherB.id===b.id) return;
@@ -170,17 +157,13 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
         if(!mgrEntry) return;
         const mgrEmp=employees.find(e=>e.id===mgrEntry.empId);
         if(!mgrEmp||!coversBlock(mgrEmp.availability[day],b)) return;
-        // They cover both blocks — check if adding this block's hours is ok
-        // (they're already counted for otherB, so we only add the delta)
         if(hw[mgrEmp.id]+bh>mgrEmp.maxHours) return;
-        // Add manager to this block too (they work both blocks)
         hw[mgrEmp.id]+=bh;
         result[day][b.id]=[...assigned,{empId:mgrEmp.id,name:mgrEmp.name,role:'Manager'}];
         fixed=true;
       });
       if(fixed) return;
 
-      // (c) No manager found at all
       warnings.push(`⚠️ ${day} ${b.name}: No manager available!`);
     });
   });
@@ -203,17 +186,15 @@ const migrateEmployee=e=>({
   contractType:   e.contractType   || 'hourly',
   contractPeriod: e.contractPeriod || 'week',
   wage:           e.wage           || 0,
-  // offDays removed - use Time Off system instead
 });
-const load=(k,fb)=>{ 
-  try{ 
-    const v=localStorage.getItem(k); 
+const load=(k,fb)=>{
+  try{
+    const v=localStorage.getItem(k);
     if(!v) return fb;
     const parsed=JSON.parse(v);
-    // Migrate employee data
     if(k==='sa2_emps'&&Array.isArray(parsed)) return parsed.map(migrateEmployee);
     return parsed;
-  }catch{ return fb; } 
+  }catch{ return fb; }
 };
 const save=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{}};
 
@@ -234,7 +215,7 @@ function RoleBadge({role,rs}){ const s=rs||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C
 
 function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:p.bg,color:selected?'#fff':p.text,border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
 
-function StatusBadge({status}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:'#3D7A52'},Pending:{bg:T.warningLight,text:T.warning,dot:'#956B18'},Rejected:{bg:T.dangerLight,text:T.danger,dot:'#963030'}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{status}</span>; }
+function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:'#3D7A52'},Pending:{bg:T.warningLight,text:T.warning,dot:'#956B18'},Rejected:{bg:T.dangerLight,text:T.danger,dot:'#963030'}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
 
 function Btn({children,onClick,disabled,variant='primary',small}){
   const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
@@ -244,17 +225,16 @@ function Btn({children,onClick,disabled,variant='primary',small}){
 
 function SectionLabel({children}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{children}</div>; }
 
-// ─── AddRoleInline component ─────────────────────────────────────────────────
-function AddRoleInline({onAdd}){
+function AddRoleInline({onAdd,t}){
   const [editing,setEditing]=useState(false);
   const [val,setVal]=useState('');
   if(!editing) return (
-    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>+ Add role</button>
+    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('cov.addRole')}</button>
   );
   return (
     <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
-      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder="Role name…" style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:110,outline:'none'}}/>
-      <button onClick={()=>{ if(val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } }} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>Add</button>
+      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('cov.roleName')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:110,outline:'none'}}/>
+      <button onClick={()=>{ if(val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } }} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.add')}</button>
       <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
     </div>
   );
@@ -272,20 +252,26 @@ export default function App(){
   const [roleStyles,  setRoleStylesRaw] = useState(()=>load('sa2_roles', DEFAULT_ROLE_STYLES));
   const allRoles = Object.keys(roleStyles);
   const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date('2026-05-11'); return {y:n.getFullYear(),m:n.getMonth()}; });
-  const [editingRole,    setEditingRole]    = useState(null); // { name, newName, colorIdx }
-  const [confirmDelete,  setConfirmDelete]  = useState(null); // role name
+  const [editingRole,    setEditingRole]    = useState(null);
+  const [confirmDelete,  setConfirmDelete]  = useState(null);
   const [generating,  setGenerating]= useState(false);
   const [selected,    setSelected]  = useState(null);
-  const [openPicker,  setOpenPicker] = useState(null); // {day, blockId, role}
+  const [openPicker,  setOpenPicker] = useState(null);
   const [expandedEmp, setExpandedEmp]=useState(null);
   const [showAddEmp,  setShowAddEmp]=useState(false);
   const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
   const [showAddTO,   setShowAddTO] = useState(false);
   const [newTO,       setNewTO]     = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,    setToFilter]  = useState('all');
-  const [costsMode,   setCostsMode]  = useState('week'); // 'week' | 'month'
+  const [costsMode,   setCostsMode]  = useState('week');
   const [hourlyRate,  setHourlyRateRaw] = useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
   const setHourlyRate=v=>{ const val=typeof v==='function'?v(hourlyRate):v; setHourlyRateRaw(val); save('sa2_rate',val); };
+
+  // ── Language ──────────────────────────────────────────────────────────────
+  const [lang, setLangRaw] = useState(()=>load('sa2_lang', detectLang()));
+  const setLang = v => { setLangRaw(v); save('sa2_lang', v); };
+  const t = makeT(lang);
+  LOCALE = LOCALES[lang] || 'en-GB';
 
   // Inject fonts
   useEffect(()=>{
@@ -312,7 +298,7 @@ export default function App(){
   const warnings    = weekData?.warnings||[];
   const confirmed   = weekData?.confirmed||false;
   const monthOff    = getMonthOffsets(calMode==='month' ? displayMonth : weekOffset);
-  const pendingCount= timeOff.filter(t=>t.status==='Pending').length;
+  const pendingCount= timeOff.filter(x=>x.status==='Pending').length;
 
   const setEmployees=v=>{ const val=typeof v==='function'?v(employees):v; setEmpRaw(val); save('sa2_emps',val); };
   const setBlocks   =v=>{ const val=typeof v==='function'?v(blocks):v;    setBlocksRaw(val); save('sa2_blocks',val); };
@@ -335,7 +321,6 @@ export default function App(){
   };
   const generateMonth=()=>{
     setGenerating(true); setSelected(null);
-    // Generate all weeks in the currently displayed month
     const offsets=getMonthOffsets(calMode==='month' ? displayMonth : weekOffset);
     setTimeout(()=>{
       const updates={};
@@ -352,29 +337,18 @@ export default function App(){
   const handleSlotClick=(day,blockId,entry,idx)=>{ if(!schedule) return; setOpenPicker(null); if(!selected){ setSelected({...entry,day,blockId,idx}); return; } if(selected.day===day&&selected.blockId===blockId&&selected.idx===idx){ setSelected(null); return; } const ns=JSON.parse(JSON.stringify(schedule)); const src=ns[selected.day][selected.blockId],dst=ns[day][blockId]; const se=src[selected.idx],de=dst[idx]; src[selected.idx]={...de,role:se.role}; dst[idx]={...se,role:de.role}; setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}})); setSelected(null); };
   const handleEmptySlotClick=(day,blockId,role)=>{ if(!selected||!schedule) return; const ns=JSON.parse(JSON.stringify(schedule)); const entry=ns[selected.day][selected.blockId].splice(selected.idx,1)[0]; ns[day][blockId]=[...(ns[day][blockId]||[]),{...entry,role}]; setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}})); setSelected(null); };
 
-  // Compute employees who could fill a specific gap slot
   const eligibleForSlot=(day,blockId,role)=>{
     if(!schedule) return [];
     const block=blocks.find(b=>b.id===blockId);
     if(!block) return [];
     const bh=blockHours(block);
     const date=weekDates[DAYS.indexOf(day)];
-    // Who's already working that day (in any block)
-    const alreadyWorking=new Set(
-      blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId))
-    );
+    const alreadyWorking=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
     return employees
-      .filter(e=>
-        (e.roles||[]).includes(role) &&
-        coversBlock(e.availability[day],block) &&
-        !isOnTimeOff(e.id,date,timeOff) &&
-        !alreadyWorking.has(e.id) &&
-        empHours(e.id)+bh<=e.maxHours
-      )
+      .filter(e=>(e.roles||[]).includes(role)&&coversBlock(e.availability[day],block)&&!isOnTimeOff(e.id,date,timeOff)&&!alreadyWorking.has(e.id)&&empHours(e.id)+bh<=e.maxHours)
       .sort((a,b)=>a.salaryPct-b.salaryPct);
   };
 
-  // Directly add an employee to a schedule slot
   const addToSlot=(day,blockId,role,emp)=>{
     const ns=JSON.parse(JSON.stringify(schedule));
     ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
@@ -385,15 +359,14 @@ export default function App(){
   const updateEmp=(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
   const updateAvail=(id,day,f,v)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]||{from:'10:00',to:'18:00'}; return {...e,availability:{...e.availability,[day]:{...cur,[f]:v}}}; }));
   const toggleDay=(id,day)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]; return {...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}}; }));
-  const applyTemplate=(id,tpl)=>{ const t=AVAIL_TEMPLATES[tpl]; if(t) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(t))}:e)); };
+  const applyTemplate=(id,tpl)=>{ const tp=AVAIL_TEMPLATES[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:String(Date.now()),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp=id=>{ setEmployees(p=>p.filter(e=>e.id!==id)); if(expandedEmp===id) setExpandedEmp(null); };
   const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,maxHours:40}); setShowAddEmp(false); };
   const addTO=()=>{ if(!newTO.empId) return; setTimeOff(p=>[...p,{...newTO,id:String(Date.now())}]); setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'}); setShowAddTO(false); };
-  const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
-  const removeTO=id=>setTimeOff(p=>p.filter(t=>t.id!==id));
+  const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(x=>x.id===id?{...x,status}:x));
+  const removeTO=id=>setTimeOff(p=>p.filter(x=>x.id!==id));
 
-  // Pre-compute hours for all employees once (not recalculated per call)
   const empHoursMap = employees.reduce((acc,e)=>{
     if(!schedule){ acc[e.id]=0; return acc; }
     let h=0;
@@ -403,28 +376,20 @@ export default function App(){
   const empHours=id=>empHoursMap[id]||0;
   const totalStats=()=>{ if(!schedule) return null; let f=0,m=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day); f+=a.length; allRoles.forEach(role=>{ const need=r[role]||0,got=a.filter(x=>x.role===role).length; if(got<need) m+=(need-got); }); })); return {filled:f,missing:m}; };
   const stats=totalStats();
-  // Salary cost data — computed once per render
-  // Calculate actual wage cost per employee based on their contract type
   const calcWageCost=(e,hours)=>{
     const wage=e.wage||0;
-    if(!wage) return parseFloat((hours*(e.salaryPct/100)).toFixed(2)); // fallback to index
+    if(!wage) return parseFloat((hours*(e.salaryPct/100)).toFixed(2));
     if((e.contractType||'hourly')==='hourly') return parseFloat((hours*wage).toFixed(2));
-    // Fixed salary: prorate by hours worked vs contracted hours
     const contracted=e.maxHours||40;
     const weeksInMonth=4.33;
     const monthlyHours=(e.contractPeriod||'week')==='month'?contracted:contracted*weeksInMonth;
     return parseFloat(((hours/monthlyHours)*(e.contractPeriod==='month'?wage:wage*weeksInMonth)).toFixed(2));
   };
   const hasWages=employees.some(e=>e.wage>0);
-  const costData = employees.map(e=>{
-    const h=empHours(e.id);
-    const costUnits=hasWages?calcWageCost(e,h):parseFloat((h*(e.salaryPct/100)).toFixed(2));
-    return {emp:e, hours:h, costUnits};
-  });
+  const costData = employees.map(e=>{ const h=empHours(e.id); const costUnits=hasWages?calcWageCost(e,h):parseFloat((h*(e.salaryPct/100)).toFixed(2)); return {emp:e, hours:h, costUnits}; });
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
 
-  // Month cost data — aggregate across all generated weeks in display month
   const monthCostData=employees.map(e=>{
     let totalH=0;
     getMonthOffsets(displayMonth).forEach(off=>{
@@ -438,44 +403,33 @@ export default function App(){
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
 
-  // Role cost breakdown — computed for both modes
-  const buildRoleCosts=data=>allRoles.reduce((acc,role)=>{
-    const roleEmps=data.filter(d=>(d.emp.roles||[]).includes(role));
-    acc[role]=parseFloat(roleEmps.reduce((s,d)=>s+d.costUnits,0).toFixed(2));
-    return acc;
-  },{});
+  const buildRoleCosts=data=>allRoles.reduce((acc,role)=>{ const roleEmps=data.filter(d=>(d.emp.roles||[]).includes(role)); acc[role]=parseFloat(roleEmps.reduce((s,d)=>s+d.costUnits,0).toFixed(2)); return acc; },{});
   const weekRoleCosts=buildRoleCosts(costData);
   const monthRoleCosts=buildRoleCosts(monthCostData);
 
-  // Money conversion
   const toMoney=units=>{
-    if(hasWages){
-      // Real wages — show directly
-      return units>=10000?`kr ${Math.round(units/1000)}k`:`kr ${Math.round(units).toLocaleString('da-DK')}`;
-    }
-    // Index mode — multiply by base rate
+    if(hasWages){ return units>=10000?`kr ${Math.round(units/1000)}k`:`kr ${Math.round(units).toLocaleString(LOCALE)}`; }
     const val=units*hourlyRate.amount;
-    return val>=10000?`${hourlyRate.currency} ${Math.round(val/1000)}k`:`${hourlyRate.currency} ${Math.round(val).toLocaleString('da-DK')}`;
+    return val>=10000?`${hourlyRate.currency} ${Math.round(val/1000)}k`:`${hourlyRate.currency} ${Math.round(val).toLocaleString(LOCALE)}`;
   };
   const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
-  const filteredTO=timeOff.filter(t=>{ if(toFilter==='pending') return t.status==='Pending'; if(toFilter==='approved') return t.status==='Approved'; if(toFilter==='this-week') return wkISOs.some(iso=>t.startDate<=iso&&t.endDate>=iso); return true; }).sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const filteredTO=timeOff.filter(x=>{ if(toFilter==='pending') return x.status==='Pending'; if(toFilter==='approved') return x.status==='Approved'; if(toFilter==='this-week') return wkISOs.some(iso=>x.startDate<=iso&&x.endDate>=iso); return true; }).sort((a,b)=>a.startDate.localeCompare(b.startDate));
 
   const coverageDot=s=>({full:{bg:'#D4F0E2',border:'#5AAE80',text:'#236040'},partial:{bg:'#FBF0D5',border:'#D4A830',text:'#7A5010'},low:{bg:'#F5E2E2',border:'#D06060',text:'#783030'},empty:{bg:T.bg,border:T.border,text:T.text3}}[s]);
 
-  const navItems=[{k:'schedule',l:'Schedule'},{k:'employees',l:'Employees'},{k:'timeoff',l:pendingCount?`Time Off · ${pendingCount}`:'Time Off'},{k:'coverage',l:'Coverage'},{k:'costs',l:'Costs'}];
+  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:pendingCount?`${t('nav.timeoff')} · ${pendingCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const filterLabel={all:t('to.all'),pending:t('to.pending'),approved:t('to.approved'),'this-week':t('to.thisWeek')}[toFilter];
 
   return (
     <div style={{minHeight:'100vh',background:T.bg,backgroundImage:`radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)`,fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
 
       {/* ── Top navigation ── */}
       <div style={{background:'rgba(255,254,251,0.82)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',gap:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:`0 2px 14px -8px rgba(33,27,21,0.18)`}}>
-        {/* Brand */}
         <div style={{display:'flex',alignItems:'baseline',gap:9,marginRight:36}}>
           <span style={{fontFamily:"'Fraunces',serif",fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
-          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>Restaurant</span>
+          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{t('common.restaurant')}</span>
         </div>
-        {/* Nav */}
         <div style={{display:'flex',alignItems:'center',gap:0,flex:1}}>
           {navItems.map(({k,l})=>{
             const active=view===k;
@@ -487,9 +441,12 @@ export default function App(){
             );
           })}
         </div>
-        {/* Generate */}
+        <select value={lang} onChange={e=>setLang(e.target.value)} title={t('common.language')} aria-label={t('common.language')}
+          style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:10,cursor:'pointer',outline:'none'}}>
+          {LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}
+        </select>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
-          {generating?'Generating…':'✦ Generate'}
+          {generating?t('common.generating'):'✦ '+t('common.generate')}
         </Btn>
       </div>
 
@@ -501,88 +458,70 @@ export default function App(){
             {/* Sub-nav */}
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap'}}>
               <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-                <button onClick={()=>{
-                  if(calMode==='month'){
-                    setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});
-                  } else {
-                    setWeekOffset(w=>w-1);
-                  }
-                }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+                <button onClick={()=>{ if(calMode==='month'){ setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1}); } else { setWeekOffset(w=>w-1); } }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
                 <span style={{fontSize:13,fontWeight:500,minWidth:calMode==='month'?120:150,textAlign:'center',color:T.text,padding:'0 4px'}}>
-                  {calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}
+                  {calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}
                 </span>
-                <button onClick={()=>{
-                  if(calMode==='month'){
-                    setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});
-                  } else {
-                    setWeekOffset(w=>w+1);
-                  }
-                }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+                <button onClick={()=>{ if(calMode==='month'){ setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1}); } else { setWeekOffset(w=>w+1); } }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
               </div>
-              <button onClick={()=>{ setWeekOffset(0); const n=new Date('2026-05-11'); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>Today</button>
-              {/* Mode toggle */}
+              <button onClick={()=>{ setWeekOffset(0); const n=new Date('2026-05-11'); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
               <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-                {[['week','Week'],['month','Month'],['staff','Staff']].map(([k,l])=>(
+                {[['week',t('sched.week')],['month',t('sched.month')],['staff',t('sched.staff')]].map(([k,l])=>(
                   <button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit',transition:'all 0.15s'}}>{l}</button>
                 ))}
               </div>
               {calMode==='week'&&schedule&&(
                 <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                  <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
-                  {stats?.missing>0&&<span style={{fontSize:12,color:T.danger,fontWeight:500,background:T.dangerLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.danger}33`}}>{stats.missing} missing</span>}
-                  {stats?.missing===0&&<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>Full coverage ✓</span>}
+                  <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} {t('sched.slots')}</span>
+                  {stats?.missing>0&&<span style={{fontSize:12,color:T.danger,fontWeight:500,background:T.dangerLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.danger}33`}}>{t('sched.missing',{n:stats.missing})}</span>}
+                  {stats?.missing===0&&<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>{t('sched.fullCoverage')} ✓</span>}
                   <div style={{width:1,height:16,background:T.border,marginLeft:4}}/>
                   {confirmed
-                    ? <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`,display:'inline-flex',alignItems:'center',gap:4}}>✓ Confirmed</span>
-                    : <span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>Draft</span>
+                    ? <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`,display:'inline-flex',alignItems:'center',gap:4}}>✓ {t('sched.confirmed')}</span>
+                    : <span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>
                   }
                   {confirmed
-                    ? <Btn small variant="ghost" onClick={unconfirmSchedule}>Unconfirm</Btn>
-                    : <Btn small variant="success" onClick={confirmSchedule}>Confirm schedule</Btn>
+                    ? <Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn>
+                    : <Btn small variant="success" onClick={confirmSchedule}>{t('sched.confirm')}</Btn>
                   }
-                  <Btn small variant="danger" onClick={deleteSchedule}>Delete</Btn>
+                  <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
                 </div>
               )}
             </div>
 
-            {/* Off this week */}
             {offThisWeek.length>0&&calMode!=='month'&&(
               <div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
                 <span style={{fontSize:13,color:T.warning}}>🌴</span>
-                <span style={{fontSize:12,fontWeight:500,color:T.warning}}>On approved leave this week</span>
+                <span style={{fontSize:12,fontWeight:500,color:T.warning}}>{t('sched.onLeaveWeek')}</span>
                 <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>
               </div>
             )}
 
-            {/* Swap hint */}
             {selected&&(
               <div style={{background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
                 <span style={{fontSize:16}}>✋</span>
-                <span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b> selected — click another to swap, or a gap slot to move them.</span>
-                <button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>Cancel</button>
+                <span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b>{t('sched.swapHintTail')}</span>
+                <button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.cancel')}</button>
               </div>
             )}
 
-            {/* Confirmed banner */}
             {confirmed&&calMode!=='month'&&(
               <div style={{background:T.successLight,border:`1px solid ${T.success}44`,borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}>
                 <span style={{fontSize:15}}>✅</span>
                 <div style={{flex:1}}>
-                  <span style={{fontSize:12,fontWeight:600,color:T.success}}>Schedule confirmed</span>
-                  <span style={{fontSize:12,color:T.success,marginLeft:8,opacity:0.8}}>This rota has been published to staff.</span>
+                  <span style={{fontSize:12,fontWeight:600,color:T.success}}>{t('sched.confirmedBanner')}</span>
+                  <span style={{fontSize:12,color:T.success,marginLeft:8,opacity:0.8}}>{t('sched.confirmedBannerSub')}</span>
                 </div>
-                <Btn small variant="ghost" onClick={unconfirmSchedule} style={{color:T.success}}>Unconfirm</Btn>
+                <Btn small variant="ghost" onClick={unconfirmSchedule} style={{color:T.success}}>{t('sched.unconfirm')}</Btn>
               </div>
             )}
 
-            {/* Notes */}
             {notes&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8}}><span>💡</span><span>{notes}</span></div>}
             {warnings.filter(w=>w.startsWith('⚠️')).map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px',marginBottom:8}}>{w}</div>)}
 
             {/* ── MONTH VIEW ── */}
             {calMode==='month'&&(
               <div style={{...styles.card,padding:0,overflow:'hidden'}}>
-                {/* Day headers */}
                 <div style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm}}>
                   <div/>
                   {DAYS.map(d=><div key={d} style={{padding:'10px 4px',textAlign:'center',fontSize:11,fontWeight:600,color:T.text2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{d}</div>)}
@@ -593,8 +532,8 @@ export default function App(){
                     <div key={off} style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:isCur?T.accentLight:wConf?T.successLight+'88':'transparent',transition:'background 0.2s'}}>
                       <div style={{display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',gap:4,padding:'8px 4px',borderRight:`1px solid ${T.border}`}}>
                         {wConf&&<span style={{fontSize:9,color:T.success,fontWeight:600}}>✓</span>}
-                        <button onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${isCur?T.accent:T.border}`,background:isCur?T.accent:'transparent',color:isCur?'#fff':T.text3,fontFamily:'inherit'}}>view</button>
-                        {!ws&&<button onClick={()=>generate(off)} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${T.accent}`,background:'transparent',color:T.accent,fontFamily:'inherit'}}>gen</button>}
+                        <button onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${isCur?T.accent:T.border}`,background:isCur?T.accent:'transparent',color:isCur?'#fff':T.text3,fontFamily:'inherit'}}>{t('month.view')}</button>
+                        {!ws&&<button onClick={()=>generate(off)} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${T.accent}`,background:'transparent',color:T.accent,fontFamily:'inherit'}}>{t('month.gen')}</button>}
                       </div>
                       {wd.map((d,di)=>{
                         const dayName=DAYS[di],inMonth=d.getMonth()===displayMonth.m&&d.getFullYear()===displayMonth.y;
@@ -605,7 +544,7 @@ export default function App(){
                           <div key={di} onClick={()=>{setWeekOffset(off);setCalMode('week');}}
                             style={{padding:'8px 6px',cursor:'pointer',borderRight:di<6?`1px solid ${T.border}`:'none',background:inMonth?dot.bg:'transparent',opacity:inMonth?1:0.35,transition:'opacity 0.1s',minHeight:60}}>
                             <div style={{fontSize:13,fontWeight:500,color:inMonth?dot.text:T.text3,marginBottom:2}}>{d.getDate()}</div>
-                            {ws&&inMonth&&<div style={{fontSize:10,color:dot.text}}>{empCount} staff</div>}
+                            {ws&&inMonth&&<div style={{fontSize:10,color:dot.text}}>{t('common.staffN',{n:empCount})}</div>}
                             {offCount>0&&inMonth&&<div style={{fontSize:10,color:T.warning}}>🌴 {offCount}</div>}
                             {!ws&&inMonth&&<div style={{fontSize:10,color:T.text3}}>—</div>}
                           </div>
@@ -614,16 +553,10 @@ export default function App(){
                     </div>
                   );
                 })}
-                {/* Legend + month actions */}
                 <div style={{display:'flex',gap:16,padding:'12px 16px',background:T.surfaceWarm,alignItems:'center',flexWrap:'wrap'}}>
-                  <span style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Coverage</span>
-                  {[['full','Full'],['partial','Partial'],['low','Low'],['empty','Not generated']].map(([s,l])=>{ const d=coverageDot(s); return <div key={s} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:3,background:d.bg,border:`1px solid ${d.border}`}}/><span style={{fontSize:11,color:T.text2}}>{l}</span></div>; })}
-                  {monthOff.some(off=>schedules[weekKey(off)])&&(
-                    <>
-                      <div style={{flex:1}}/>
-                      <Btn small variant="danger" onClick={deleteMonth}>Delete whole month</Btn>
-                    </>
-                  )}
+                  <span style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('month.coverage')}</span>
+                  {[['full',t('month.full')],['partial',t('month.partial')],['low',t('month.low')],['empty',t('month.notGenerated')]].map(([s,l])=>{ const d=coverageDot(s); return <div key={s} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:3,background:d.bg,border:`1px solid ${d.border}`}}/><span style={{fontSize:11,color:T.text2}}>{l}</span></div>; })}
+                  {monthOff.some(off=>schedules[weekKey(off)])&&(<><div style={{flex:1}}/><Btn small variant="danger" onClick={deleteMonth}>{t('month.deleteMonth')}</Btn></>)}
                 </div>
               </div>
             )}
@@ -633,94 +566,71 @@ export default function App(){
               !schedule?(
                 <div style={{...styles.card,textAlign:'center',padding:'64px 24px'}}>
                   <div style={{fontSize:40,marginBottom:16,opacity:0.3}}>📋</div>
-                  <div style={{fontFamily:"'Fraunces',serif",fontSize:22,marginBottom:8}}>No rota for this week</div>
-                  <div style={{fontSize:13,color:T.text2,marginBottom:6,maxWidth:340,margin:'0 auto 6px'}}>Generate a schedule first — the staff rota view shows each employee's shifts in a format you can share or print.</div>
-                  <div style={{fontSize:12,color:T.text3,marginBottom:24}}>{employees.length} employees ready to schedule</div>
-                  <Btn onClick={()=>generate()}>✦ Generate this week</Btn>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:22,marginBottom:8}}>{t('staff.noRota')}</div>
+                  <div style={{fontSize:13,color:T.text2,marginBottom:6,maxWidth:340,margin:'0 auto 6px'}}>{t('staff.noRotaDesc')}</div>
+                  <div style={{fontSize:12,color:T.text3,marginBottom:24}}>{t('staff.readyCount',{n:employees.length})}</div>
+                  <Btn onClick={()=>generate()}>{'✦ '+t('staff.generateWeek')}</Btn>
                 </div>
               ):(
                 <div>
-                  {/* Rota header — printable feel */}
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}}>
                     <div>
-                      <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:500,color:T.text}}>Weekly Rota</div>
-                      <div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {employees.length} staff</div>
+                      <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div>
+                      <div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {t('common.staffN',{n:employees.length})}</div>
                     </div>
                     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-                      {allRoles.filter(r=>employees.some(e=>(e.roles||['Other']).includes(r))).map(r=><RoleBadge key={r} role={r}/>)}
+                      {allRoles.filter(r=>employees.some(e=>(e.roles||['Other']).includes(r))).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
                       <div style={{width:1,height:16,background:T.border}}/>
                       {confirmed
-                        ?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`,display:'inline-flex',alignItems:'center',gap:4}}>✓ Confirmed</span>
-                        :<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>Draft</span>
+                        ?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`,display:'inline-flex',alignItems:'center',gap:4}}>✓ {t('sched.confirmed')}</span>
+                        :<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>
                       }
-                      {!confirmed&&<Btn small onClick={confirmSchedule}>Confirm schedule</Btn>}
-                      <Btn small variant="danger" onClick={deleteSchedule}>Delete</Btn>
+                      {!confirmed&&<Btn small onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
+                      <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
                     </div>
                   </div>
 
-                  {/* Employee cards — one per person */}
                   <div style={{display:'flex',flexDirection:'column',gap:8}}>
                     {employees.map(emp=>{
                       const h=empHours(emp.id);
                       const p=pal(emp);
                       const primaryRole=(emp.roles||['Other'])[0]; const rs=roleStyles[primaryRole]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};
                       const worksThisWeek=DAYS.some(day=>!isOnTimeOff(emp.id,weekDates[DAYS.indexOf(day)],timeOff)&&blocks.some(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id)));
-
                       return (
                         <div key={emp.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,overflow:'hidden',boxShadow:'0 1px 3px rgba(28,24,21,0.05)',opacity:!worksThisWeek&&!DAYS.some(d=>isOnTimeOff(emp.id,weekDates[DAYS.indexOf(d)],timeOff))?0.55:1}}>
-                          {/* Employee header strip */}
                           <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:`linear-gradient(to right, ${p.bg}, ${T.surface})`,borderBottom:`1px solid ${T.border}`}}>
                             <Avatar emp={emp} size={36}/>
                             <div style={{flex:1}}>
                               <div style={{fontSize:14,fontWeight:600,color:T.text}}>{emp.name}</div>
-                              <>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r}/>)}</>
+                              <>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</>
                             </div>
-                            {/* Hours pill */}
                             <div style={{textAlign:'right'}}>
                               <div style={{fontSize:13,fontWeight:600,color:h>emp.maxHours?T.danger:h===0?T.text3:T.text}}>{h}h</div>
-                              <div style={{fontSize:10,color:T.text3}}>of {emp.maxHours}h max</div>
+                              <div style={{fontSize:10,color:T.text3}}>{t('staff.ofMax',{n:emp.maxHours})}</div>
                             </div>
-                            {/* Mini hours bar */}
                             <div style={{width:60,height:5,borderRadius:999,background:T.border,overflow:'hidden'}}>
                               <div style={{height:'100%',width:`${Math.min(100,(h/emp.maxHours)*100)}%`,borderRadius:999,background:h>emp.maxHours?T.danger:h/emp.maxHours>0.8?T.warning:T.success,transition:'width 0.3s'}}/>
                             </div>
                           </div>
-
-                          {/* Day cells */}
                           <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
                             {DAYS.map((day,di)=>{
                               const date=weekDates[di];
                               const onTO=isOnTimeOff(emp.id,date,timeOff);
                               const assignedBlock=blocks.find(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
-                              const assignedEntry=assignedBlock?(schedule[day][assignedBlock.id]||[]).find(a=>a.empId===emp.id):null;
                               const isWeekend=di>=5;
-
                               return (
                                 <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:isWeekend?T.surfaceWarm:'transparent',minHeight:72,display:'flex',flexDirection:'column',gap:3}}>
-                                  {/* Day label */}
-                                  <div style={{fontSize:10,fontWeight:600,color:isWeekend?T.text2:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>
-                                    {day}
-                                    <span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span>
-                                  </div>
-
+                                  <div style={{fontSize:10,fontWeight:600,color:isWeekend?T.text2:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{day}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
                                   {onTO?(
-                                    <div style={{flex:1,display:'flex',alignItems:'center'}}>
-                                      <span style={{fontSize:11,color:T.warning,fontWeight:500}}>🌴 Leave</span>
-                                    </div>
+                                    <div style={{flex:1,display:'flex',alignItems:'center'}}><span style={{fontSize:11,color:T.warning,fontWeight:500}}>🌴 {t('staff.leave')}</span></div>
                                   ):assignedBlock?(
                                     <div style={{flex:1,display:'flex',flexDirection:'column',gap:2}}>
-                                      {/* Block name with colour dot */}
-                                      <div style={{display:'flex',alignItems:'center',gap:4}}>
-                                        <div style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
-                                        <span style={{fontSize:12,fontWeight:600,color:T.text}}>{assignedBlock.name}</span>
-                                      </div>
+                                      <div style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:12,fontWeight:600,color:T.text}}>{assignedBlock.name}</span></div>
                                       <div style={{fontSize:11,color:T.text2}}>{assignedBlock.start} – {assignedBlock.end}</div>
                                       <div style={{fontSize:10,color:T.text3}}>{blockHours(assignedBlock).toFixed(1)}h</div>
                                     </div>
                                   ):(
-                                    <div style={{flex:1,display:'flex',alignItems:'center'}}>
-                                      <span style={{fontSize:12,color:T.border,userSelect:'none'}}>—</span>
-                                    </div>
+                                    <div style={{flex:1,display:'flex',alignItems:'center'}}><span style={{fontSize:12,color:T.border,userSelect:'none'}}>—</span></div>
                                   )}
                                 </div>
                               );
@@ -731,12 +641,11 @@ export default function App(){
                     })}
                   </div>
 
-                  {/* Totals footer */}
                   <div style={{marginTop:16,padding:'12px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
-                    <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Week summary</span>
-                    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b> total hours scheduled</span>
-                    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b> of {employees.length} staff working</span>
-                    {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b> on approved leave</span>}
+                    <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('staff.weekSummary')}</span>
+                    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
+                    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:employees.length})}</span>
+                    {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b>{t('staff.onLeaveCount')}</span>}
                   </div>
                 </div>
               )
@@ -749,14 +658,13 @@ export default function App(){
                   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
                   <div style={{position:'relative'}}>
                     <div style={{fontSize:42,marginBottom:14,opacity:0.25}}>📅</div>
-                    <div style={{fontFamily:"'Fraunces',serif",fontSize:27,fontWeight:600,color:T.text,marginBottom:8,letterSpacing:'-0.01em'}}>Nothing scheduled yet</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:27,fontWeight:600,color:T.text,marginBottom:8,letterSpacing:'-0.01em'}}>{t('empty.nothing')}</div>
                     <div style={{fontSize:13.5,color:T.text2,maxWidth:400,margin:'0 auto 4px'}}>
-                      {employees.length} employees across {blocks.length} coverage block{blocks.length!==1?'s':''}.{offThisWeek.length>0?` ${offThisWeek.length} on leave this week.`:''}
+                      {t.n('empty.across',blocks.length,{emp:employees.length,blocks:blocks.length})}{offThisWeek.length>0?t('empty.leaveSuffix',{n:offThisWeek.length}):''}
                     </div>
-                    <div style={{fontSize:12,color:T.text3,marginBottom:24,marginTop:4}}>Availability, hours caps, roles and approved leave are all respected.</div>
-                    {/* 3-step guide */}
+                    <div style={{fontSize:12,color:T.text3,marginBottom:24,marginTop:4}}>{t('empty.respected')}</div>
                     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap',marginBottom:26}}>
-                      {[['1','Set up team & roles'],['2','Define coverage blocks'],['3','Generate the rota']].map(([n,l],i)=>(
+                      {[['1',t('empty.step1')],['2',t('empty.step2')],['3',t('empty.step3')]].map(([n,l],i)=>(
                         <div key={n} style={{display:'flex',alignItems:'center',gap:7,fontSize:12,color:T.text2}}>
                           <span style={{width:20,height:20,borderRadius:'50%',background:T.accentLight,color:T.accentText,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,flexShrink:0}}>{n}</span>
                           {l}
@@ -765,8 +673,8 @@ export default function App(){
                       ))}
                     </div>
                     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
-                      <Btn onClick={()=>generate()}>✦ Generate this week</Btn>
-                      <Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn>
+                      <Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn>
+                      <Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn>
                     </div>
                   </div>
                 </div>
@@ -774,20 +682,18 @@ export default function App(){
                 <div style={{display:'flex',flexDirection:'column',gap:16}}>
                   {blocks.map(block=>(
                     <div key={block.id} style={styles.cardFlush}>
-                      {/* Block header */}
                       <div style={{padding:'12px 20px',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12}}>
                         <div style={{flex:1}}>
                           <span style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,color:T.text}}>{block.name}</span>
                           <span style={{fontSize:12,color:T.text3,marginLeft:10}}>{block.start} – {block.end} · {blockHours(block).toFixed(1)}h</span>
                         </div>
-                        <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>Manager enforced</span>
+                        <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>{t('week.managerEnforced')}</span>
                       </div>
-                      {/* Table */}
                       <div style={{overflowX:'auto'}}>
                         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
                           <thead>
                             <tr>
-                              <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>Role</th>
+                              <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
                               {DAYS.map((day,i)=><th key={day} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:T.text,background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{day}<div style={{fontSize:10,fontWeight:400,color:T.text3}}>{fmt(weekDates[i])}</div></th>)}
                             </tr>
                           </thead>
@@ -818,26 +724,17 @@ export default function App(){
                                           })}
                                           {gap>0&&(
                                             <div style={{position:'relative'}}>
-                                              <button onClick={()=>{
-                                                if(selected&&isTarget){ handleEmptySlotClick(day,block.id,role); return; }
-                                                if(!selected){
-                                                  const key=`${day}-${block.id}-${role}`;
-                                                  setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});
-                                                }
-                                              }}
+                                              <button onClick={()=>{ if(selected&&isTarget){ handleEmptySlotClick(day,block.id,role); return; } if(!selected){ setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role}); } }}
                                                 style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:'pointer',fontFamily:'inherit'}}>
-                                                {isTarget?'+ move here':`−${gap} short`}
+                                                {isTarget?t('week.moveHere'):t('week.short',{n:gap})}
                                               </button>
-                                              {/* Slot picker */}
                                               {!selected&&openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&(()=>{
                                                 const eligible=eligibleForSlot(day,block.id,role);
                                                 return (
                                                   <div style={{position:'absolute',top:'100%',left:0,marginTop:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 4px 16px rgba(28,24,21,0.12)',zIndex:200,minWidth:180,maxWidth:240,padding:8}}>
-                                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>
-                                                      Add {role} — {day}
-                                                    </div>
+                                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day})}</div>
                                                     {eligible.length===0?(
-                                                      <div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>No one available for this slot</div>
+                                                      <div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>
                                                     ):eligible.map(emp=>{
                                                       const p=pal(emp);
                                                       const h=empHours(emp.id);
@@ -855,7 +752,7 @@ export default function App(){
                                                       );
                                                     })}
                                                     <div style={{borderTop:`1px solid ${T.border}`,marginTop:4,paddingTop:4}}>
-                                                      <button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>Cancel</button>
+                                                      <button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button>
                                                     </div>
                                                   </div>
                                                 );
@@ -876,23 +773,17 @@ export default function App(){
                     </div>
                   ))}
 
-                  {/* Hours panel */}
                   <div style={styles.card}>
-                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>Weekly Hours</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>{t('week.weeklyHours')}</div>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
                       {employees.map(emp=>{
                         const h=empHours(emp.id),pct=Math.min(100,(h/emp.maxHours)*100),over=h>emp.maxHours,p=pal(emp);
                         return (
                           <div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
-                            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
-                              <Avatar emp={emp} size={24}/>
-                              <span style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name.split(' ')[0]}</span>
-                            </div>
-                            <div style={{fontSize:11,color:T.text3,marginBottom:5,display:'flex',gap:3,flexWrap:'wrap'}}>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r}/>)}</div>
+                            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name.split(' ')[0]}</span></div>
+                            <div style={{fontSize:11,color:T.text3,marginBottom:5,display:'flex',gap:3,flexWrap:'wrap'}}>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                             <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {emp.maxHours}h</span></div>
-                            <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}>
-                              <div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success,transition:'width 0.4s'}}/>
-                            </div>
+                            <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success,transition:'width 0.4s'}}/></div>
                           </div>
                         );
                       })}
@@ -912,12 +803,12 @@ export default function App(){
                 <div style={{display:'flex',alignItems:'center',gap:12}}>
                   <Avatar emp={emp} size={40}/>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r}/>)}</div>
-                    <div style={{fontSize:12,color:T.text2}}>{emp.salaryPct}% salary · max {emp.maxHours}h/week</div>
+                    <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
+                    <div style={{fontSize:12,color:T.text2}}>{t('emp.salaryMax',{pct:emp.salaryPct,n:emp.maxHours})}</div>
                   </div>
                   <div style={{display:'flex',gap:6}}>
-                    <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>⧉ Clone</Btn>
-                    <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?'Close':'Edit'}</Btn>
+                    <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
+                    <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
                     <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
                   </div>
                 </div>
@@ -925,77 +816,58 @@ export default function App(){
                 {expandedEmp===emp.id&&(
                   <div style={{marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
                     <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
-                      <div style={{flex:'2 1 120px'}}><SectionLabel>Name</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={styles.input}/></div>
-                      <div style={{flex:'2 1 160px'}}><SectionLabel>Roles (select all that apply)</SectionLabel><div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>{allRoles.map(r=>{ const active=(emp.roles||['Other']).includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=emp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) updateEmp(emp.id,'roles',next); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div></div>
+                      <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={styles.input}/></div>
+                      <div style={{flex:'2 1 160px'}}><SectionLabel>{t('emp.rolesSelect')}</SectionLabel><div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>{allRoles.map(r=>{ const active=(emp.roles||['Other']).includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=emp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) updateEmp(emp.id,'roles',next); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit',transition:'all 0.15s'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div></div>
                     </div>
-                  {/* Contract settings */}
-                  <div style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
-                    <SectionLabel>Contract</SectionLabel>
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,alignItems:'flex-start'}}>
-                      <div style={{flex:'1 1 140px'}}>
-                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Paid by</div>
-                        <div style={{display:'flex',gap:3}}>
-                          {[['hourly','Hourly'],['fixed','Fixed salary']].map(([k,l])=>(
-                            <button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)}
-                              style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2,boxShadow:(emp.contractType||'hourly')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>
-                              {l}
-                            </button>
-                          ))}
+                    <div style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
+                      <SectionLabel>{t('emp.contract')}</SectionLabel>
+                      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,alignItems:'flex-start'}}>
+                        <div style={{flex:'1 1 140px'}}>
+                          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.paidBy')}</div>
+                          <div style={{display:'flex',gap:3}}>
+                            {[['hourly',t('emp.hourly')],['fixed',t('emp.fixedSalary')]].map(([k,l])=>(
+                              <button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2,boxShadow:(emp.contractType||'hourly')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>{l}</button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div style={{flex:'1 1 130px'}}>
-                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Period</div>
-                        <div style={{display:'flex',gap:3}}>
-                          {[['week','Per week'],['month','Per month']].map(([k,l])=>(
-                            <button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)}
-                              style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2,boxShadow:(emp.contractPeriod||'week')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>
-                              {l}
-                            </button>
-                          ))}
+                        <div style={{flex:'1 1 130px'}}>
+                          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.period')}</div>
+                          <div style={{display:'flex',gap:3}}>
+                            {[['week',t('emp.perWeek')],['month',t('emp.perMonth')]].map(([k,l])=>(
+                              <button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2,boxShadow:(emp.contractPeriod||'week')===k?'0 1px 3px rgba(0,0,0,0.08)':'none',transition:'all 0.15s'}}>{l}</button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div style={{flex:'1 1 110px'}}>
-                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>
-                          {(emp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}
+                        <div style={{flex:'1 1 110px'}}>
+                          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:5}}>
+                            <input type="number" min="0" step="1" value={emp.wage||0} onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...styles.input,flex:1}}/>
+                            <span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span>
+                          </div>
                         </div>
-                        <div style={{display:'flex',alignItems:'center',gap:5}}>
-                          <input type="number" min="0" step="1" value={emp.wage||0}
-                            onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))}
-                            style={{...styles.input,flex:1}}/>
-                          <span style={{fontSize:11,color:T.text3,flexShrink:0}}>
-                            {(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}
-                          </span>
+                        <div style={{flex:'1 1 90px'}}>
+                          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractPeriod||'week')==='month'?t('emp.maxHMonth'):t('emp.maxHWeek')}</div>
+                          <input type="number" min="4" max="250" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={styles.input}/>
                         </div>
-                      </div>
-                      <div style={{flex:'1 1 90px'}}>
-                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>
-                          Max h / {(emp.contractPeriod||'week')==='month'?'month':'week'}
+                        <div style={{flex:'1 1 80px'}}>
+                          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.priority')}</div>
+                          <input type="number" min="10" max="200" step="5" value={emp.salaryPct} onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))} style={styles.input}/>
+                          <div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.lowerFirst')}</div>
                         </div>
-                        <input type="number" min="4" max="250" value={emp.maxHours}
-                          onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))}
-                          style={styles.input}/>
-                      </div>
-                      <div style={{flex:'1 1 80px'}}>
-                        <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Priority %</div>
-                        <input type="number" min="10" max="200" step="5" value={emp.salaryPct}
-                          onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))}
-                          style={styles.input}/>
-                        <div style={{fontSize:9,color:T.text3,marginTop:3}}>Lower = scheduled first</div>
                       </div>
                     </div>
-                  </div>
                     <div style={{marginBottom:14}}>
-                      <SectionLabel>Quick templates</SectionLabel>
+                      <SectionLabel>{t('emp.quickTemplates')}</SectionLabel>
                       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>
                         {Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{tpl}</button>)}
                       </div>
                     </div>
-                    <SectionLabel>Weekly availability</SectionLabel>
+                    <SectionLabel>{t('emp.weeklyAvail')}</SectionLabel>
                     <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
                       {DAYS.map(day=>{ const avail=emp.availability[day],p=pal(emp); return (
                         <div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                           <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit',transition:'all 0.15s'}}>{day}</button>
-                          {avail?(<><span style={{fontSize:11,color:T.text3}}>From</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>to</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{ const s=toMin(avail.from); let e=toMin(avail.to); if(e<=s) e+=1440; return `${((e-s)/60).toFixed(1)}h`; })()}</span></>):(<span style={{fontSize:11,color:T.text3}}>Not available</span>)}
+                          {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{ const s=toMin(avail.from); let e=toMin(avail.to); if(e<=s) e+=1440; return `${((e-s)/60).toFixed(1)}h`; })()}</span></>):(<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>)}
                         </div>
                       ); })}
                     </div>
@@ -1006,67 +878,40 @@ export default function App(){
 
             {showAddEmp&&(
               <div style={styles.card}>
-                <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>New employee</div>
-                {/* Name + roles */}
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.newEmployee')}</div>
                 <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
-                  <input placeholder="Full name" value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...styles.input,flex:'2 1 130px'}}/>
+                  <input placeholder={t('emp.fullName')} value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...styles.input,flex:'2 1 130px'}}/>
                   <div style={{flex:'2 1 200px'}}>
-                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>Roles</div>
+                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>{t('emp.roles')}</div>
                     <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{ const active=(newEmp.roles||[]).includes(r); const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <button key={r} onClick={()=>{ const cur=newEmp.roles||[]; const next=active?cur.filter(x=>x!==r):[...cur,r]; if(next.length>0) setNewEmp(p=>({...p,roles:next})); }} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>; })}</div>
                   </div>
                 </div>
-                {/* Contract */}
                 <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-start'}}>
                   <div style={{flex:'1 1 120px'}}>
-                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Paid by</div>
-                    <div style={{display:'flex',gap:3}}>
-                      {[['hourly','Hourly'],['fixed','Fixed']].map(([k,l])=>(
-                        <button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))}
-                          style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.paidBy')}</div>
+                    <div style={{display:'flex',gap:3}}>{[['hourly',t('emp.hourly')],['fixed',t('emp.fixed')]].map(([k,l])=>(<button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>))}</div>
                   </div>
                   <div style={{flex:'1 1 120px'}}>
-                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Period</div>
-                    <div style={{display:'flex',gap:3}}>
-                      {[['week','Week'],['month','Month']].map(([k,l])=>(
-                        <button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))}
-                          style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>
-                          {l}
-                        </button>
-                      ))}
-                    </div>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.period')}</div>
+                    <div style={{display:'flex',gap:3}}>{[['week',t('emp.week')],['month',t('emp.month')]].map(([k,l])=>(<button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>))}</div>
                   </div>
                   <div style={{flex:'1 1 100px'}}>
-                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>
-                      {(newEmp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}
-                    </div>
-                    <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                      <input type="number" min="0" step="1" value={newEmp.wage||0}
-                        onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))}
-                        style={{...styles.input,flex:1}}/>
-                      <span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span>
-                    </div>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div>
+                    <div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage||0} onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...styles.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div>
                   </div>
                   <div style={{flex:'1 1 70px'}}>
-                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Max h/{(newEmp.contractPeriod||'week')==='month'?'mo':'wk'}</div>
-                    <input type="number" min="4" max="250" value={newEmp.maxHours}
-                      onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))}
-                      style={styles.input}/>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractPeriod||'week')==='month'?t('emp.maxHMo'):t('emp.maxHWk')}</div>
+                    <input type="number" min="4" max="250" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={styles.input}/>
                   </div>
                   <div style={{flex:'1 1 70px'}}>
-                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>Priority %</div>
-                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct}
-                      onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))}
-                      style={styles.input}/>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.priority')}</div>
+                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct} onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))} style={styles.input}/>
                   </div>
                 </div>
-                <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>Add employee</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">Cancel</Btn></div>
+                <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
               </div>
             )}
-            {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
+            {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">{t('emp.addEmployeeBtn')}</Btn>}
           </div>
         )}
 
@@ -1075,32 +920,32 @@ export default function App(){
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
             {offThisWeek.length>0&&(
               <div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'12px 16px'}}>
-                <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>🌴 On approved leave this week ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
+                <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>🌴 {t('to.onLeaveWeekDates',{a:fmt(weekDates[0]),b:fmt(weekDates[6])})}</div>
                 <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>
               </div>
             )}
 
             <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
               <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-                {[['all','All'],['pending','Pending'],['approved','Approved'],['this-week','This week']].map(([k,l])=>(
+                {[['all',t('to.all')],['pending',t('to.pending')],['approved',t('to.approved')],['this-week',t('to.thisWeek')]].map(([k,l])=>(
                   <button key={k} onClick={()=>setToFilter(k)} style={{padding:'4px 10px',borderRadius:6,background:toFilter===k?T.bg:'transparent',border:toFilter===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:toFilter===k?500:400,color:toFilter===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>
                 ))}
               </div>
-              <div style={{marginLeft:'auto'}}><Btn onClick={()=>setShowAddTO(true)}>+ Add request</Btn></div>
+              <div style={{marginLeft:'auto'}}><Btn onClick={()=>setShowAddTO(true)}>{t('to.addRequest')}</Btn></div>
             </div>
 
             {showAddTO&&(
               <div style={styles.card}>
-                <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>New time-off request</div>
+                <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:14}}>{t('to.newRequest')}</div>
                 <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
-                  <div style={{flex:'2 1 140px'}}><SectionLabel>Employee</SectionLabel><select value={newTO.empId} onChange={e=>setNewTO(p=>({...p,empId:e.target.value}))} style={styles.select}><option value="">Select…</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-                  <div style={{flex:'1 1 120px'}}><SectionLabel>From</SectionLabel><input type="date" value={newTO.startDate} onChange={e=>setNewTO(p=>({...p,startDate:e.target.value}))} style={styles.input}/></div>
-                  <div style={{flex:'1 1 120px'}}><SectionLabel>To</SectionLabel><input type="date" value={newTO.endDate} onChange={e=>setNewTO(p=>({...p,endDate:e.target.value}))} style={styles.input}/></div>
-                  <div style={{flex:'1 1 100px'}}><SectionLabel>Type</SectionLabel><select value={newTO.type} onChange={e=>setNewTO(p=>({...p,type:e.target.value}))} style={styles.select}>{TIMEOFF_TYPES.map(t=><option key={t} value={t}>{t}</option>)}</select></div>
-                  <div style={{flex:'2 1 140px'}}><SectionLabel>Note</SectionLabel><input placeholder="Optional" value={newTO.note} onChange={e=>setNewTO(p=>({...p,note:e.target.value}))} style={styles.input}/></div>
-                  <div style={{flex:'1 1 100px'}}><SectionLabel>Status</SectionLabel><select value={newTO.status} onChange={e=>setNewTO(p=>({...p,status:e.target.value}))} style={styles.select}><option>Pending</option><option>Approved</option></select></div>
+                  <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.employee')}</SectionLabel><select value={newTO.empId} onChange={e=>setNewTO(p=>({...p,empId:e.target.value}))} style={styles.select}><option value="">{t('to.selectEllipsis')}</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+                  <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.fromCap')}</SectionLabel><input type="date" value={newTO.startDate} onChange={e=>setNewTO(p=>({...p,startDate:e.target.value}))} style={styles.input}/></div>
+                  <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.toCap')}</SectionLabel><input type="date" value={newTO.endDate} onChange={e=>setNewTO(p=>({...p,endDate:e.target.value}))} style={styles.input}/></div>
+                  <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.type')}</SectionLabel><select value={newTO.type} onChange={e=>setNewTO(p=>({...p,type:e.target.value}))} style={styles.select}>{TIMEOFF_TYPES.map(ty=><option key={ty} value={ty}>{ty}</option>)}</select></div>
+                  <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.note')}</SectionLabel><input placeholder={t('to.optional')} value={newTO.note} onChange={e=>setNewTO(p=>({...p,note:e.target.value}))} style={styles.input}/></div>
+                  <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.status')}</SectionLabel><select value={newTO.status} onChange={e=>setNewTO(p=>({...p,status:e.target.value}))} style={styles.select}><option value="Pending">{t('to.pending')}</option><option value="Approved">{t('to.approved')}</option></select></div>
                 </div>
-                <div style={{display:'flex',gap:8}}><Btn onClick={addTO}>Save request</Btn><Btn onClick={()=>setShowAddTO(false)} variant="ghost">Cancel</Btn></div>
+                <div style={{display:'flex',gap:8}}><Btn onClick={addTO}>{t('to.saveRequest')}</Btn><Btn onClick={()=>setShowAddTO(false)} variant="ghost">{t('common.cancel')}</Btn></div>
               </div>
             )}
 
@@ -1109,36 +954,32 @@ export default function App(){
                 <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.4,pointerEvents:'none'}}/>
                 <div style={{position:'relative'}}>
                   <div style={{fontSize:36,marginBottom:12,opacity:0.25}}>🌴</div>
-                  <div style={{fontFamily:"'Fraunces',serif",fontSize:18,color:T.text,marginBottom:6}}>
-                    {toFilter==='all'?'No time-off requests yet':`No ${toFilter} requests`}
-                  </div>
-                  <div style={{fontSize:12,color:T.text2,maxWidth:300,margin:'0 auto 20px'}}>
-                    {toFilter==='all'?'Add holiday, sick leave or personal time off for your team. Approved requests are automatically excluded from scheduling.':'Try switching the filter or add a new request.'}
-                  </div>
-                  {toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>+ Add first request</Btn>}
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:18,color:T.text,marginBottom:6}}>{toFilter==='all'?t('to.noneYet'):t('to.noneFilter',{filter:filterLabel.toLowerCase()})}</div>
+                  <div style={{fontSize:12,color:T.text2,maxWidth:300,margin:'0 auto 20px'}}>{toFilter==='all'?t('to.noneYetDesc'):t('to.tryOther')}</div>
+                  {toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>{t('to.addFirst')}</Btn>}
                 </div>
               </div>
-            ):filteredTO.map(t=>{
-              const emp=employees.find(e=>e.id===t.empId);
-              const days=Math.round((new Date(t.endDate)-new Date(t.startDate))/(24*3600*1000))+1;
-              const borderColor={Approved:T.success,Pending:T.warning,Rejected:T.danger}[t.status]||T.border;
+            ):filteredTO.map(req=>{
+              const emp=employees.find(e=>e.id===req.empId);
+              const days=Math.round((new Date(req.endDate)-new Date(req.startDate))/(24*3600*1000))+1;
+              const borderColor={Approved:T.success,Pending:T.warning,Rejected:T.danger}[req.status]||T.border;
               return (
-                <div key={t.id} style={{...styles.card,borderLeft:`3px solid ${borderColor}`,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+                <div key={req.id} style={{...styles.card,borderLeft:`3px solid ${borderColor}`,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
                   {emp&&<Avatar emp={emp} size={38}/>}
                   <div style={{flex:1,minWidth:140}}>
-                    <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{emp?.name||'Unknown'}</div>
-                    <div style={{fontSize:12,color:T.text2}}>{fmtLong(t.startDate)} – {fmtLong(t.endDate)} · <b>{days}</b> day{days!==1?'s':''}</div>
+                    <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{emp?.name||t('to.unknown')}</div>
+                    <div style={{fontSize:12,color:T.text2}}>{fmtLong(req.startDate)} – {fmtLong(req.endDate)} · <b>{days}</b> {t.n('to.dayUnit',days)}</div>
                     <div style={{display:'flex',gap:6,marginTop:4,alignItems:'center'}}>
-                      <span style={{fontSize:11,color:T.text3,background:T.bg,padding:'1px 7px',borderRadius:999,border:`1px solid ${T.border}`}}>{t.type}</span>
-                      {t.note&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>"{t.note}"</span>}
+                      <span style={{fontSize:11,color:T.text3,background:T.bg,padding:'1px 7px',borderRadius:999,border:`1px solid ${T.border}`}}>{req.type}</span>
+                      {req.note&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>"{req.note}"</span>}
                     </div>
                   </div>
-                  <StatusBadge status={t.status}/>
+                  <StatusBadge status={req.status} label={t('to.'+req.status.toLowerCase())}/>
                   <div style={{display:'flex',gap:6}}>
-                    {t.status!=='Approved'&&<Btn onClick={()=>updateTOStatus(t.id,'Approved')} variant="success" small>Approve</Btn>}
-                    {t.status!=='Rejected'&&<Btn onClick={()=>updateTOStatus(t.id,'Rejected')} variant="danger" small>Reject</Btn>}
-                    {t.status==='Rejected'&&<Btn onClick={()=>updateTOStatus(t.id,'Pending')} variant="ghost" small>Reset</Btn>}
-                    <Btn onClick={()=>removeTO(t.id)} variant="ghost" small>✕</Btn>
+                    {req.status!=='Approved'&&<Btn onClick={()=>updateTOStatus(req.id,'Approved')} variant="success" small>{t('to.approve')}</Btn>}
+                    {req.status!=='Rejected'&&<Btn onClick={()=>updateTOStatus(req.id,'Rejected')} variant="danger" small>{t('to.reject')}</Btn>}
+                    {req.status==='Rejected'&&<Btn onClick={()=>updateTOStatus(req.id,'Pending')} variant="ghost" small>{t('to.reset')}</Btn>}
+                    <Btn onClick={()=>removeTO(req.id)} variant="ghost" small>✕</Btn>
                   </div>
                 </div>
               );
@@ -1149,12 +990,11 @@ export default function App(){
         {/* ══ COVERAGE ══ */}
         {view==='coverage'&&(
           <div style={{display:'flex',flexDirection:'column',gap:12}}>
-            {/* ── Role Management ── */}
             <div style={styles.card}>
               <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
                 <div style={{flex:1}}>
-                  <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500}}>Roles</div>
-                  <div style={{fontSize:12,color:T.text2,marginTop:2}}>Define the roles at your workplace. Manager cannot be removed.</div>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500}}>{t('cov.roles')}</div>
+                  <div style={{fontSize:12,color:T.text2,marginTop:2}}>{t('cov.rolesDesc')}</div>
                 </div>
               </div>
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -1167,13 +1007,9 @@ export default function App(){
                   if(isEditing){
                     return (
                       <div key={role} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'10px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                        <input autoFocus value={editingRole.newName} onChange={e=>setEditingRole(p=>({...p,newName:e.target.value}))}
-                          style={{...styles.input,width:130,flex:'0 0 auto'}} placeholder="Role name"/>
+                        <input autoFocus value={editingRole.newName} onChange={e=>setEditingRole(p=>({...p,newName:e.target.value}))} style={{...styles.input,width:130,flex:'0 0 auto'}} placeholder={t('cov.roleName')}/>
                         <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                          {ROLE_COLOR_PALETTE.map((pal,i)=>(
-                            <button key={i} onClick={()=>setEditingRole(p=>({...p,colorIdx:i}))}
-                              style={{width:20,height:20,borderRadius:'50%',background:pal.dot,border:editingRole.colorIdx===i?`2px solid ${T.text}`:`2px solid transparent`,cursor:'pointer',padding:0,transition:'border 0.15s'}}/>
-                          ))}
+                          {ROLE_COLOR_PALETTE.map((pp,i)=>(<button key={i} onClick={()=>setEditingRole(p=>({...p,colorIdx:i}))} style={{width:20,height:20,borderRadius:'50%',background:pp.dot,border:editingRole.colorIdx===i?`2px solid ${T.text}`:`2px solid transparent`,cursor:'pointer',padding:0,transition:'border 0.15s'}}/>))}
                         </div>
                         <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
                           <Btn small onClick={()=>{
@@ -1181,16 +1017,13 @@ export default function App(){
                             if(!newName.trim()) return;
                             const newStyle=ROLE_COLOR_PALETTE[colorIdx];
                             if(newName!==name){
-                              // Rename: update roleStyles, employees, blocks
                               setRoleStyles(p=>{ const next={...p}; delete next[name]; return {...next,[newName]:newStyle}; });
                               setEmployees(p=>p.map(e=>({...e,roles:(e.roles||['Other']).map(r=>r===name?newName:r)})));
                               setBlocks(p=>p.map(b=>{ const nr={...b.roles}; const val=nr[name]||0; delete nr[name]; return {...b,roles:{...nr,[newName]:val}}; }));
-                            } else {
-                              setRoleStyles(p=>({...p,[name]:newStyle}));
-                            }
+                            } else { setRoleStyles(p=>({...p,[name]:newStyle})); }
                             setEditingRole(null);
-                          }}>Save</Btn>
-                          <Btn small variant="ghost" onClick={()=>setEditingRole(null)}>Cancel</Btn>
+                          }}>{t('common.save')}</Btn>
+                          <Btn small variant="ghost" onClick={()=>setEditingRole(null)}>{t('common.cancel')}</Btn>
                         </div>
                       </div>
                     );
@@ -1199,14 +1032,14 @@ export default function App(){
                   if(isDeleting){
                     return (
                       <div key={role} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,background:T.dangerLight,border:`1px solid ${T.danger}33`}}>
-                        <span style={{fontSize:12,color:T.danger,flex:1}}>Remove <b>{role}</b>? This will remove it from all employees and coverage blocks.</span>
+                        <span style={{fontSize:12,color:T.danger,flex:1}}>{t('cov.removeRolePre')}<b>{role}</b>{t('cov.removeRolePost')}</span>
                         <Btn small variant="danger" onClick={()=>{
                           setRoleStyles(p=>{ const next={...p}; delete next[role]; return next; });
                           setEmployees(p=>p.map(e=>({...e,roles:(e.roles||['Other']).filter(r=>r!==role)})));
                           setBlocks(p=>p.map(b=>{ const nr={...b.roles}; delete nr[role]; return {...b,roles:nr}; }));
                           setConfirmDelete(null);
-                        }}>Yes, remove</Btn>
-                        <Btn small variant="ghost" onClick={()=>setConfirmDelete(null)}>Cancel</Btn>
+                        }}>{t('cov.yesRemove')}</Btn>
+                        <Btn small variant="ghost" onClick={()=>setConfirmDelete(null)}>{t('common.cancel')}</Btn>
                       </div>
                     );
                   }
@@ -1215,100 +1048,60 @@ export default function App(){
                     <div key={role} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
                       <div style={{width:10,height:10,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
                       <span style={{fontSize:13,fontWeight:500,color:T.text,flex:1}}>{role}</span>
-                      {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>protected</span>}
+                      {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.protected')}</span>}
                       {!isProtected&&(
                         <div style={{display:'flex',gap:4}}>
-                          <Btn small variant="ghost" onClick={()=>{
-                            const colorIdx=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);
-                            setEditingRole({name:role,newName:role,colorIdx:colorIdx>=0?colorIdx:0});
-                          }}>Edit</Btn>
-                          <Btn small variant="danger" onClick={()=>setConfirmDelete(role)}>Remove</Btn>
+                          <Btn small variant="ghost" onClick={()=>{ const colorIdx=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot); setEditingRole({name:role,newName:role,colorIdx:colorIdx>=0?colorIdx:0}); }}>{t('common.edit')}</Btn>
+                          <Btn small variant="danger" onClick={()=>setConfirmDelete(role)}>{t('common.remove')}</Btn>
                         </div>
                       )}
-                      {isProtected&&(
-                        <Btn small variant="ghost" onClick={()=>{
-                          const colorIdx=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);
-                          setEditingRole({name:role,newName:role,colorIdx:colorIdx>=0?colorIdx:0});
-                        }}>Edit colour</Btn>
-                      )}
+                      {isProtected&&(<Btn small variant="ghost" onClick={()=>{ const colorIdx=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot); setEditingRole({name:role,newName:role,colorIdx:colorIdx>=0?colorIdx:0}); }}>{t('cov.editColour')}</Btn>)}
                     </div>
                   );
                 })}
-                {/* Add new role */}
-                <AddRoleInline onAdd={(name)=>{
-                  if(!name.trim()||roleStyles[name]) return;
-                  const idx=Object.keys(roleStyles).length%ROLE_COLOR_PALETTE.length;
-                  setRoleStyles(p=>({...p,[name]:ROLE_COLOR_PALETTE[idx]}));
-                }}/>
+                <AddRoleInline t={t} onAdd={(name)=>{ if(!name.trim()||roleStyles[name]) return; const idx=Object.keys(roleStyles).length%ROLE_COLOR_PALETTE.length; setRoleStyles(p=>({...p,[name]:ROLE_COLOR_PALETTE[idx]})); }}/>
               </div>
             </div>
 
-            <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>
-              Define coverage blocks — time windows with required staffing per role. A manager is automatically added to every block that has any staff.
-            </div>
+            <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>{t('cov.blocksDesc')}</div>
             {blocks.map(block=>{
               const overrides = block.overrides||{};
               const daysWithOverride = DAYS.filter(d=>overrides[d]);
-
               const updateDefaultRole=(role,val)=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,roles:{...b.roles,[role]:Math.max(0,Number(val))}}:b));
-              const updateOverrideRole=(day,role,val)=>setBlocks(p=>p.map(b=>{
-                if(b.id!==block.id) return b;
-                const ov={...b.overrides||{}};
-                ov[day]={...(ov[day]||{...b.roles}),[role]:Math.max(0,Number(val))};
-                return {...b,overrides:ov};
-              }));
-              const addDayOverride=(day)=>setBlocks(p=>p.map(b=>{
-                if(b.id!==block.id) return b;
-                const ov={...b.overrides||{}};
-                ov[day]={...b.roles}; // copy defaults as starting point
-                return {...b,overrides:ov};
-              }));
-              const removeDayOverride=(day)=>setBlocks(p=>p.map(b=>{
-                if(b.id!==block.id) return b;
-                const ov={...b.overrides||{}};
-                delete ov[day];
-                return {...b,overrides:Object.keys(ov).length?ov:undefined};
-              }));
-
+              const updateOverrideRole=(day,role,val)=>setBlocks(p=>p.map(b=>{ if(b.id!==block.id) return b; const ov={...b.overrides||{}}; ov[day]={...(ov[day]||{...b.roles}),[role]:Math.max(0,Number(val))}; return {...b,overrides:ov}; }));
+              const addDayOverride=(day)=>setBlocks(p=>p.map(b=>{ if(b.id!==block.id) return b; const ov={...b.overrides||{}}; ov[day]={...b.roles}; return {...b,overrides:ov}; }));
+              const removeDayOverride=(day)=>setBlocks(p=>p.map(b=>{ if(b.id!==block.id) return b; const ov={...b.overrides||{}}; delete ov[day]; return {...b,overrides:Object.keys(ov).length?ov:undefined}; }));
               return (
               <div key={block.id} style={styles.card}>
-                {/* Block header */}
                 <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'flex-end'}}>
-                  <div style={{flex:'2 1 100px'}}><SectionLabel>Block name</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={styles.input}/></div>
-                  <div style={{flex:'1 1 80px'}}><SectionLabel>Start</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={styles.input}/></div>
-                  <div style={{flex:'1 1 80px'}}><SectionLabel>End</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={styles.input}/></div>
-                  <div style={{flex:'0 0 auto'}}><SectionLabel>Duration</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
-                  <Btn onClick={()=>setBlocks(p=>p.filter(b=>b.id!==block.id))} variant="danger" small>Remove</Btn>
+                  <div style={{flex:'2 1 100px'}}><SectionLabel>{t('cov.blockName')}</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={styles.input}/></div>
+                  <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.start')}</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={styles.input}/></div>
+                  <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.end')}</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={styles.input}/></div>
+                  <div style={{flex:'0 0 auto'}}><SectionLabel>{t('cov.duration')}</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
+                  <Btn onClick={()=>setBlocks(p=>p.filter(b=>b.id!==block.id))} variant="danger" small>{t('common.remove')}</Btn>
                 </div>
-
-                {/* Default staffing */}
-                <SectionLabel>Default staffing (all days)</SectionLabel>
+                <SectionLabel>{t('cov.defaultStaffing')}</SectionLabel>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,marginBottom:16}}>
                   {allRoles.map(role=>{
                     const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};
                     return (
                       <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:rs.bg,border:`1px solid ${rs.border}`,borderRadius:8,padding:'6px 10px'}}>
                         <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
-                        <input type="number" min="0" max="10" value={block.roles[role]||0}
-                          onChange={e=>updateDefaultRole(role,e.target.value)}
-                          style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
+                        <input type="number" min="0" max="10" value={block.roles[role]||0} onChange={e=>updateDefaultRole(role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
                       </div>
                     );
                   })}
                 </div>
-
-                {/* Day-specific overrides */}
-                <SectionLabel>Day overrides</SectionLabel>
+                <SectionLabel>{t('cov.dayOverrides')}</SectionLabel>
                 <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:8}}>
-                  {/* Existing overrides */}
                   {daysWithOverride.map(day=>{
                     const dayRoles=overrides[day];
                     return (
                       <div key={day} style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 12px'}}>
                         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
                           <span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{day}</span>
-                          <span style={{fontSize:11,color:T.text3,flex:1}}>Custom staffing for {day}</span>
-                          <Btn small variant="ghost" onClick={()=>removeDayOverride(day)}>✕ Remove</Btn>
+                          <span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day})}</span>
+                          <Btn small variant="ghost" onClick={()=>removeDayOverride(day)}>{t('cov.removeX')}</Btn>
                         </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                           {allRoles.map(role=>{
@@ -1317,9 +1110,7 @@ export default function App(){
                             return (
                               <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:rs.bg,border:`1.5px solid ${isChanged?rs.dot:rs.border}`,borderRadius:8,padding:'6px 10px'}}>
                                 <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
-                                <input type="number" min="0" max="10" value={dayRoles[role]||0}
-                                  onChange={e=>updateOverrideRole(day,role,e.target.value)}
-                                  style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
+                                <input type="number" min="0" max="10" value={dayRoles[role]||0} onChange={e=>updateOverrideRole(day,role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
                                 {isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}
                               </div>
                             );
@@ -1328,97 +1119,69 @@ export default function App(){
                       </div>
                     );
                   })}
-
-                  {/* Add override for a day */}
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
-                    <span style={{fontSize:11,color:T.text3}}>Add override for:</span>
+                    <span style={{fontSize:11,color:T.text3}}>{t('cov.addOverrideFor')}</span>
                     {DAYS.filter(d=>!overrides[d]).map(day=>(
-                      <button key={day} onClick={()=>addDayOverride(day)}
-                        style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit',transition:'all 0.15s'}}
-                        onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}}
-                        onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>
-                        + {day}
-                      </button>
+                      <button key={day} onClick={()=>addDayOverride(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit',transition:'all 0.15s'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>+ {day}</button>
                     ))}
-                    {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>All days have custom staffing</span>}
+                    {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.allDaysCustom')}</span>}
                   </div>
                 </div>
               </div>
               );
             })}
-            <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(Object.keys(roleStyles).map(r=>[r,0]))}])} variant="secondary">+ Add coverage block</Btn></div>
+            <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(Object.keys(roleStyles).map(r=>[r,0]))}])} variant="secondary">{t('cov.addBlock')}</Btn></div>
           </div>
         )}
 
         {/* ══ COSTS ══ */}
         {view==='costs'&&(
           <div style={{display:'flex',flexDirection:'column',gap:16}}>
-
-            {/* Week / Month toggle + rate settings */}
             <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
               <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-                {[['week','This week'],['month','This month']].map(([k,l])=>(
-                  <button key={k} onClick={()=>setCostsMode(k)}
-                    style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>
-                    {l}
-                  </button>
+                {[['week',t('cost.thisWeek')],['month',t('cost.thisMonth')]].map(([k,l])=>(
+                  <button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>
                 ))}
               </div>
               {costsMode==='month'&&(
                 <span style={{fontSize:12,color:T.text2}}>
-                  {new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}
-                  {' — '}{getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length} of {getMonthOffsets(displayMonth).length} weeks generated
+                  {new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})}
+                  {' — '}{t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}
                 </span>
               )}
-              {costsMode==='week'&&schedule&&(
-                <span style={{fontSize:12,color:T.text2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>
-              )}
-              {/* Hourly rate input */}
+              {costsMode==='week'&&schedule&&(<span style={{fontSize:12,color:T.text2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>)}
               <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
-                <span style={{fontSize:11,color:T.text3,whiteSpace:'nowrap'}}>Base rate</span>
-                <input
-                  type="number" min="1" step="1"
-                  value={hourlyRate.amount}
-                  onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))}
-                  style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}
-                />
-                <input
-                  value={hourlyRate.currency}
-                  onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))}
-                  style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}
-                  placeholder="kr"
-                />
+                <span style={{fontSize:11,color:T.text3,whiteSpace:'nowrap'}}>{t('cost.baseRate')}</span>
+                <input type="number" min="1" step="1" value={hourlyRate.amount} onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
+                <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}} placeholder="kr"/>
                 <span style={{fontSize:11,color:T.text3}}>/h</span>
               </div>
             </div>
 
-            {/* No data state */}
             {(costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)]))?(
               <div style={{...styles.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
                 <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
                 <div style={{position:'relative'}}>
                   <div style={{fontSize:36,marginBottom:12,opacity:0.25}}>💷</div>
-                  <div style={{fontFamily:"'Fraunces',serif",fontSize:20,marginBottom:8}}>No schedule to analyse</div>
-                  <div style={{fontSize:13,color:T.text2,marginBottom:20}}>Generate a schedule first to see salary cost breakdown.</div>
-                  <Btn onClick={()=>setView('schedule')}>Go to Schedule</Btn>
+                  <div style={{fontFamily:"'Fraunces',serif",fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div>
+                  <div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div>
+                  <Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn>
                 </div>
               </div>
             ):(()=>{
               const data = costsMode==='month' ? monthCostData : costData;
               const totalCost = costsMode==='month' ? totalMonthCostUnits : totalCostUnits;
               const maxCost = costsMode==='month' ? maxMonthCostUnits : maxCostUnits;
-
               return (
                 <>
-                  {/* Summary cards */}
                   {(()=>{
                     const workingCount=data.filter(d=>d.hours>0).length;
                     const totalHours=data.reduce((s,d)=>s+d.hours,0);
                     const cards=[
-                      {label:'Estimated cost',value:toMoney(totalCost),sub:`${hourlyRate.amount} ${hourlyRate.currency}/h × salary%`,color:T.accent,big:true},
-                      {label:'Total hours',value:totalHours+'h',sub:costsMode==='month'?'this month':'this week',color:T.text},
-                      {label:'Staff scheduled',value:`${workingCount} of ${employees.length}`,sub:costsMode==='month'?`employees · ${getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length} weeks`:'employees this week',color:T.success},
-                      {label:'Avg cost / employee',value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:'among scheduled staff',color:T.text2},
+                      {label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent,big:true},
+                      {label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},
+                      {label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length}).replace(/^/, '')}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},
+                      {label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2},
                     ];
                     return (
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
@@ -1433,10 +1196,9 @@ export default function App(){
                     );
                   })()}
 
-                  {/* Employee breakdown */}
                   <div style={styles.card}>
-                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:4}}>Employee breakdown</div>
-                    <div style={{fontSize:12,color:T.text2,marginBottom:16}}>Cost index = hours worked × salary %. Higher means relatively more expensive.</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.empBreakdown')}</div>
+                    <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.empBreakdownDesc')}</div>
                     <div style={{display:'flex',flexDirection:'column',gap:6}}>
                       {[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,costUnits})=>{
                         const p=pal(emp);
@@ -1444,37 +1206,30 @@ export default function App(){
                         const isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));
                         return (
                           <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 52px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
-                            {/* Name + role */}
                             <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
                               <Avatar emp={emp} size={26}/>
                               <div style={{minWidth:0}}>
                                 <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div>
-                                <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>
-                                  {(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
-                                </div>
+                                <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                               </div>
                             </div>
-                            {/* Salary % */}
                             <div style={{textAlign:'center'}}>
                               <div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.salaryPct}%</div>
-                              <div style={{fontSize:10,color:T.text3}}>salary</div>
+                              <div style={{fontSize:10,color:T.text3}}>{t('cost.salary')}</div>
                             </div>
-                            {/* Hours */}
                             <div style={{textAlign:'center'}}>
                               <div style={{fontSize:12,fontWeight:500,color:hours>emp.maxHours?T.danger:T.text}}>{hours}h</div>
-                              <div style={{fontSize:10,color:T.text3}}>of {emp.maxHours}</div>
+                              <div style={{fontSize:10,color:T.text3}}>{t('cost.ofN',{n:emp.maxHours})}</div>
                             </div>
-                            {/* Bar */}
                             <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}>
                               <div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999,transition:'width 0.4s'}}/>
                             </div>
-                            {/* Estimated cost */}
                             <div style={{textAlign:'right'}}>
                               {isOff&&costsMode!=='month'
-                                ? <span style={{fontSize:10,color:T.warning}}>🌴 off</span>
+                                ? <span style={{fontSize:10,color:T.warning}}>🌴 {t('cost.off')}</span>
                                 : <div>
                                     <div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>
-                                    <div style={{fontSize:10,color:T.text3}}>{hours>0?`index ${costUnits.toFixed(1)}`:''}</div>
+                                    <div style={{fontSize:10,color:T.text3}}>{hours>0?t('cost.index',{n:costUnits.toFixed(1)}):''}</div>
                                   </div>
                               }
                             </div>
@@ -1484,9 +1239,8 @@ export default function App(){
                     </div>
                   </div>
 
-                  {/* Role cost breakdown */}
                   <div style={styles.card}>
-                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:16}}>Cost by role</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:15,fontWeight:500,marginBottom:16}}>{t('cost.costByRole')}</div>
                     <div style={{display:'flex',flexDirection:'column',gap:8}}>
                       {(()=>{ const rc=costsMode==='month'?monthRoleCosts:weekRoleCosts; const maxRC=Math.max(...Object.values(rc),0.01); return Object.entries(rc)
                         .filter(([,v])=>v>0)
@@ -1503,22 +1257,17 @@ export default function App(){
                               </div>
                               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}>
                                 <span style={{fontSize:13,fontWeight:600,color:T.text}}>{cost.toFixed(1)}</span>
-                                <span style={{fontSize:10,color:T.text3}}>{roleEmps.length} staff</span>
+                                <span style={{fontSize:10,color:T.text3}}>{t('common.staffN',{n:roleEmps.length})}</span>
                               </div>
                             </div>
                           );
                         });
                       })()}
-                      {Object.values(costsMode==='month'?monthRoleCosts:weekRoleCosts).every(v=>v===0)&&(
-                        <div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>No hours assigned yet</div>
-                      )}
+                      {Object.values(costsMode==='month'?monthRoleCosts:weekRoleCosts).every(v=>v===0)&&(<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>)}
                     </div>
                   </div>
 
-                  {/* Info box */}
-                  <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>
-                    💡 <b>Estimated cost</b> = hours worked × salary% × base hourly rate. Set your actual base rate (top right) to see real salary numbers. The <b>index</b> shown under each amount is the raw weighted-hours figure — useful for comparing relative cost between employees regardless of rate.
-                  </div>
+                  <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>💡 {t('cost.infoBox')}</div>
                 </>
               );
             })()}
