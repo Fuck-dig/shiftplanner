@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
-  bg:          '#F7F4EF',
-  surface:     '#FFFFFF',
-  surfaceWarm: '#FDFAF6',
-  border:      '#E8E0D4',
-  text:        '#1C1815',
+  bg:          '#F5F0E6',
+  surface:     '#FFFEFB',
+  surfaceWarm: '#FBF6EE',
+  border:      '#E6DDCD',
+  text:        '#211B15',
   text2:       '#5C5248',
   text3:       '#9C9088',
   accent:      '#BF5A2C',
@@ -221,8 +221,8 @@ const save=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{}};
 const pal=(e)=>EMP_PALETTE[e?.palIdx%EMP_PALETTE.length]||EMP_PALETTE[0];
 
 const styles = {
-  card: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 4px rgba(28,24,21,0.06)' },
-  cardFlush: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, overflow:'hidden', boxShadow:'0 1px 4px rgba(28,24,21,0.06)' },
+  card: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },
+  cardFlush: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, overflow:'hidden', boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },
   input: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' },
   select: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box', cursor:'pointer' },
 };
@@ -291,7 +291,7 @@ export default function App(){
   useEffect(()=>{
     const link=document.createElement('link');
     link.rel='stylesheet';
-    link.href='https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=DM+Sans:wght@400;500&display=swap';
+    link.href='https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600;700&display=swap';
     document.head.appendChild(link);
     return ()=>{ try{ document.head.removeChild(link); }catch{} };
   },[]);
@@ -299,7 +299,7 @@ export default function App(){
   // Global styles
   useEffect(()=>{
     const s=document.createElement('style');
-    s.textContent=`* { box-sizing:border-box; } input,select { font-family:'DM Sans',sans-serif !important; } input:focus,select:focus { outline:2px solid ${T.accent} !important; outline-offset:1px; } ::-webkit-scrollbar{width:6px;height:6px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${T.border};border-radius:3px} `;
+    s.textContent=`* { box-sizing:border-box; } body { margin:0; background:${T.bg}; } input,select { font-family:'Hanken Grotesk',sans-serif !important; } input:focus,select:focus { outline:2px solid ${T.accent} !important; outline-offset:1px; } ::-webkit-scrollbar{width:7px;height:7px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px} ::-webkit-scrollbar-thumb:hover{background:#D8CCB8} `;
     document.head.appendChild(s);
     return ()=>{ try{ document.head.removeChild(s); }catch{} };
   },[]);
@@ -466,14 +466,14 @@ export default function App(){
   const navItems=[{k:'schedule',l:'Schedule'},{k:'employees',l:'Employees'},{k:'timeoff',l:pendingCount?`Time Off · ${pendingCount}`:'Time Off'},{k:'coverage',l:'Coverage'},{k:'costs',l:'Costs'}];
 
   return (
-    <div style={{minHeight:'100vh',background:T.bg,fontFamily:"'DM Sans',sans-serif",color:T.text,fontSize:13}}>
+    <div style={{minHeight:'100vh',background:T.bg,backgroundImage:`radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)`,fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
 
       {/* ── Top navigation ── */}
-      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',gap:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:`0 1px 3px rgba(28,24,21,0.04)`}}>
+      <div style={{background:'rgba(255,254,251,0.82)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',gap:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:`0 2px 14px -8px rgba(33,27,21,0.18)`}}>
         {/* Brand */}
-        <div style={{display:'flex',alignItems:'baseline',gap:8,marginRight:36}}>
-          <span style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:600,color:T.text,letterSpacing:'-0.01em'}}>Rorota</span>
-          <span style={{fontSize:11,color:T.text3,fontWeight:400}}>Restaurant</span>
+        <div style={{display:'flex',alignItems:'baseline',gap:9,marginRight:36}}>
+          <span style={{fontFamily:"'Fraunces',serif",fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
+          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>Restaurant</span>
         </div>
         {/* Nav */}
         <div style={{display:'flex',alignItems:'center',gap:0,flex:1}}>
@@ -748,12 +748,22 @@ export default function App(){
                 <div style={{...styles.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
                   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
                   <div style={{position:'relative'}}>
-                    <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📅</div>
-                    <div style={{fontFamily:"'Fraunces',serif",fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>Nothing scheduled yet</div>
-                    <div style={{fontSize:13,color:T.text2,maxWidth:380,margin:'0 auto 6px'}}>
+                    <div style={{fontSize:42,marginBottom:14,opacity:0.25}}>📅</div>
+                    <div style={{fontFamily:"'Fraunces',serif",fontSize:27,fontWeight:600,color:T.text,marginBottom:8,letterSpacing:'-0.01em'}}>Nothing scheduled yet</div>
+                    <div style={{fontSize:13.5,color:T.text2,maxWidth:400,margin:'0 auto 4px'}}>
                       {employees.length} employees across {blocks.length} coverage block{blocks.length!==1?'s':''}.{offThisWeek.length>0?` ${offThisWeek.length} on leave this week.`:''}
                     </div>
-                    <div style={{fontSize:12,color:T.text3,marginBottom:28,marginTop:4}}>Availability, hours caps, roles and approved leave are all respected.</div>
+                    <div style={{fontSize:12,color:T.text3,marginBottom:24,marginTop:4}}>Availability, hours caps, roles and approved leave are all respected.</div>
+                    {/* 3-step guide */}
+                    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap',marginBottom:26}}>
+                      {[['1','Set up team & roles'],['2','Define coverage blocks'],['3','Generate the rota']].map(([n,l],i)=>(
+                        <div key={n} style={{display:'flex',alignItems:'center',gap:7,fontSize:12,color:T.text2}}>
+                          <span style={{width:20,height:20,borderRadius:'50%',background:T.accentLight,color:T.accentText,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,flexShrink:0}}>{n}</span>
+                          {l}
+                          {i<2&&<span style={{color:T.text3,marginLeft:4}}>→</span>}
+                        </div>
+                      ))}
+                    </div>
                     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}>
                       <Btn onClick={()=>generate()}>✦ Generate this week</Btn>
                       <Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn>
