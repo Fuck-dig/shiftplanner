@@ -121,7 +121,7 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
   const hw={},wd={}; employees.forEach(e=>{ hw[e.id]=0; wd[e.id]=new Set(); });
   const byRole=role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.salaryPct-b.salaryPct);
   const isManager=e=>(e.roles||[]).includes('Manager');
-  const result={},warnings=[];
+  const result={},noMgr=[];
 
   DAYS.forEach((day,di)=>{
     const date=weekDates[di]; result[day]={};
@@ -130,7 +130,7 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
       const bh=blockHours(b),rr=getBlockRoles(b,day),assigned=[],assignedInBlock=new Set();
       allRoles.forEach(role=>{ const need=rr[role]||0; if(!need) return;
         const pool=byRole(role).filter(e=>coversBlock(e.availability[day],b)&&!isOnTimeOff(e.id,date,timeOffList)&&!wd[e.id].has(di)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id));
-        for(let i=0;i<need;i++){ if(pool[i]){ assigned.push({empId:pool[i].id,name:pool[i].name,role}); assignedInBlock.add(pool[i].id); } else warnings.push(`${day} ${b.name}: missing ${role}`); }
+        for(let i=0;i<need;i++){ if(pool[i]){ assigned.push({empId:pool[i].id,name:pool[i].name,role}); assignedInBlock.add(pool[i].id); } }
       });
       const hasMgr=assigned.some(a=>isManager(employees.find(e=>e.id===a.empId)));
       if(!hasMgr&&assigned.length>0){
@@ -165,18 +165,12 @@ function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
       });
       if(fixed) return;
 
-      warnings.push(`⚠️ ${day} ${b.name}: No manager available!`);
+      noMgr.push({day,block:b.name});
     });
   });
 
   const total=Object.values(result).flatMap(d=>Object.values(d)).flat().length;
-  const nm=warnings.filter(w=>w.startsWith('⚠️'));
-  return {
-    schedule:result, warnings,
-    notes: nm.length>0
-      ? `${total} slots filled — ${nm.length} block(s) could not get a manager. Review staffing.`
-      : `${total} slots filled across all blocks with full manager coverage.`
-  };
+  return { schedule:result, total, noMgr };
 }
 function dayCoverage(schedule,blocks,day,allRoles){ if(!schedule||!schedule[day]) return 'empty'; let tot=0,fill=0; blocks.forEach(b=>{ const r=getBlockRoles(b,day); allRoles.forEach(role=>{ tot+=r[role]||0; fill+=Math.min(r[role]||0,(schedule[day][b.id]||[]).filter(a=>a.role===role).length); }); }); if(tot===0) return 'empty'; const p=fill/tot; return p>=1?'full':p>=0.6?'partial':'low'; }
 
@@ -273,6 +267,7 @@ export default function App(){
   const [lang, setLangRaw] = useState(()=>load('sa2_lang', detectLang()));
   const setLang = v => { setLangRaw(v); save('sa2_lang', v); };
   const t = makeT(lang);
+  const dl = d => t('day.'+d);
   LOCALE = LOCALES[lang] || 'en-GB';
 
   // Inject fonts
@@ -296,8 +291,8 @@ export default function App(){
   const wKey        = weekKey(weekOffset);
   const weekData    = schedules[wKey]||null;
   const schedule    = weekData?.schedule||null;
-  const notes       = weekData?.notes||'';
-  const warnings    = weekData?.warnings||[];
+  const total       = weekData?.total||0;
+  const noMgr       = weekData?.noMgr||[];
   const confirmed   = weekData?.confirmed||false;
   const monthOff    = getMonthOffsets(calMode==='month' ? displayMonth : weekOffset);
   const pendingCount= timeOff.filter(x=>x.status==='Pending').length;
@@ -319,7 +314,7 @@ export default function App(){
 
   const generate=(forOff=weekOffset)=>{
     setGenerating(true); setSelected(null);
-    setTimeout(()=>{ const wd=getWeekDates(forOff); const {schedule:s,notes:n,warnings:w}=buildSchedule(employees,blocks,wd,timeOff,allRoles); setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,notes:n,warnings:w}})); setGenerating(false); },350);
+    setTimeout(()=>{ const wd=getWeekDates(forOff); const {schedule:s,total:tot,noMgr:nm}=buildSchedule(employees,blocks,wd,timeOff,allRoles); setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,total:tot,noMgr:nm}})); setGenerating(false); },350);
   };
   const generateMonth=()=>{
     setGenerating(true); setSelected(null);
@@ -328,8 +323,8 @@ export default function App(){
       const updates={};
       offsets.forEach(off=>{
         const wd=getWeekDates(off);
-        const {schedule:s,notes:n,warnings:w}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
-        updates[weekKey(off)]={schedule:s,notes:n,warnings:w};
+        const {schedule:s,total:tot,noMgr:nm}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
+        updates[weekKey(off)]={schedule:s,total:tot,noMgr:nm};
       });
       setSchedules(p=>({...p,...updates}));
       setGenerating(false);
@@ -518,27 +513,27 @@ export default function App(){
               </div>
             )}
 
-            {notes&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8}}><span>💡</span><span>{notes}</span></div>}
-            {(()=>{ const warns=warnings.filter(w=>w.startsWith('⚠️')); if(warns.length===0) return null; return (
+            {schedule&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8}}><span>💡</span><span>{noMgr.length>0?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total})}</span></div>}
+            {noMgr.length>0&&(
               <div style={{marginBottom:16}}>
                 <button onClick={()=>setShowWarnings(s=>!s)} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'5px 12px',borderRadius:999,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit',background:showWarnings?T.dangerLight:T.surface,color:showWarnings?T.danger:T.text2,border:`1px solid ${showWarnings?T.danger+'44':T.border}`,transition:'all 0.15s'}}>
-                  ⚠️ {t.n('sched.warnings',warns.length)}
+                  ⚠️ {t.n('sched.warnings',noMgr.length)}
                   <span style={{fontSize:9,opacity:0.7}}>{showWarnings?'▲':'▼'}</span>
                 </button>
                 {showWarnings&&(
                   <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:10}}>
-                    {warns.map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px'}}>{w}</div>)}
+                    {noMgr.map((g,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px'}}>⚠️ {t('sched.noMgr',{day:dl(g.day),block:g.block})}</div>)}
                   </div>
                 )}
               </div>
-            ); })()}
+            )}
 
             {/* ── MONTH VIEW ── */}
             {calMode==='month'&&(
               <div style={{...styles.card,padding:0,overflow:'hidden'}}>
                 <div style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm}}>
                   <div/>
-                  {DAYS.map(d=><div key={d} style={{padding:'10px 4px',textAlign:'center',fontSize:11,fontWeight:600,color:T.text2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{d}</div>)}
+                  {DAYS.map(d=><div key={d} style={{padding:'10px 4px',textAlign:'center',fontSize:11,fontWeight:600,color:T.text2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{dl(d)}</div>)}
                 </div>
                 {monthOff.map(off=>{
                   const wd=getWeekDates(off),k=weekKey(off),ws=schedules[k]?.schedule||null,wConf=schedules[k]?.confirmed||false,isCur=off===weekOffset;
@@ -634,7 +629,7 @@ export default function App(){
                               const isWeekend=di>=5;
                               return (
                                 <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:isWeekend?T.surfaceWarm:'transparent',minHeight:72,display:'flex',flexDirection:'column',gap:3}}>
-                                  <div style={{fontSize:10,fontWeight:600,color:isWeekend?T.text2:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{day}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
+                                  <div style={{fontSize:10,fontWeight:600,color:isWeekend?T.text2:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{dl(day)}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
                                   {onTO?(
                                     <div style={{flex:1,display:'flex',alignItems:'center'}}><span style={{fontSize:11,color:T.warning,fontWeight:500}}>🌴 {t('staff.leave')}</span></div>
                                   ):assignedBlock?(
@@ -708,7 +703,7 @@ export default function App(){
                           <thead>
                             <tr>
                               <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-                              {DAYS.map((day,i)=><th key={day} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:T.text,background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{day}<div style={{fontSize:10,fontWeight:400,color:T.text3}}>{fmt(weekDates[i])}</div></th>)}
+                              {DAYS.map((day,i)=><th key={day} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:T.text,background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{dl(day)}<div style={{fontSize:10,fontWeight:400,color:T.text3}}>{fmt(weekDates[i])}</div></th>)}
                             </tr>
                           </thead>
                           <tbody>
@@ -1113,8 +1108,8 @@ export default function App(){
                     return (
                       <div key={day} style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 12px'}}>
                         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                          <span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{day}</span>
-                          <span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day})}</span>
+                          <span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{dl(day)}</span>
+                          <span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day:dl(day)})}</span>
                           <Btn small variant="ghost" onClick={()=>removeDayOverride(day)}>{t('cov.removeX')}</Btn>
                         </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -1136,7 +1131,7 @@ export default function App(){
                   <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                     <span style={{fontSize:11,color:T.text3}}>{t('cov.addOverrideFor')}</span>
                     {DAYS.filter(d=>!overrides[d]).map(day=>(
-                      <button key={day} onClick={()=>addDayOverride(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit',transition:'all 0.15s'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>+ {day}</button>
+                      <button key={day} onClick={()=>addDayOverride(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit',transition:'all 0.15s'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>+ {dl(day)}</button>
                     ))}
                     {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.allDaysCustom')}</span>}
                   </div>

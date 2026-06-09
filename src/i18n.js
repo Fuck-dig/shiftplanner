@@ -61,6 +61,10 @@ const STRINGS = {
     'sched.confirmedBannerSub':'This rota has been published to staff.',
     'sched.warnings.one':'{n} warning',
     'sched.warnings.other':'{n} warnings',
+    'sched.notesGaps':'{total} slots filled — {n} block(s) could not get a manager. Review staffing.',
+    'sched.notesOk':'{total} slots filled across all blocks with full manager coverage.',
+    'sched.noMgr':'{day} {block}: No manager available!',
+    'day.Mon':'Mon','day.Tue':'Tue','day.Wed':'Wed','day.Thu':'Thu','day.Fri':'Fri','day.Sat':'Sat','day.Sun':'Sun',
 
     'month.coverage':'Coverage',
     'month.full':'Full',
@@ -251,6 +255,10 @@ const STRINGS = {
     'sched.confirmedBannerSub':'Denne vagtplan er offentliggjort til personalet.',
     'sched.warnings.one':'{n} advarsel',
     'sched.warnings.other':'{n} advarsler',
+    'sched.notesGaps':'{total} vagter besat — {n} blok(ke) kunne ikke få en leder. Tjek bemandingen.',
+    'sched.notesOk':'{total} vagter besat i alle blokke med fuld lederdækning.',
+    'sched.noMgr':'{day} {block}: Ingen leder tilgængelig!',
+    'day.Mon':'Man','day.Tue':'Tir','day.Wed':'Ons','day.Thu':'Tor','day.Fri':'Fre','day.Sat':'Lør','day.Sun':'Søn',
 
     'month.coverage':'Dækning',
     'month.full':'Fuld',
@@ -441,6 +449,10 @@ const STRINGS = {
     'sched.confirmedBannerSub':'Este horario se ha publicado al personal.',
     'sched.warnings.one':'{n} aviso',
     'sched.warnings.other':'{n} avisos',
+    'sched.notesGaps':'{total} turnos cubiertos — {n} bloque(s) sin encargado. Revisa el personal.',
+    'sched.notesOk':'{total} turnos cubiertos en todos los bloques con encargado completo.',
+    'sched.noMgr':'{day} {block}: ¡Sin encargado disponible!',
+    'day.Mon':'Lun','day.Tue':'Mar','day.Wed':'Mié','day.Thu':'Jue','day.Fri':'Vie','day.Sat':'Sáb','day.Sun':'Dom',
 
     'month.coverage':'Cobertura',
     'month.full':'Completa',
