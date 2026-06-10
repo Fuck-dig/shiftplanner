@@ -298,6 +298,7 @@ export default function App(){
   const [weekOffset,  setWeekOffset]= useState(0);
   const [roleStyles,  setRoleStylesRaw] = useState(()=>load('sa2_roles', DEFAULT_ROLE_STYLES));
   const allRoles = Object.keys(roleStyles);
+  const orderedRoles = e => { const rs=e.roles||['Other']; return [...allRoles.filter(r=>rs.includes(r)), ...rs.filter(r=>!allRoles.includes(r))]; };
   const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date(); return {y:n.getFullYear(),m:n.getMonth()}; });
   const [editingRole,    setEditingRole]    = useState(null);
   const [confirmDelete,  setConfirmDelete]  = useState(null);
@@ -435,7 +436,7 @@ export default function App(){
   const applyTemplate=(id,tpl)=>{ const tp=templates[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:String(Date.now()),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp=id=>{ setEmployees(p=>p.filter(e=>e.id!==id)); if(expandedEmp===id) setExpandedEmp(null); };
-  const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,maxHours:40}); setShowAddEmp(false); };
+  const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40}); setShowAddEmp(false); };
   const addTO=()=>{ if(!newTO.empId) return; setTimeOff(p=>[...p,{...newTO,id:String(Date.now())}]); setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'}); setShowAddTO(false); };
   const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(x=>x.id===id?{...x,status}:x));
   const removeTO=id=>setTimeOff(p=>p.filter(x=>x.id!==id));
@@ -687,7 +688,7 @@ export default function App(){
                             <Avatar emp={emp} size={36}/>
                             <div style={{flex:1}}>
                               <div style={{fontSize:14,fontWeight:600,color:T.text}}>{emp.name}</div>
-                              <>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</>
+                              <>{orderedRoles(emp).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</>
                             </div>
                             <div style={{textAlign:'right'}}>
                               <div style={{fontSize:13,fontWeight:600,color:h>emp.maxHours?T.danger:h===0?T.text3:T.text}}>{h}h</div>
@@ -909,7 +910,7 @@ export default function App(){
                         return (
                           <div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
                             <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name.split(' ')[0]}</span></div>
-                            <div style={{fontSize:11,color:T.text3,marginBottom:5,display:'flex',gap:3,flexWrap:'wrap'}}>{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
+                            <div style={{fontSize:11,color:T.text3,marginBottom:5,display:'flex',gap:3,flexWrap:'wrap'}}>{orderedRoles(emp).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                             <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {emp.maxHours}h</span></div>
                             <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success,transition:'width 0.4s'}}/></div>
                           </div>
@@ -945,7 +946,7 @@ export default function App(){
                 <div style={{display:'flex',alignItems:'center',gap:12}}>
                   <Avatar emp={emp} size={40}/>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||['Other']).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
+                    <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{orderedRoles(emp).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                     <div style={{fontSize:12,color:T.text2}}>{t('emp.salaryMax',{pct:emp.salaryPct,n:emp.maxHours})}</div>
                   </div>
                   <div style={{display:'flex',gap:6}}>
@@ -989,11 +990,11 @@ export default function App(){
                         </div>
                         <div style={{flex:'1 1 90px'}}>
                           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractPeriod||'week')==='month'?t('emp.maxHMonth'):t('emp.maxHWeek')}</div>
-                          <input type="number" min="4" max="250" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={styles.input}/>
+                          <input type="number" min="4" max="250" value={emp.maxHours||''} placeholder="40" onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={styles.input}/>
                         </div>
                         <div style={{flex:'1 1 80px'}}>
                           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.priority')}</div>
-                          <input type="number" min="10" max="200" step="5" value={emp.salaryPct} onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))} style={styles.input}/>
+                          <input type="number" min="10" max="200" step="5" value={emp.salaryPct||''} placeholder="100" onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))} style={styles.input}/>
                           <div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.lowerFirst')}</div>
                         </div>
                       </div>
@@ -1050,11 +1051,11 @@ export default function App(){
                   </div>
                   <div style={{flex:'1 1 70px'}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractPeriod||'week')==='month'?t('emp.maxHMo'):t('emp.maxHWk')}</div>
-                    <input type="number" min="4" max="250" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={styles.input}/>
+                    <input type="number" min="4" max="250" value={newEmp.maxHours||''} placeholder="40" onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={styles.input}/>
                   </div>
                   <div style={{flex:'1 1 70px'}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.priority')}</div>
-                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct} onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))} style={styles.input}/>
+                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct||''} placeholder="100" onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))} style={styles.input}/>
                   </div>
                 </div>
                 <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
@@ -1359,7 +1360,7 @@ export default function App(){
                               <Avatar emp={emp} size={26}/>
                               <div style={{minWidth:0}}>
                                 <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div>
-                                <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
+                                <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{orderedRoles(emp).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                               </div>
                             </div>
                             <div style={{textAlign:'center'}}>
