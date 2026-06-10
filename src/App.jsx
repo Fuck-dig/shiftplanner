@@ -103,6 +103,7 @@ function fmt(d){ return d.toLocaleDateString(LOCALE,{day:'2-digit',month:'short'
 function fmtLong(iso){ const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString(LOCALE,{day:'numeric',month:'long',year:'numeric'}); }
 function toMin(t){ const[h,m]=t.split(':').map(Number); return h*60+m; }
 function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<=s) e+=1440; return (e-s)/60; }
+function assignHours(b,a){ const s=toMin((a&&a.start)||b.start); let e=toMin((a&&a.end)||b.end); if(e<=s) e+=1440; return (e-s)/60; }
 function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
 function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
 function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return list.some(t=>t.empId===empId&&t.status==='Approved'&&t.startDate<=iso&&t.endDate>=iso); }
@@ -304,6 +305,13 @@ export default function App(){
   const [selected,    setSelected]  = useState(null);
   const [showWarnings,setShowWarnings]=useState(false);
   const [openPicker,  setOpenPicker] = useState(null);
+  const [shiftFilter, setShiftFilter]= useState('all'); // 'all' | 'open'
+  const [filterPerson,setFilterPerson]=useState('');    // '' = everyone
+  const [labelEdit,   setLabelEdit]  = useState(null);   // {day,blockId,empId}
+  const [labelVal,    setLabelVal]   = useState('');
+  const [timeEdit,    setTimeEdit]   = useState(null);   // {day,blockId,empId}
+  const [timeFrom,    setTimeFrom]   = useState('');
+  const [timeTo,      setTimeTo]     = useState('');
   const [expandedEmp, setExpandedEmp]=useState(null);
   const [showAddEmp,  setShowAddEmp]=useState(false);
   const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
@@ -418,6 +426,8 @@ export default function App(){
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     setOpenPicker(null);
   };
+  const setShiftLabel=(day,blockId,empId,label)=>{ if(!schedule) return; const ns=JSON.parse(JSON.stringify(schedule)); const arr=ns[day]?.[blockId]; if(!arr) return; const e=arr.find(a=>a.empId===empId); if(!e) return; const l=label.trim(); if(l) e.label=l; else delete e.label; setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}})); };
+  const setShiftTime=(day,blockId,empId,start,end)=>{ if(!schedule) return; const ns=JSON.parse(JSON.stringify(schedule)); const arr=ns[day]?.[blockId]; if(!arr) return; const a=arr.find(x=>x.empId===empId); if(!a) return; const blk=blocks.find(b=>b.id===blockId); if(!start||!end||(start===blk?.start&&end===blk?.end)){ delete a.start; delete a.end; } else { a.start=start; a.end=end; } setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}})); };
 
   const updateEmp=(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
   const updateAvail=(id,day,f,v)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]||{from:'10:00',to:'18:00'}; return {...e,availability:{...e.availability,[day]:{...cur,[f]:v}}}; }));
@@ -433,7 +443,7 @@ export default function App(){
   const empHoursMap = employees.reduce((acc,e)=>{
     if(!schedule){ acc[e.id]=0; return acc; }
     let h=0;
-    DAYS.forEach(day=>blocks.forEach(b=>{ if((schedule[day]?.[b.id]||[]).some(a=>a.empId===e.id)) h+=blockHours(b); }));
+    DAYS.forEach(day=>blocks.forEach(b=>{ const a=(schedule[day]?.[b.id]||[]).find(x=>x.empId===e.id); if(a) h+=assignHours(b,a); }));
     acc[e.id]=h; return acc;
   },{});
   const empHours=id=>empHoursMap[id]||0;
@@ -458,7 +468,7 @@ export default function App(){
     getMonthOffsets(displayMonth).forEach(off=>{
       const ws=schedules[weekKey(off)]?.schedule;
       if(!ws) return;
-      DAYS.forEach(day=>blocks.forEach(b=>{ if((ws[day]?.[b.id]||[]).some(a=>a.empId===e.id)) totalH+=blockHours(b); }));
+      DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(x=>x.empId===e.id); if(a) totalH+=assignHours(b,a); }));
     });
     const costUnits=hasWages?calcWageCost(e,totalH):parseFloat((totalH*(e.salaryPct/100)).toFixed(2));
     return {emp:e, hours:totalH, costUnits};
@@ -755,6 +765,17 @@ export default function App(){
                 </div>
               ):(
                 <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'0 2px'}}>
+                    <div style={{display:'inline-flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:2,gap:2}}>
+                      {[['all','filter.all'],['open','filter.open']].map(([k,lk])=>{ const on=shiftFilter===k&&!filterPerson; return (
+                        <button key={k} onClick={()=>{ setShiftFilter(k); if(k==='open'){ setFilterPerson(''); setSelected(null); } }} style={{padding:'4px 12px',borderRadius:6,fontSize:12,fontWeight:on?500:400,cursor:'pointer',fontFamily:'inherit',background:on?T.surface:'transparent',border:on?`1px solid ${T.border}`:'1px solid transparent',color:on?T.text:T.text2,transition:'all 0.15s'}}>{t(lk)}</button>
+                      ); })}
+                    </div>
+                    <select value={filterPerson} onChange={e=>{ setFilterPerson(e.target.value); if(e.target.value){ setShiftFilter('all'); setSelected(null); } }} style={{...styles.select,width:'auto',padding:'5px 10px',fontSize:12}}>
+                      <option value="">{t('filter.everyone')}</option>
+                      {employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+                    </select>
+                  </div>
                   {blocks.map(block=>(
                     <div key={block.id} style={styles.cardFlush}>
                       <div style={{padding:'12px 20px',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12}}>
@@ -784,30 +805,62 @@ export default function App(){
                                   </td>
                                   {DAYS.map(day=>{
                                     const allA=schedule[day]?.[block.id]||[];
-                                    const assigned=allA.filter(a=>a.role===role);
+                                    const assignedAll=allA.filter(a=>a.role===role);
                                     const req=getBlockRoles(block,day)[role]||0;
-                                    const gap=Math.max(0,req-assigned.length);
+                                    const gap=Math.max(0,req-assignedAll.length);
                                     const isTarget=selected&&selected.role===role&&selected.day!==day;
+                                    const canSwap=shiftFilter==='all'&&!filterPerson;
+                                    const assignedShown=shiftFilter==='open'?[]:(filterPerson?assignedAll.filter(a=>a.empId===filterPerson):assignedAll);
+                                    const showOpen=!filterPerson&&gap>0;
+                                    const showMove=canSwap&&selected&&isTarget&&gap>0;
                                     return (
                                       <td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
                                         <div style={{display:'flex',flexDirection:'column',gap:3}}>
-                                          {assigned.map((a,idx)=>{
+                                          {assignedShown.map((a,idx)=>{
                                             const emp=employees.find(e=>e.id===a.empId);
                                             const realIdx=allA.findIndex(x=>x.empId===a.empId);
                                             const isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;
-                                            return <EmpChip key={idx} emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>;
+                                            const editing=labelEdit&&labelEdit.day===day&&labelEdit.blockId===block.id&&labelEdit.empId===a.empId;
+                                            return (
+                                              <div key={idx} style={{display:'flex',flexDirection:'column',gap:1,position:'relative'}}>
+                                                <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={canSwap?()=>handleSlotClick(day,block.id,a,realIdx):undefined}/>
+                                                <button onClick={()=>{ setTimeFrom(a.start||block.start); setTimeTo(a.end||block.end); setTimeEdit({day,blockId:block.id,empId:a.empId}); }} title={t('week.editTime')} style={{fontSize:9.5,color:(a.start&&a.end)?T.text2:T.text3,fontWeight:(a.start&&a.end)?500:400,background:'transparent',border:'none',cursor:'pointer',textAlign:'left',padding:'0 0 0 8px',fontFamily:'inherit',whiteSpace:'nowrap'}}>🕒 {a.start||block.start}–{a.end||block.end}</button>
+                                                {timeEdit&&timeEdit.day===day&&timeEdit.blockId===block.id&&timeEdit.empId===a.empId&&(
+                                                  <div style={{position:'absolute',top:'100%',left:6,marginTop:3,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 4px 16px rgba(28,24,21,0.12)',zIndex:200,padding:10,width:200}}>
+                                                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:8}}>
+                                                      <div style={{flex:1}}><div style={{fontSize:9,color:T.text3,marginBottom:2,textTransform:'uppercase',letterSpacing:'0.04em'}}>{t('common.fromCap')}</div><input type="time" value={timeFrom} onChange={e=>setTimeFrom(e.target.value)} style={{...styles.input,width:'100%',padding:'4px 6px',fontSize:12}}/></div>
+                                                      <div style={{flex:1}}><div style={{fontSize:9,color:T.text3,marginBottom:2,textTransform:'uppercase',letterSpacing:'0.04em'}}>{t('common.toLower')}</div><input type="time" value={timeTo} onChange={e=>setTimeTo(e.target.value)} style={{...styles.input,width:'100%',padding:'4px 6px',fontSize:12}}/></div>
+                                                    </div>
+                                                    <div style={{display:'flex',gap:6}}>
+                                                      <button onClick={()=>{ setShiftTime(day,block.id,a.empId,timeFrom,timeTo); setTimeEdit(null); }} style={{flex:1,padding:'5px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:11,cursor:'pointer',fontFamily:'inherit'}}>{t('common.save')}</button>
+                                                      <button onClick={()=>{ setShiftTime(day,block.id,a.empId,'',''); setTimeEdit(null); }} title={t('week.resetTime')} style={{padding:'5px 10px',borderRadius:6,background:'transparent',color:T.text2,border:`1px solid ${T.border}`,fontSize:13,cursor:'pointer',fontFamily:'inherit'}}>↺</button>
+                                                    </div>
+                                                  </div>
+                                                )}
+                                                {editing?(
+                                                  <input autoFocus value={labelVal} onChange={e=>setLabelVal(e.target.value)} onBlur={()=>{ setShiftLabel(day,block.id,a.empId,labelVal); setLabelEdit(null); }} onKeyDown={e=>{ if(e.key==='Enter'){ setShiftLabel(day,block.id,a.empId,labelVal); setLabelEdit(null); } if(e.key==='Escape') setLabelEdit(null); }} placeholder={t('week.labelPlaceholder')} style={{fontSize:10,padding:'1px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontFamily:'inherit',width:'95%',marginLeft:6,outline:'none'}}/>
+                                                ):a.label?(
+                                                  <button onClick={()=>{ setLabelVal(a.label); setLabelEdit({day,blockId:block.id,empId:a.empId}); }} title={t('week.editLabel')} style={{fontSize:10,color:T.text2,background:'transparent',border:'none',cursor:'pointer',textAlign:'left',padding:'0 0 0 8px',fontFamily:'inherit'}}>🏷 {a.label}</button>
+                                                ):(
+                                                  <button onClick={()=>{ setLabelVal(''); setLabelEdit({day,blockId:block.id,empId:a.empId}); }} style={{fontSize:9,color:T.text3,opacity:0.55,background:'transparent',border:'none',cursor:'pointer',textAlign:'left',padding:'0 0 0 8px',fontFamily:'inherit'}}>{t('week.addLabel')}</button>
+                                                )}
+                                              </div>
+                                            );
                                           })}
-                                          {gap>0&&(
-                                            <div style={{position:'relative'}}>
-                                              <button onClick={()=>{ if(selected&&isTarget){ handleEmptySlotClick(day,block.id,role); return; } if(!selected){ setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role}); } }}
-                                                style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:'pointer',fontFamily:'inherit'}}>
-                                                {isTarget?t('week.moveHere'):t('week.short',{n:gap})}
+                                          {showMove&&(
+                                            <button onClick={()=>handleEmptySlotClick(day,block.id,role)} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:T.successLight,color:T.success,border:`1px dashed ${T.success}55`,cursor:'pointer',fontFamily:'inherit',alignSelf:'flex-start'}}>{t('week.moveHere')}</button>
+                                          )}
+                                          {!showMove&&showOpen&&Array.from({length:gap}).map((_,gi)=>(
+                                            <div key={'o'+gi} style={{position:'relative'}}>
+                                              <button onClick={()=>{ if(!selected) setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role}); }}
+                                                style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:500,background:'transparent',color:rs.text,border:`1px dashed ${rs.dot}77`,cursor:selected?'default':'pointer',fontFamily:'inherit',alignSelf:'flex-start'}}>
+                                                <span style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{t('week.openShift')}
                                               </button>
-                                              {!selected&&openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&(()=>{
+                                              {gi===0&&!selected&&openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&(()=>{
                                                 const eligible=eligibleForSlot(day,block.id,role);
                                                 return (
                                                   <div style={{position:'absolute',top:'100%',left:0,marginTop:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 4px 16px rgba(28,24,21,0.12)',zIndex:200,minWidth:180,maxWidth:240,padding:8}}>
-                                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day})}</div>
+                                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day:dl(day)})}</div>
                                                     {eligible.length===0?(
                                                       <div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>
                                                     ):eligible.map(emp=>{
@@ -833,8 +886,8 @@ export default function App(){
                                                 );
                                               })()}
                                             </div>
-                                          )}
-                                          {req===0&&assigned.length===0&&<span style={{fontSize:11,color:T.text3}}>—</span>}
+                                          ))}
+                                          {assignedShown.length===0&&!showMove&&!showOpen&&<span style={{fontSize:11,color:T.text3}}>—</span>}
                                         </div>
                                       </td>
                                     );
