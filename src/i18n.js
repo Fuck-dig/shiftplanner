@@ -27,6 +27,7 @@ const STRINGS = {
     'common.generate':'Generate',
     'common.generating':'Generating…',
     'common.cancel':'Cancel',
+    'common.done':'Done',
     'common.delete':'Delete',
     'common.remove':'Remove',
     'common.edit':'Edit',
@@ -72,6 +73,7 @@ const STRINGS = {
     'tpl.saveAs':'+ Save as template',
     'tpl.namePlaceholder':'Template name',
     'tpl.removeTitle':'Delete template',
+    'tpl.editTitle':'Edit template',
 
     'month.coverage':'Coverage',
     'month.full':'Full',
@@ -228,6 +230,7 @@ const STRINGS = {
     'common.generate':'Generér',
     'common.generating':'Genererer…',
     'common.cancel':'Annullér',
+    'common.done':'Færdig',
     'common.delete':'Slet',
     'common.remove':'Fjern',
     'common.edit':'Redigér',
@@ -273,6 +276,7 @@ const STRINGS = {
     'tpl.saveAs':'+ Gem som skabelon',
     'tpl.namePlaceholder':'Skabelonnavn',
     'tpl.removeTitle':'Slet skabelon',
+    'tpl.editTitle':'Rediger skabelon',
 
     'month.coverage':'Dækning',
     'month.full':'Fuld',
@@ -429,6 +433,7 @@ const STRINGS = {
     'common.generate':'Generar',
     'common.generating':'Generando…',
     'common.cancel':'Cancelar',
+    'common.done':'Listo',
     'common.delete':'Eliminar',
     'common.remove':'Quitar',
     'common.edit':'Editar',
@@ -474,6 +479,7 @@ const STRINGS = {
     'tpl.saveAs':'+ Guardar como plantilla',
     'tpl.namePlaceholder':'Nombre de plantilla',
     'tpl.removeTitle':'Eliminar plantilla',
+    'tpl.editTitle':'Editar plantilla',
 
     'month.coverage':'Cobertura',
     'month.full':'Completa',

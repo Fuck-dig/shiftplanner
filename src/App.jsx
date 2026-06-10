@@ -260,6 +260,32 @@ function SaveTemplateInline({onSave,t}){
   );
 }
 
+function TemplateEditor({name,availability,t,dl,onRename,onToggleDay,onUpdate,onDelete,onClose}){
+  const [nameVal,setNameVal]=useState(name);
+  const commitName=()=>{ const n=nameVal.trim(); if(n&&n!==name) onRename(name,n); };
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(33,27,21,0.35)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:50}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:20,width:'min(560px,100%)',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 50px -20px rgba(33,27,21,0.5)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,gap:12}}>
+          <input value={nameVal} onChange={e=>setNameVal(e.target.value)} onBlur={commitName} onKeyDown={e=>{ if(e.key==='Enter') commitName(); }} style={{...styles.input,fontSize:15,fontWeight:600,flex:1}}/>
+          <button onClick={onClose} style={{padding:'6px 12px',borderRadius:8,background:'transparent',border:`1px solid ${T.border}`,color:T.text2,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>{t('common.done')}</button>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          {DAYS.map(day=>{ const a=availability[day]; return (
+            <div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <button onClick={()=>onToggleDay(name,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:a?T.accentLight:'transparent',color:a?T.accentText:T.text3,border:`1px solid ${a?T.accent+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{dl(day)}</button>
+              {a?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={a.from} onChange={e=>onUpdate(name,day,'from',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={a.to} onChange={e=>onUpdate(name,day,'to',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/></>):(<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>)}
+            </div>
+          ); })}
+        </div>
+        <div style={{marginTop:18,paddingTop:14,borderTop:`1px solid ${T.border}`,display:'flex'}}>
+          <button onClick={onDelete} style={{padding:'6px 14px',borderRadius:8,background:'transparent',border:`1px solid ${T.danger}55`,color:T.danger,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>{t('tpl.removeTitle')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
   const [view,        setView]      = useState('schedule');
   const [calMode,     setCalMode]   = useState('week');
@@ -292,6 +318,9 @@ export default function App(){
   const setTemplates=v=>{ const val=typeof v==='function'?v(templates):v; setTemplatesRaw(val); save('sa2_templates',val); };
   const saveTemplate=(name,availability)=>{ const n=name.trim(); if(!n||AVAIL_TEMPLATES[n]) return; setTemplates(p=>({...p,[n]:JSON.parse(JSON.stringify(availability))})); };
   const removeTemplate=name=>{ setTemplates(p=>{ const c={...p}; delete c[name]; return c; }); };
+  const [editingTpl, setEditingTpl] = useState(null);
+  const toggleTemplateDay=(name,day)=>setTemplates(p=>{ const tpl=p[name]; if(!tpl) return p; return {...p,[name]:{...tpl,[day]:tpl[day]?null:{from:'09:00',to:'17:00'}}}; });
+  const updateTemplateAvail=(name,day,field,value)=>setTemplates(p=>{ const tpl=p[name]; if(!tpl||!tpl[day]) return p; return {...p,[name]:{...tpl,[day]:{...tpl[day],[field]:value}}}; });
 
   // ── Language ──────────────────────────────────────────────────────────────
   const [lang, setLangRaw] = useState(()=>load('sa2_lang', detectLang()));
@@ -837,6 +866,19 @@ export default function App(){
         {/* ══ EMPLOYEES ══ */}
         {view==='employees'&&(
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {editingTpl&&templates[editingTpl]&&(
+              <TemplateEditor
+                key={editingTpl}
+                name={editingTpl}
+                availability={templates[editingTpl]}
+                t={t} dl={dl}
+                onRename={(oldN,newN)=>{ const n=newN.trim(); if(!n||n===oldN||AVAIL_TEMPLATES[n]||templates[n]) return; setTemplates(p=>{ const c={...p}; c[n]=c[oldN]; delete c[oldN]; return c; }); setEditingTpl(n); }}
+                onToggleDay={toggleTemplateDay}
+                onUpdate={updateTemplateAvail}
+                onDelete={()=>{ removeTemplate(editingTpl); setEditingTpl(null); }}
+                onClose={()=>setEditingTpl(null)}
+              />
+            )}
             {employees.map(emp=>(
               <div key={emp.id} style={styles.card}>
                 <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -902,6 +944,7 @@ export default function App(){
                         {Object.keys(templates).map(tpl=>(
                           <span key={tpl} style={{display:'inline-flex',alignItems:'center',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:6,overflow:'hidden'}}>
                             <button onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 8px 4px 10px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',color:T.text2,fontFamily:'inherit'}}>{tpl}</button>
+                            <button onClick={()=>setEditingTpl(tpl)} title={t('tpl.editTitle')} style={{padding:'4px 7px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',borderLeft:`1px solid ${T.border}`,color:T.text3,fontFamily:'inherit'}}>✎</button>
                             <button onClick={()=>removeTemplate(tpl)} title={t('tpl.removeTitle')} style={{padding:'4px 8px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',borderLeft:`1px solid ${T.border}`,color:T.text3,fontFamily:'inherit'}}>✕</button>
                           </span>
                         ))}
