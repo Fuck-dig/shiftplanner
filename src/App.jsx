@@ -260,14 +260,15 @@ function SaveTemplateInline({onSave,t}){
   );
 }
 
-function TemplateEditor({name,availability,t,dl,onRename,onToggleDay,onUpdate,onDelete,onClose}){
-  const [nameVal,setNameVal]=useState(name);
-  const commitName=()=>{ const n=nameVal.trim(); if(n&&n!==name) onRename(name,n); };
+function TemplateEditor({name,displayName,availability,t,dl,onRename,onToggleDay,onUpdate,onDelete,onClose}){
+  const [nameVal,setNameVal]=useState(displayName);
+  const [dirty,setDirty]=useState(false);
+  const commitName=()=>{ if(!dirty) return; const n=nameVal.trim(); if(n&&n!==name) onRename(name,n); };
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(33,27,21,0.35)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:50}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:20,width:'min(560px,100%)',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 50px -20px rgba(33,27,21,0.5)'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,gap:12}}>
-          <input value={nameVal} onChange={e=>setNameVal(e.target.value)} onBlur={commitName} onKeyDown={e=>{ if(e.key==='Enter') commitName(); }} style={{...styles.input,fontSize:15,fontWeight:600,flex:1}}/>
+          <input value={nameVal} onChange={e=>{ setNameVal(e.target.value); setDirty(true); }} onBlur={commitName} onKeyDown={e=>{ if(e.key==='Enter') commitName(); }} style={{...styles.input,fontSize:15,fontWeight:600,flex:1}}/>
           <button onClick={onClose} style={{padding:'6px 12px',borderRadius:8,background:'transparent',border:`1px solid ${T.border}`,color:T.text2,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>{t('common.done')}</button>
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
@@ -313,11 +314,17 @@ export default function App(){
   const [hourlyRate,  setHourlyRateRaw] = useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
   const setHourlyRate=v=>{ const val=typeof v==='function'?v(hourlyRate):v; setHourlyRateRaw(val); save('sa2_rate',val); };
 
-  // ── Custom availability templates ───────────────────────────────────────────
-  const [templates,  setTemplatesRaw] = useState(()=>load('sa2_templates',{}));
+  // ── Availability templates (premade are seeded once, then fully editable) ────
+  const [templates,  setTemplatesRaw] = useState(()=>{
+    const existing = load('sa2_templates', null);
+    if(existing===null) return JSON.parse(JSON.stringify(AVAIL_TEMPLATES));
+    if(!load('sa2_tpl_seeded', false)) return {...JSON.parse(JSON.stringify(AVAIL_TEMPLATES)), ...existing};
+    return existing;
+  });
   const setTemplates=v=>{ const val=typeof v==='function'?v(templates):v; setTemplatesRaw(val); save('sa2_templates',val); };
-  const saveTemplate=(name,availability)=>{ const n=name.trim(); if(!n||AVAIL_TEMPLATES[n]) return; setTemplates(p=>({...p,[n]:JSON.parse(JSON.stringify(availability))})); };
-  const removeTemplate=name=>{ setTemplates(p=>{ const c={...p}; delete c[name]; return c; }); };
+  useEffect(()=>{ if(!load('sa2_tpl_seeded', false)){ save('sa2_templates', templates); save('sa2_tpl_seeded', true); } }, []);
+  const saveTemplate=(name,availability)=>{ const n=name.trim(); if(!n||templates[n]) return; setTemplates(p=>({...p,[n]:JSON.parse(JSON.stringify(availability))})); };
+  const removeTemplate=name=>{ setTemplates(p=>{ const c={...p}; delete c[name]; return c; }); if(editingTpl===name) setEditingTpl(null); };
   const [editingTpl, setEditingTpl] = useState(null);
   const toggleTemplateDay=(name,day)=>setTemplates(p=>{ const tpl=p[name]; if(!tpl) return p; return {...p,[name]:{...tpl,[day]:tpl[day]?null:{from:'09:00',to:'17:00'}}}; });
   const updateTemplateAvail=(name,day,field,value)=>setTemplates(p=>{ const tpl=p[name]; if(!tpl||!tpl[day]) return p; return {...p,[name]:{...tpl,[day]:{...tpl[day],[field]:value}}}; });
@@ -415,7 +422,7 @@ export default function App(){
   const updateEmp=(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
   const updateAvail=(id,day,f,v)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]||{from:'10:00',to:'18:00'}; return {...e,availability:{...e.availability,[day]:{...cur,[f]:v}}}; }));
   const toggleDay=(id,day)=>setEmployees(p=>p.map(e=>{ if(e.id!==id) return e; const cur=e.availability[day]; return {...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}}; }));
-  const applyTemplate=(id,tpl)=>{ const tp={...AVAIL_TEMPLATES,...templates}[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
+  const applyTemplate=(id,tpl)=>{ const tp=templates[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:String(Date.now()),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp=id=>{ setEmployees(p=>p.filter(e=>e.id!==id)); if(expandedEmp===id) setExpandedEmp(null); };
   const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,maxHours:40}); setShowAddEmp(false); };
@@ -870,9 +877,10 @@ export default function App(){
               <TemplateEditor
                 key={editingTpl}
                 name={editingTpl}
+                displayName={t(TEMPLATE_LABEL_KEYS[editingTpl]||editingTpl)}
                 availability={templates[editingTpl]}
                 t={t} dl={dl}
-                onRename={(oldN,newN)=>{ const n=newN.trim(); if(!n||n===oldN||AVAIL_TEMPLATES[n]||templates[n]) return; setTemplates(p=>{ const c={...p}; c[n]=c[oldN]; delete c[oldN]; return c; }); setEditingTpl(n); }}
+                onRename={(oldN,newN)=>{ const n=newN.trim(); if(!n||n===oldN||templates[n]) return; setTemplates(p=>{ const c={...p}; c[n]=c[oldN]; delete c[oldN]; return c; }); setEditingTpl(n); }}
                 onToggleDay={toggleTemplateDay}
                 onUpdate={updateTemplateAvail}
                 onDelete={()=>{ removeTemplate(editingTpl); setEditingTpl(null); }}
@@ -940,10 +948,9 @@ export default function App(){
                     <div style={{marginBottom:14}}>
                       <SectionLabel>{t('emp.quickTemplates')}</SectionLabel>
                       <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4,alignItems:'center'}}>
-                        {Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{t(TEMPLATE_LABEL_KEYS[tpl]||tpl)}</button>)}
                         {Object.keys(templates).map(tpl=>(
                           <span key={tpl} style={{display:'inline-flex',alignItems:'center',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:6,overflow:'hidden'}}>
-                            <button onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 8px 4px 10px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',color:T.text2,fontFamily:'inherit'}}>{tpl}</button>
+                            <button onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 8px 4px 10px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',color:T.text2,fontFamily:'inherit'}}>{t(TEMPLATE_LABEL_KEYS[tpl]||tpl)}</button>
                             <button onClick={()=>setEditingTpl(tpl)} title={t('tpl.editTitle')} style={{padding:'4px 7px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',borderLeft:`1px solid ${T.border}`,color:T.text3,fontFamily:'inherit'}}>✎</button>
                             <button onClick={()=>removeTemplate(tpl)} title={t('tpl.removeTitle')} style={{padding:'4px 8px',fontSize:11,cursor:'pointer',background:'transparent',border:'none',borderLeft:`1px solid ${T.border}`,color:T.text3,fontFamily:'inherit'}}>✕</button>
                           </span>
