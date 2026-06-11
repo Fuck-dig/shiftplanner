@@ -24,7 +24,7 @@ export default function App(){
   const [generating,  setGenerating]= useState(false);
   const [selected,    setSelected]  = useState(null);
   const [showWarnings,setShowWarnings]=useState(false);
-  const [openPicker,  setOpenPicker] = useState(null);
+  const [openPicker,  setOpenPicker] = useState(null);  
   const [shiftFilter, setShiftFilter]= useState('all'); // 'all' | 'open'
   const [filterPerson,setFilterPerson]=useState('');    // '' = everyone
   const [labelEdit,   setLabelEdit]  = useState(null);   // {day,blockId,empId}
