@@ -1,0 +1,52 @@
+import { useState } from "react";
+
+import { T, pal, initials } from "../lib/constants";
+
+
+
+export function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
+
+export function RoleBadge({role,rs}){ const s=rs||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:s.bg,color:s.text,border:`1px solid ${s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
+
+export function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:p.bg,color:selected?'#fff':p.text,border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
+
+export function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:'#3D7A52'},Pending:{bg:T.warningLight,text:T.warning,dot:'#956B18'},Rejected:{bg:T.dangerLight,text:T.danger,dot:'#963030'}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
+
+export function Btn({children,onClick,disabled,variant='primary',small}){
+  const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
+  const vs={primary:{background:T.accent,color:'#fff'},secondary:{background:T.surfaceWarm,color:T.text,border:`1px solid ${T.border}`},ghost:{background:'transparent',color:T.text2,border:`1px solid ${T.border}`},danger:{background:T.dangerLight,color:T.danger,border:`1px solid ${T.danger}33`},success:{background:T.successLight,color:T.success,border:`1px solid ${T.success}33`}};
+  return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant]}}>{children}</button>;
+}
+
+export function SectionLabel({children}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{children}</div>; }
+
+export function AddRoleInline({onAdd,t}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState('');
+  if(!editing) return (
+    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('cov.addRole')}</button>
+  );
+  return (
+    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
+      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('cov.roleName')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:110,outline:'none'}}/>
+      <button onClick={()=>{ if(val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } }} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.add')}</button>
+      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+    </div>
+  );
+}
+
+export function SaveTemplateInline({onSave,t}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState('');
+  const commit=()=>{ if(val.trim()){ onSave(val.trim()); setVal(''); setEditing(false); } };
+  if(!editing) return (
+    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>{t('tpl.saveAs')}</button>
+  );
+  return (
+    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
+      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('tpl.namePlaceholder')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:130,outline:'none'}}/>
+      <button onClick={commit} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.save')}</button>
+      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
+    </div>
+  );
+}

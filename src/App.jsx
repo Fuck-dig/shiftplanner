@@ -1,292 +1,11 @@
 import { useState, useEffect } from "react";
 import { LANGUAGES, LOCALES, makeT, detectLang } from "./i18n";
-
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const T = {
-  bg:          '#F5F0E6',
-  surface:     '#FFFEFB',
-  surfaceWarm: '#FBF6EE',
-  border:      '#E6DDCD',
-  text:        '#211B15',
-  text2:       '#5C5248',
-  text3:       '#9C9088',
-  accent:      '#BF5A2C',
-  accentLight: '#F5EAE2',
-  accentText:  '#7A3318',
-  success:     '#3D7A52',
-  successLight:'#E5F0E9',
-  warning:     '#956B18',
-  warningLight:'#FBF0D5',
-  danger:      '#963030',
-  dangerLight: '#F5E2E2',
-};
-
-// Active locale for date/number formatting — updated each render from `lang`.
-let LOCALE = 'en-GB';
-
-// ─── Role system ──────────────────────────────────────────────────────────────
-const ROLE_COLOR_PALETTE = [
-  { dot:'#534AB7', bg:'#F0EFFE', text:'#4039A0', border:'#C8C4F8' },
-  { dot:'#1A6FA8', bg:'#EAF3FB', text:'#165C8C', border:'#A8D4F0' },
-  { dot:'#2D7A4F', bg:'#E8F5EE', text:'#236040', border:'#9FD8B8' },
-  { dot:'#8A5A10', bg:'#FBF3E5', text:'#6E4809', border:'#F0CC84' },
-  { dot:'#5C5A58', bg:'#F2F1EF', text:'#4A4844', border:'#C8C4BE' },
-  { dot:'#B03868', bg:'#FBE8F0', text:'#7A2848', border:'#F0B8D0' },
-  { dot:'#BF5A2C', bg:'#F5EAE2', text:'#7A3318', border:'#E8C0A0' },
-  { dot:'#2D7A80', bg:'#E5F5F5', text:'#1A5C60', border:'#90D8D8' },
-  { dot:'#6B3A9E', bg:'#F3EBF9', text:'#52288A', border:'#D4B8F0' },
-  { dot:'#3A7A3A', bg:'#EBF5EB', text:'#286028', border:'#B0D8B0' },
-];
-const DEFAULT_ROLE_STYLES = {
-  Manager:   { dot:'#534AB7', bg:'#F0EFFE', text:'#4039A0', border:'#C8C4F8' },
-  Bartender: { dot:'#1A6FA8', bg:'#EAF3FB', text:'#165C8C', border:'#A8D4F0' },
-  Waiter:    { dot:'#2D7A4F', bg:'#E8F5EE', text:'#236040', border:'#9FD8B8' },
-  Kitchen:   { dot:'#8A5A10', bg:'#FBF3E5', text:'#6E4809', border:'#F0CC84' },
-  Other:     { dot:'#5C5A58', bg:'#F2F1EF', text:'#4A4844', border:'#C8C4BE' },
-};
-
-const EMP_PALETTE = [
-  { bg:'#EAF3FB', text:'#165C8C', dot:'#1A6FA8' },
-  { bg:'#E8F5EE', text:'#236040', dot:'#2D7A4F' },
-  { bg:'#F5EAE2', text:'#7A3318', dot:'#BF5A2C' },
-  { bg:'#F0EFFE', text:'#4039A0', dot:'#534AB7' },
-  { bg:'#FBF3E5', text:'#6E4809', dot:'#8A5A10' },
-  { bg:'#F0F8F0', text:'#2D5C30', dot:'#3D7A52' },
-  { bg:'#FBE8F0', text:'#7A2848', dot:'#B03868' },
-];
-
-const TIMEOFF_TYPES  = ['Holiday','Sick','Personal','Other'];
-const DAYS           = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
-const AVAIL_TEMPLATES = {
-  'Full-time (Mon–Fri)': Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,{from:'09:00',to:'17:00'}]),...['Sat','Sun'].map(d=>[d,null])]),
-  'Evenings only':       Object.fromEntries(DAYS.map(d=>[d,{from:'16:00',to:'00:00'}])),
-  'Weekends only':       Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,null]),...['Sat','Sun'].map(d=>[d,{from:'10:00',to:'00:00'}])]),
-  'Full availability':   Object.fromEntries(DAYS.map(d=>[d,{from:'09:00',to:'00:00'}])),
-  'Not available':       Object.fromEntries(DAYS.map(d=>[d,null])),
-};
-
-const TEMPLATE_LABEL_KEYS = {
-  'Full-time (Mon–Fri)':'tpl.fulltime',
-  'Evenings only':'tpl.evenings',
-  'Weekends only':'tpl.weekends',
-  'Full availability':'tpl.full',
-  'Not available':'emp.notAvailable',
-};
-
-const DEFAULT_BLOCKS = [
-  { id:'lunch',  name:'Lunch',  start:'10:00', end:'16:00', roles:{ Manager:1, Waiter:2, Kitchen:1, Bartender:0, Other:0 } },
-  { id:'dinner', name:'Dinner', start:'16:30', end:'00:00', roles:{ Manager:1, Waiter:3, Kitchen:2, Bartender:1, Other:0 },
-    overrides:{ Fri:{ Manager:1, Waiter:4, Kitchen:2, Bartender:1, Other:0 }, Sat:{ Manager:1, Waiter:4, Kitchen:2, Bartender:1, Other:0 } } },
-];
-const DEFAULT_EMPLOYEES = [
-  {id:'1', name:'Mads Larsen',       roles:['Manager'],   salaryPct:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:40, availability:{Mon:{from:'09:00',to:'16:00'},Tue:{from:'09:00',to:'16:00'},Wed:{from:'09:00',to:'16:00'},Thu:{from:'09:00',to:'16:00'},Fri:{from:'09:00',to:'16:00'},Sat:null,Sun:null}},
-  {id:'2', name:'Sofie Hansen',      roles:['Manager'],   salaryPct:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:40, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'3', name:'Jonas Møller',      roles:['Waiter'],    salaryPct:80,  palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:28000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'4', name:'Emma Nielsen',      roles:['Waiter'],    salaryPct:80,  palIdx:3, contractType:'fixed',  contractPeriod:'month', wage:28000, maxHours:40, availability:{Mon:{from:'10:00',to:'00:00'},Tue:{from:'10:00',to:'00:00'},Wed:{from:'10:00',to:'00:00'},Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'5', name:'Tobias Jensen',     roles:['Kitchen'],   salaryPct:80,  palIdx:4, contractType:'fixed',  contractPeriod:'month', wage:27000, maxHours:40, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
-  {id:'6', name:'Laura Christensen', roles:['Kitchen'],   salaryPct:80,  palIdx:5, contractType:'fixed',  contractPeriod:'month', wage:27000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:{from:'10:00',to:'16:00'},Wed:null,Thu:{from:'10:00',to:'16:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'10:00',to:'16:00'}}},
-  {id:'7', name:'Mikkel Andersen',   roles:['Bartender'], salaryPct:80,  palIdx:6, contractType:'fixed',  contractPeriod:'month', wage:26000, maxHours:40, availability:{Mon:{from:'10:00',to:'16:00'},Tue:null,Wed:{from:'10:00',to:'16:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'8', name:'Ida Pedersen',      roles:['Waiter'],    salaryPct:50,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-  {id:'9', name:'Oliver Thomsen',    roles:['Waiter'],    salaryPct:50,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:{from:'16:00',to:'00:00'},Wed:{from:'16:00',to:'00:00'},Thu:null,Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'10',name:'Maja Kristensen',   roles:['Kitchen'],   salaryPct:55,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:20, availability:{Mon:null,Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'10:00',to:'00:00'},Fri:{from:'10:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:{from:'10:00',to:'00:00'}}},
-  {id:'11',name:'Rasmus Olsen',      roles:['Bartender'], salaryPct:50,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:20, availability:{Mon:{from:'16:00',to:'00:00'},Tue:null,Wed:{from:'16:00',to:'00:00'},Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'16:00',to:'00:00'},Sun:null}},
-  {id:'12',name:'Freja Madsen',      roles:['Bartender'], salaryPct:60,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:24, availability:{Mon:null,Tue:{from:'16:00',to:'00:00'},Wed:null,Thu:{from:'16:00',to:'00:00'},Fri:{from:'16:00',to:'00:00'},Sat:{from:'10:00',to:'00:00'},Sun:{from:'16:00',to:'00:00'}}},
-];
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function startOfToday(){ const d=new Date(); d.setHours(0,0,0,0); return d; }
-function getMondayDate(off=0){ const n=startOfToday(),dy=n.getDay(),m=new Date(n); m.setDate(n.getDate()-dy+(dy===0?-6:1)+off*7); m.setHours(0,0,0,0); return m; }
-function getWeekDates(off=0){ const m=getMondayDate(off); return DAYS.map((_,i)=>{ const d=new Date(m); d.setDate(m.getDate()+i); return d; }); }
-function weekKey(off){ const m=getMondayDate(off); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; }
-function dateToISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function fmt(d){ return d.toLocaleDateString(LOCALE,{day:'2-digit',month:'short'}); }
-function fmtLong(iso){ const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString(LOCALE,{day:'numeric',month:'long',year:'numeric'}); }
-function toMin(t){ const[h,m]=t.split(':').map(Number); return h*60+m; }
-function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<=s) e+=1440; return (e-s)/60; }
-function assignHours(b,a){ const s=toMin((a&&a.start)||b.start); let e=toMin((a&&a.end)||b.end); if(e<=s) e+=1440; return (e-s)/60; }
-function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
-function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
-function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return list.some(t=>t.empId===empId&&t.status==='Approved'&&t.startDate<=iso&&t.endDate>=iso); }
-function getMonthOffsets(ym){
-  const ref = typeof ym==='object' ? new Date(ym.y, ym.m, 15) : getMondayDate(ym);
-  const fom=new Date(ref.getFullYear(),ref.getMonth(),1),fd=fom.getDay(),fm=new Date(fom);
-  fm.setDate(fom.getDate()-(fd===0?6:fd-1));
-  const offsets=[];
-  for(let i=0;i<6;i++){
-    const d=new Date(fm); d.setDate(fm.getDate()+i*7);
-    const we=new Date(d); we.setDate(d.getDate()+6);
-    if(d.getMonth()===ref.getMonth()||we.getMonth()===ref.getMonth()){
-      const base=getMondayDate(0);
-      offsets.push(Math.round((d-base)/(7*24*3600*1000)));
-    }
-  }
-  return offsets;
-}
-function todayISO(){ return dateToISO(startOfToday()); }
-function initials(name){ return name.split(' ').map(n=>n[0]).join(''); }
-
-// ─── Scheduler ────────────────────────────────────────────────────────────────
-function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
-  const hw={},wd={}; employees.forEach(e=>{ hw[e.id]=0; wd[e.id]=new Set(); });
-  const byRole=role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.salaryPct-b.salaryPct);
-  const isManager=e=>(e.roles||[]).includes('Manager');
-  const result={},noMgr=[];
-
-  DAYS.forEach((day,di)=>{
-    const date=weekDates[di]; result[day]={};
-
-    blocks.forEach(b=>{
-      const bh=blockHours(b),rr=getBlockRoles(b,day),assigned=[],assignedInBlock=new Set();
-      allRoles.forEach(role=>{ const need=rr[role]||0; if(!need) return;
-        const pool=byRole(role).filter(e=>coversBlock(e.availability[day],b)&&!isOnTimeOff(e.id,date,timeOffList)&&!wd[e.id].has(di)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id));
-        for(let i=0;i<need;i++){ if(pool[i]){ assigned.push({empId:pool[i].id,name:pool[i].name,role}); assignedInBlock.add(pool[i].id); } }
-      });
-      const hasMgr=assigned.some(a=>isManager(employees.find(e=>e.id===a.empId)));
-      if(!hasMgr&&assigned.length>0){
-        const mgr=byRole('Manager').find(e=>coversBlock(e.availability[day],b)&&!isOnTimeOff(e.id,date,timeOffList)&&!wd[e.id].has(di)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id));
-        if(mgr){ assigned.push({empId:mgr.id,name:mgr.name,role:'Manager'}); assignedInBlock.add(mgr.id); }
-      }
-      const seen=new Set(); assigned.forEach(a=>{ if(!seen.has(a.empId)){ hw[a.empId]+=bh; wd[a.empId].add(di); seen.add(a.empId); } });
-      result[day][b.id]=assigned;
-    });
-
-    blocks.forEach(b=>{
-      const bh=blockHours(b);
-      const assigned=result[day][b.id];
-      const hasMgr=assigned.some(a=>isManager(employees.find(e=>e.id===a.empId)));
-      if(hasMgr||assigned.length===0) return;
-
-      const hiddenMgr=assigned.find(a=>isManager(employees.find(e=>e.id===a.empId)));
-      if(hiddenMgr){ hiddenMgr.role='Manager'; return; }
-
-      let fixed=false;
-      blocks.forEach(otherB=>{
-        if(fixed||otherB.id===b.id) return;
-        const otherAssigned=result[day][otherB.id]||[];
-        const mgrEntry=otherAssigned.find(a=>isManager(employees.find(e=>e.id===a.empId)));
-        if(!mgrEntry) return;
-        const mgrEmp=employees.find(e=>e.id===mgrEntry.empId);
-        if(!mgrEmp||!coversBlock(mgrEmp.availability[day],b)) return;
-        if(hw[mgrEmp.id]+bh>mgrEmp.maxHours) return;
-        hw[mgrEmp.id]+=bh;
-        result[day][b.id]=[...assigned,{empId:mgrEmp.id,name:mgrEmp.name,role:'Manager'}];
-        fixed=true;
-      });
-      if(fixed) return;
-
-      noMgr.push({day,block:b.name});
-    });
-  });
-
-  const total=Object.values(result).flatMap(d=>Object.values(d)).flat().length;
-  return { schedule:result, total, noMgr };
-}
-function dayCoverage(schedule,blocks,day,allRoles){ if(!schedule||!schedule[day]) return 'empty'; let tot=0,fill=0; blocks.forEach(b=>{ const r=getBlockRoles(b,day); allRoles.forEach(role=>{ tot+=r[role]||0; fill+=Math.min(r[role]||0,(schedule[day][b.id]||[]).filter(a=>a.role===role).length); }); }); if(tot===0) return 'empty'; const p=fill/tot; return p>=1?'full':p>=0.6?'partial':'low'; }
-
-// ─── Persistence ──────────────────────────────────────────────────────────────
-const migrateEmployee=e=>({
-  ...e,
-  roles: e.roles || (e.role ? [e.role] : ['Other']),
-  contractType:   e.contractType   || 'hourly',
-  contractPeriod: e.contractPeriod || 'week',
-  wage:           e.wage           || 0,
-});
-const load=(k,fb)=>{
-  try{
-    const v=localStorage.getItem(k);
-    if(!v) return fb;
-    const parsed=JSON.parse(v);
-    if(k==='sa2_emps'&&Array.isArray(parsed)) return parsed.map(migrateEmployee);
-    return parsed;
-  }catch{ return fb; }
-};
-const save=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{}};
-
-// ─── Styled helpers ───────────────────────────────────────────────────────────
-const pal=(e)=>EMP_PALETTE[e?.palIdx%EMP_PALETTE.length]||EMP_PALETTE[0];
-
-const styles = {
-  card: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },
-  cardFlush: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, overflow:'hidden', boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },
-  input: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' },
-  select: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box', cursor:'pointer' },
-};
-
-// ─── Small components ─────────────────────────────────────────────────────────
-function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
-
-function RoleBadge({role,rs}){ const s=rs||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:s.bg,color:s.text,border:`1px solid ${s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
-
-function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:p.bg,color:selected?'#fff':p.text,border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
-
-function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:'#3D7A52'},Pending:{bg:T.warningLight,text:T.warning,dot:'#956B18'},Rejected:{bg:T.dangerLight,text:T.danger,dot:'#963030'}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
-
-function Btn({children,onClick,disabled,variant='primary',small}){
-  const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
-  const vs={primary:{background:T.accent,color:'#fff'},secondary:{background:T.surfaceWarm,color:T.text,border:`1px solid ${T.border}`},ghost:{background:'transparent',color:T.text2,border:`1px solid ${T.border}`},danger:{background:T.dangerLight,color:T.danger,border:`1px solid ${T.danger}33`},success:{background:T.successLight,color:T.success,border:`1px solid ${T.success}33`}};
-  return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant]}}>{children}</button>;
-}
-
-function SectionLabel({children}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{children}</div>; }
-
-function AddRoleInline({onAdd,t}){
-  const [editing,setEditing]=useState(false);
-  const [val,setVal]=useState('');
-  if(!editing) return (
-    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('cov.addRole')}</button>
-  );
-  return (
-    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
-      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'&&val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('cov.roleName')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:110,outline:'none'}}/>
-      <button onClick={()=>{ if(val.trim()){ onAdd(val.trim()); setVal(''); setEditing(false); } }} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.add')}</button>
-      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
-    </div>
-  );
-}
-
-// ─── App ──────────────────────────────────────────────────────────────────────
-function SaveTemplateInline({onSave,t}){
-  const [editing,setEditing]=useState(false);
-  const [val,setVal]=useState('');
-  const commit=()=>{ if(val.trim()){ onSave(val.trim()); setVal(''); setEditing(false); } };
-  if(!editing) return (
-    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>{t('tpl.saveAs')}</button>
-  );
-  return (
-    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
-      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('tpl.namePlaceholder')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:'white',fontSize:12,fontFamily:'inherit',width:130,outline:'none'}}/>
-      <button onClick={commit} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.save')}</button>
-      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
-    </div>
-  );
-}
-
-function TemplateEditor({name,displayName,availability,t,dl,onRename,onToggleDay,onUpdate,onDelete,onClose}){
-  const [nameVal,setNameVal]=useState(displayName);
-  const [dirty,setDirty]=useState(false);
-  const commitName=()=>{ if(!dirty) return; const n=nameVal.trim(); if(n&&n!==name) onRename(name,n); };
-  return (
-    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(33,27,21,0.35)',display:'flex',alignItems:'center',justifyContent:'center',padding:16,zIndex:50}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,padding:20,width:'min(560px,100%)',maxHeight:'85vh',overflowY:'auto',boxShadow:'0 20px 50px -20px rgba(33,27,21,0.5)'}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,gap:12}}>
-          <input value={nameVal} onChange={e=>{ setNameVal(e.target.value); setDirty(true); }} onBlur={commitName} onKeyDown={e=>{ if(e.key==='Enter') commitName(); }} style={{...styles.input,fontSize:15,fontWeight:600,flex:1}}/>
-          <button onClick={onClose} style={{padding:'6px 12px',borderRadius:8,background:'transparent',border:`1px solid ${T.border}`,color:T.text2,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>{t('common.done')}</button>
-        </div>
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          {DAYS.map(day=>{ const a=availability[day]; return (
-            <div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-              <button onClick={()=>onToggleDay(name,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:a?T.accentLight:'transparent',color:a?T.accentText:T.text3,border:`1px solid ${a?T.accent+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{dl(day)}</button>
-              {a?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={a.from} onChange={e=>onUpdate(name,day,'from',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={a.to} onChange={e=>onUpdate(name,day,'to',e.target.value)} style={{...styles.input,width:'auto',padding:'4px 8px',fontSize:12}}/></>):(<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>)}
-            </div>
-          ); })}
-        </div>
-        <div style={{marginTop:18,paddingTop:14,borderTop:`1px solid ${T.border}`,display:'flex'}}>
-          <button onClick={onDelete} style={{padding:'6px 14px',borderRadius:8,background:'transparent',border:`1px solid ${T.danger}55`,color:T.danger,cursor:'pointer',fontSize:13,fontFamily:'inherit'}}>{t('tpl.removeTitle')}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { T, styles, pal, initials, DAYS, TIMEOFF_TYPES, ROLE_COLOR_PALETTE, DEFAULT_ROLE_STYLES, EMP_PALETTE, AVAIL_TEMPLATES, TEMPLATE_LABEL_KEYS, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES } from "./lib/constants";
+import { LOCALE, setLocale, getWeekDates, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO } from "./lib/dates";
+import { blockHours, assignHours, prio, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from "./lib/schedule";
+import { load, save } from "./lib/storage";
+import { Avatar, RoleBadge, EmpChip, StatusBadge, Btn, SectionLabel, AddRoleInline, SaveTemplateInline } from "./components/ui";
+import TemplateEditor from "./components/TemplateEditor";
 
 export default function App(){
   const [view,        setView]      = useState('schedule');
@@ -315,7 +34,7 @@ export default function App(){
   const [timeTo,      setTimeTo]     = useState('');
   const [expandedEmp, setExpandedEmp]=useState(null);
   const [showAddEmp,  setShowAddEmp]=useState(false);
-  const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
+  const [newEmp,      setNewEmp]    = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
   const [showAddTO,   setShowAddTO] = useState(false);
   const [newTO,       setNewTO]     = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,    setToFilter]  = useState('all');
@@ -343,7 +62,7 @@ export default function App(){
   const setLang = v => { setLangRaw(v); save('sa2_lang', v); };
   const t = makeT(lang);
   const dl = d => t('day.'+d);
-  LOCALE = LOCALES[lang] || 'en-GB';
+  setLocale(LOCALES[lang] || 'en-GB');
 
   // Inject fonts
   useEffect(()=>{
@@ -418,7 +137,7 @@ export default function App(){
     const alreadyWorking=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
     return employees
       .filter(e=>(e.roles||[]).includes(role)&&coversBlock(e.availability[day],block)&&!isOnTimeOff(e.id,date,timeOff)&&!alreadyWorking.has(e.id)&&empHours(e.id)+bh<=e.maxHours)
-      .sort((a,b)=>a.salaryPct-b.salaryPct);
+      .sort((a,b)=>prio(a)-prio(b));
   };
 
   const addToSlot=(day,blockId,role,emp)=>{
@@ -436,7 +155,7 @@ export default function App(){
   const applyTemplate=(id,tpl)=>{ const tp=templates[tpl]; if(tp) setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tp))}:e)); };
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:String(Date.now()),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp=id=>{ setEmployees(p=>p.filter(e=>e.id!==id)); if(expandedEmp===id) setExpandedEmp(null); };
-  const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],salaryPct:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40}); setShowAddEmp(false); };
+  const addEmployee=()=>{ if(!newEmp.name.trim()) return; setEmployees(p=>[...p,{...newEmp,id:String(Date.now()),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]); setNewEmp({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40}); setShowAddEmp(false); };
   const addTO=()=>{ if(!newTO.empId) return; setTimeOff(p=>[...p,{...newTO,id:String(Date.now())}]); setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'}); setShowAddTO(false); };
   const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(x=>x.id===id?{...x,status}:x));
   const removeTO=id=>setTimeOff(p=>p.filter(x=>x.id!==id));
@@ -452,7 +171,7 @@ export default function App(){
   const stats=totalStats();
   const calcWageCost=(e,hours)=>{
     const wage=e.wage||0;
-    if(!wage) return parseFloat((hours*(e.salaryPct/100)).toFixed(2));
+    if(!wage) return 0;
     if((e.contractType||'hourly')==='hourly') return parseFloat((hours*wage).toFixed(2));
     const contracted=e.maxHours||40;
     const weeksInMonth=4.33;
@@ -460,7 +179,7 @@ export default function App(){
     return parseFloat(((hours/monthlyHours)*(e.contractPeriod==='month'?wage:wage*weeksInMonth)).toFixed(2));
   };
   const hasWages=employees.some(e=>e.wage>0);
-  const costData = employees.map(e=>{ const h=empHours(e.id); const costUnits=hasWages?calcWageCost(e,h):parseFloat((h*(e.salaryPct/100)).toFixed(2)); return {emp:e, hours:h, costUnits}; });
+  const costData = employees.map(e=>{ const h=empHours(e.id); const costUnits=hasWages?calcWageCost(e,h):h; return {emp:e, hours:h, costUnits}; });
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
 
@@ -471,7 +190,7 @@ export default function App(){
       if(!ws) return;
       DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(x=>x.empId===e.id); if(a) totalH+=assignHours(b,a); }));
     });
-    const costUnits=hasWages?calcWageCost(e,totalH):parseFloat((totalH*(e.salaryPct/100)).toFixed(2));
+    const costUnits=hasWages?calcWageCost(e,totalH):totalH;
     return {emp:e, hours:totalH, costUnits};
   });
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
@@ -875,7 +594,7 @@ export default function App(){
                                                           <div style={{width:24,height:24,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div>
                                                           <div style={{flex:1,minWidth:0}}>
                                                             <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div>
-                                                            <div style={{fontSize:10,color:T.text3}}>{h}h / {emp.maxHours}h · {emp.salaryPct}%</div>
+                                                            <div style={{fontSize:10,color:T.text3}}>{h}h / {emp.maxHours}h</div>
                                                           </div>
                                                         </button>
                                                       );
@@ -947,7 +666,7 @@ export default function App(){
                   <Avatar emp={emp} size={40}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{orderedRoles(emp).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
-                    <div style={{fontSize:12,color:T.text2}}>{t('emp.salaryMax',{pct:emp.salaryPct,n:emp.maxHours})}</div>
+                    <div style={{fontSize:12,color:T.text2}}>{t('emp.salaryMax',{n:emp.maxHours})}</div>
                   </div>
                   <div style={{display:'flex',gap:6}}>
                     <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
@@ -994,7 +713,7 @@ export default function App(){
                         </div>
                         <div style={{flex:'1 1 80px'}}>
                           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.priority')}</div>
-                          <input type="number" min="10" max="200" step="5" value={emp.salaryPct||''} placeholder="100" onChange={e=>updateEmp(emp.id,'salaryPct',Number(e.target.value))} style={styles.input}/>
+                          <input type="number" min="1" max="999" step="1" value={emp.priority||''} placeholder="100" onChange={e=>updateEmp(emp.id,'priority',Number(e.target.value))} style={styles.input}/>
                           <div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.lowerFirst')}</div>
                         </div>
                       </div>
@@ -1055,7 +774,7 @@ export default function App(){
                   </div>
                   <div style={{flex:'1 1 70px'}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.priority')}</div>
-                    <input type="number" min="10" max="200" step="5" value={newEmp.salaryPct||''} placeholder="100" onChange={e=>setNewEmp(p=>({...p,salaryPct:Number(e.target.value)}))} style={styles.input}/>
+                    <input type="number" min="1" max="999" step="1" value={newEmp.priority||''} placeholder="100" onChange={e=>setNewEmp(p=>({...p,priority:Number(e.target.value)}))} style={styles.input}/>
                   </div>
                 </div>
                 <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
@@ -1355,17 +1074,13 @@ export default function App(){
                         const pct=maxCost>0?(costUnits/maxCost*100):0;
                         const isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));
                         return (
-                          <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 52px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
+                          <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 52px 1fr 52px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                             <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
                               <Avatar emp={emp} size={26}/>
                               <div style={{minWidth:0}}>
                                 <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div>
                                 <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{orderedRoles(emp).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
                               </div>
-                            </div>
-                            <div style={{textAlign:'center'}}>
-                              <div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.salaryPct}%</div>
-                              <div style={{fontSize:10,color:T.text3}}>{t('cost.salary')}</div>
                             </div>
                             <div style={{textAlign:'center'}}>
                               <div style={{fontSize:12,fontWeight:500,color:hours>emp.maxHours?T.danger:T.text}}>{hours}h</div>
@@ -1379,7 +1094,7 @@ export default function App(){
                                 ? <span style={{fontSize:10,color:T.warning}}>🌴 {t('cost.off')}</span>
                                 : <div>
                                     <div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>
-                                    <div style={{fontSize:10,color:T.text3}}>{hours>0?t('cost.index',{n:costUnits.toFixed(1)}):''}</div>
+                                    <div style={{fontSize:10,color:T.text3}}>{hours>0&&!hasWages?t('cost.estFromRate'):''}</div>
                                   </div>
                               }
                             </div>
