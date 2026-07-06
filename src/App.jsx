@@ -248,7 +248,7 @@ const styles = computeStyles();
 // ─── Small components ─────────────────────────────────────────────────────────
 function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
 
-function RoleBadge({role,rs}){ const s=rs||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; const isDark=T.bg==='#1A1714'; const bb=isDark?s.dot+'22':s.bg; const bt=isDark?s.dot:s.text; const bor=isDark?s.dot+'55':s.border; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:bb,color:bt,border:`1px solid ${bor}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
+function RoleBadge({role,rs}){ const s=rs||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}; const isDark=T.bg==='#1A1714'; const bb=isDark?s.dot+'22':s.bg; const bt=isDark?s.dot:s.text; const bor=isDark?s.dot+'55':s.border; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:T.bg==='#1A1714'?s.dot+'22':s.bg,color:T.bg==='#1A1714'?s.dot:s.text,border:`1px solid ${T.bg==='#1A1714'?s.dot+'55':s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
 
 function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:p.bg,color:selected?'#fff':p.text,border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
 
@@ -1174,11 +1174,11 @@ export default function App(){
                   {allRoles.map(role=>{
                     const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};
                     return (
-                      <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:rs.bg,border:`1px solid ${rs.border}`,borderRadius:8,padding:'6px 10px'}}>
+                      <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:T.bg==='#1A1714'?rs.dot+'18':rs.bg,border:`1px solid ${T.bg==='#1A1714'?rs.dot+'55':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
                         <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
                         <input type="number" min="0" max="10" value={block.roles[role]||0}
                           onChange={e=>updateDefaultRole(role,e.target.value)}
-                          style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
+                          style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
                       </div>
                     );
                   })}
@@ -1206,7 +1206,7 @@ export default function App(){
                                 <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
                                 <input type="number" min="0" max="10" value={dayRoles[role]||0}
                                   onChange={e=>updateOverrideRole(day,role,e.target.value)}
-                                  style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:'rgba(255,255,255,0.6)',color:rs.text,fontFamily:'inherit'}}/>
+                                  style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
                                 {isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}
                               </div>
                             );
