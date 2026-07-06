@@ -282,6 +282,7 @@ function AddRoleInline({onAdd}){
 export default function App(){
   const [theme,setThemeRaw]=useState(()=>{try{return localStorage.getItem("sa2_theme")||"light"}catch{return "light"}});
   Object.assign(T,THEMES[theme]||THEMES.light);
+  Object.assign(styles,computeStyles());
   const toggleTheme=()=>{const next=theme==="dark"?"light":"dark";setThemeRaw(next);try{localStorage.setItem("sa2_theme",next)}catch{}};
   const [view,        setView]      = useState('schedule');
   const [calMode,     setCalMode]   = useState('week');
