@@ -235,12 +235,15 @@ const save=(k,v)=>{ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{}};
 // ─── Styled helpers ───────────────────────────────────────────────────────────
 const pal=(e)=>EMP_PALETTE[e?.palIdx%EMP_PALETTE.length]||EMP_PALETTE[0];
 
-const styles = {
+function computeStyles(){
+  return {
   card: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 4px rgba(28,24,21,0.06)' },
   cardFlush: { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, overflow:'hidden', boxShadow:'0 1px 4px rgba(28,24,21,0.06)' },
   input: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box' },
   select: { padding:'7px 11px', borderRadius:8, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:13, fontFamily:'inherit', outline:'none', width:'100%', boxSizing:'border-box', cursor:'pointer' },
-};
+  };
+}
+const styles = computeStyles();
 
 // ─── Small components ─────────────────────────────────────────────────────────
 function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
