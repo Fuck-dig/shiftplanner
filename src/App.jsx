@@ -469,7 +469,7 @@ export default function App(){
       <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',gap:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:`0 1px 3px rgba(28,24,21,0.04)`}}>
         {/* Brand */}
         <div style={{display:'flex',alignItems:'baseline',gap:8,marginRight:36}}>
-          <span style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:600,color:T.text,letterSpacing:'-0.01em'}}>ShiftAI</span>
+          <span style={{fontFamily:"'Fraunces',serif",fontSize:18,fontWeight:600,color:T.text,letterSpacing:'-0.01em'}}>Rorota</span>
           <span style={{fontSize:11,color:T.text3,fontWeight:400}}>Restaurant</span>
         </div>
         {/* Nav */}
