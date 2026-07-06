@@ -1174,11 +1174,11 @@ export default function App(){
                   {allRoles.map(role=>{
                     const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};
                     return (
-                      <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:T.bg==='#1A1714'?rs.dot+'18':rs.bg,border:`1px solid ${T.bg==='#1A1714'?rs.dot+'55':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
+                      <div key={role} style={{display:'flex',alignItems:'center',gap:6,background:T.bg==='#1A1714'?rs.dot+'30':rs.bg,border:`1px solid ${T.bg==='#1A1714'?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
                         <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
                         <input type="number" min="0" max="10" value={block.roles[role]||0}
                           onChange={e=>updateDefaultRole(role,e.target.value)}
-                          style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
+                          style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
                       </div>
                     );
                   })}
@@ -1206,7 +1206,7 @@ export default function App(){
                                 <span style={{fontSize:11,fontWeight:500,color:rs.text}}>{role}</span>
                                 <input type="number" min="0" max="10" value={dayRoles[role]||0}
                                   onChange={e=>updateOverrideRole(day,role,e.target.value)}
-                                  style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(0,0,0,0.2)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
+                                  style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:T.bg==='#1A1714'?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:T.bg==='#1A1714'?rs.dot:rs.text,fontFamily:'inherit'}}/>
                                 {isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}
                               </div>
                             );
