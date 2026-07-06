@@ -1,6 +1,24 @@
 import { useState, useEffect } from "react";
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
+const THEMES = {
+  light: {
+    bg:"#F5F0E6",surface:"#FFFEFB",surfaceWarm:"#FBF6EE",border:"#E6DDCD",
+    text:"#211B15",text2:"#5C5248",text3:"#9C9088",
+    accent:"#BF5A2C",accentLight:"#F5EAE2",accentText:"#7A3318",
+    success:"#3D7A52",successLight:"#E5F0E9",
+    warning:"#956B18",warningLight:"#FBF0D5",
+    danger:"#963030",dangerLight:"#F5E2E2",
+  },
+  dark: {
+    bg:"#1A1714",surface:"#221E1A",surfaceWarm:"#2A2520",border:"#3A332B",
+    text:"#F2EDE6",text2:"#B8ACA0",text3:"#867A6E",
+    accent:"#D97A4A",accentLight:"#3A2A1E",accentText:"#F0A578",
+    success:"#5FAE7A",successLight:"#1E2E22",
+    warning:"#D4A53E",warningLight:"#2E2718",
+    danger:"#D6685E",dangerLight:"#2E1E1C",
+  },
+};
 const T = {
   bg:          '#F7F4EF',
   surface:     '#FFFFFF',
@@ -259,6 +277,9 @@ function AddRoleInline({onAdd}){
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App(){
+  const [theme,setThemeRaw]=useState(()=>{try{return localStorage.getItem("sa2_theme")||"light"}catch{return "light"}});
+  Object.assign(T,THEMES[theme]||THEMES.light);
+  const toggleTheme=()=>{const next=theme==="dark"?"light":"dark";setThemeRaw(next);try{localStorage.setItem("sa2_theme",next)}catch{}};
   const [view,        setView]      = useState('schedule');
   const [calMode,     setCalMode]   = useState('week');
   const [employees,   setEmpRaw]    = useState(()=>load('sa2_emps',DEFAULT_EMPLOYEES));
@@ -464,7 +485,7 @@ export default function App(){
           })}
         </div>
         {/* Generate */}
-        <button onClick={()=>supabase.auth.signOut()} style={{height:34,padding:"0 14px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:12,fontFamily:"inherit",marginRight:10}}>↪ Log out</button><Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
+        <button onClick={()=>supabase.auth.signOut()} style={{height:34,padding:"0 14px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:12,fontFamily:"inherit",marginRight:10}}>↪ Log out</button><button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{theme==="dark"?"☀":"☾"}</button><Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
           {generating?'Generating…':'✦ Generate'}
         </Btn>
       </div>
