@@ -464,7 +464,7 @@ export default function App(){
           })}
         </div>
         {/* Generate */}
-        <button onClick={()=>supabase.auth.signOut()} style={{height:34,padding:"0 14px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:12,fontFamily:"inherit",marginRight:10}}>↪ Log out</button><Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
+        <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
           {generating?'Generating…':'✦ Generate'}
         </Btn>
       </div>
