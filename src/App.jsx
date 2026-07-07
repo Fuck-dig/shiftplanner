@@ -22,6 +22,55 @@ function LoadingScreen() {
 
 function isDark() { return T.bg === '#1A1714'; }
 
+
+function TeamAccess({ orgId, s }){
+  const [members,setMembers]     = useState(null);
+  const [inviteEmail,setInvEmail]= useState('');
+  const [inviteBusy,setInvBusy]  = useState(false);
+  const [inviteMsg,setInvMsg]    = useState('');
+
+  useEffect(()=>{
+    listMembers(orgId).then(setMembers).catch(()=>setMembers([]));
+  },[orgId]);
+
+  const invite = async () => {
+    if(!inviteEmail.trim()) return;
+    setInvBusy(true); setInvMsg('');
+    try {
+      const userId = await findUserByEmail(inviteEmail.trim().toLowerCase());
+      if(!userId){ setInvMsg('No account found with that email. Ask them to sign up at rorota.net first.'); return; }
+      await addMember(orgId, userId, 'employee');
+      setInvMsg('Added! They can now log in and see the rota.');
+      setInvEmail('');
+      listMembers(orgId).then(setMembers);
+    } catch(e){ setInvMsg(e.message||'Something went wrong.'); }
+    finally { setInvBusy(false); }
+  };
+
+  if(members===null) return null;
+  return (
+    <div style={{...s.card,marginTop:4}}>
+      <div style={{fontFamily:"Fraunces, Georgia, serif",fontSize:15,fontWeight:500,marginBottom:4}}>Team Access</div>
+      <div style={{fontSize:12,color:T.text2,marginBottom:14}}>Give staff read-only access to the rota. They sign up at rorota.net first, then you add them here.</div>
+      {members.length>0&&(<div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:6}}>
+        {members.map(m=>(
+          <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
+            <span style={{fontSize:12,color:T.text2,flex:1}}>{m.user_id.slice(0,8)}…</span>
+            <span style={{fontSize:11,fontWeight:500,color:m.role==="manager"?T.accent:T.success,background:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{m.role}</span>
+            {m.role!=="manager"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);listMembers(orgId).then(setMembers);}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
+          </div>
+        ))}
+      </div>)}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <input type="email" placeholder="staff@email.com" value={inviteEmail} onChange={e=>setInvEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={inviteBusy}/>
+        <Btn onClick={invite} disabled={inviteBusy||!inviteEmail.trim()}>{inviteBusy?"Adding…":"Add to rota"}</Btn>
+      </div>
+      {inviteMsg&&<div style={{marginTop:8,fontSize:12,color:inviteMsg.includes("Added")?T.success:T.danger,background:inviteMsg.includes("Added")?T.successLight:T.dangerLight,border:`1px solid ${inviteMsg.includes("Added")?T.success:T.danger}33`,borderRadius:8,padding:"8px 10px"}}>{inviteMsg}</div>}
+    </div>
+  );
+}
+
 function Dashboard({ orgId, theme, toggleTheme }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
@@ -582,57 +631,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
   {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
 </div>)}
 
-{/* TEAM ACCESS — invite employees */}
-{view==='employees'&&(()=>{
-  const [members,setMembers]     = React.useState(null);
-  const [inviteEmail,setInvEmail]= React.useState('');
-  const [inviteBusy,setInvBusy]  = React.useState(false);
-  const [inviteMsg,setInvMsg]    = React.useState('');
-
-  React.useEffect(()=>{
-    listMembers(orgId).then(setMembers).catch(()=>setMembers([]));
-  },[orgId]);
-
-  const invite = async () => {
-    if(!inviteEmail.trim()) return;
-    setInvBusy(true); setInvMsg('');
-    try {
-      const userId = await findUserByEmail(inviteEmail.trim().toLowerCase());
-      if(!userId){ setInvMsg('No account found with that email. Ask them to sign up at rorota.net first.'); return; }
-      await addMember(orgId, userId, 'employee');
-      setInvMsg('Added! They can now log in and see the rota.');
-      setInvEmail('');
-      listMembers(orgId).then(setMembers);
-    } catch(e){ setInvMsg(e.message||'Something went wrong.'); }
-    finally { setInvBusy(false); }
-  };
-
-  return members!==null&&(
-    <div style={{...s.card,marginTop:4}}>
-      <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>Team Access</div>
-      <div style={{fontSize:12,color:T.text2,marginBottom:14}}>Give staff read-only access to the rota. They sign up at rorota.net first, then you add them here.</div>
-      {/* Current members */}
-      {members.length>0&&(<div style={{marginBottom:14,display:'flex',flexDirection:'column',gap:6}}>
-        {members.map(m=>(
-          <div key={m.user_id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-            <div style={{width:28,height:28,borderRadius:'50%',background:m.role==='manager'?T.accentLight:T.successLight,color:m.role==='manager'?T.accent:T.success,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700}}>
-              {m.role==='manager'?'M':'E'}
-            </div>
-            <span style={{fontSize:12,color:T.text2,flex:1}}>{m.user_id.slice(0,8)}…</span>
-            <span style={{fontSize:11,fontWeight:500,color:m.role==='manager'?T.accent:T.success,background:m.role==='manager'?T.accentLight:T.successLight,padding:'2px 8px',borderRadius:999,border:`1px solid ${m.role==='manager'?T.accent:T.success}33`}}>{m.role}</span>
-            {m.role!=='manager'&&<button onClick={async()=>{await removeMember(orgId,m.user_id);listMembers(orgId).then(setMembers);}} style={{padding:'3px 8px',borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>Remove</button>}
-          </div>
-        ))}
-      </div>)}
-      {/* Invite form */}
-      <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-        <input type="email" placeholder="staff@email.com" value={inviteEmail} onChange={e=>setInvEmail(e.target.value)} onKeyDown={e=>e.key==='Enter'&&invite()} style={{...s.input,flex:'2 1 200px'}} disabled={inviteBusy}/>
-        <Btn onClick={invite} disabled={inviteBusy||!inviteEmail.trim()}>{inviteBusy?'Adding…':'Add to rota'}</Btn>
-      </div>
-      {inviteMsg&&<div style={{marginTop:8,fontSize:12,color:inviteMsg.includes('Added')?T.success:T.danger,background:inviteMsg.includes('Added')?T.successLight:T.dangerLight,border:`1px solid ${inviteMsg.includes('Added')?T.success:T.danger}33`,borderRadius:8,padding:'8px 10px'}}>{inviteMsg}</div>}
-    </div>
-  );
-})()}
+{view==='employees'&&<TeamAccess orgId={orgId} s={s}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
