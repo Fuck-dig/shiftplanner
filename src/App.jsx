@@ -241,7 +241,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
     </div>
     <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('sched.week')],['month',t('sched.month')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('sched.week')],['month',t('sched.month')],['grid','Grid'],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
     {calMode==='week'&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
@@ -331,6 +331,92 @@ function Dashboard({ orgId, theme, toggleTheme }) {
     {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b> on leave</span>}
   </div>
 </div>))}
+
+{/* GRID VIEW — Planday-style: employees as rows, days as columns */}
+{calMode==='grid'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+  <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
+  <div style={{position:'relative'}}>
+    <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>Nothing scheduled yet</div>
+    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{employees.length} employees · {blocks.length} blocks</div>
+    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>Generate a schedule to see the grid view.</div>
+    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>✦ Generate this week</Btn><Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn></div>
+  </div>
+</div>):(
+  <div style={{...s.cardFlush,overflowX:'auto'}}>
+    {/* Header row */}
+    <div style={{display:'grid',gridTemplateColumns:'180px repeat(7,1fr)',minWidth:800,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+      <div style={{padding:'14px 20px',fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>Employee</div>
+      {DAYS.map((day,i)=>{
+        const date=weekDates[i];
+        const isToday=dateToISO(date)===dateToISO(new Date());
+        return(<div key={day} style={{padding:'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
+          <div style={{fontSize:13,fontWeight:600,color:isToday?T.accent:T.text}}>{day}</div>
+          <div style={{fontSize:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
+        </div>);
+      })}
+    </div>
+    {/* Employee rows */}
+    {employees.map((emp,ri)=>{
+      const p=pal(emp);
+      const isOdd=ri%2===1;
+      return(<div key={emp.id} style={{display:'grid',gridTemplateColumns:'180px repeat(7,1fr)',minWidth:800,borderBottom:`1px solid ${T.border}`,background:isOdd?T.surfaceWarm:T.surface}}>
+        {/* Employee name cell */}
+        <div style={{padding:'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:10,minHeight:72}}>
+          <div style={{width:36,height:36,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,color:T.text,lineHeight:1.2}}>{emp.name.split(' ')[0]}</div>
+            <div style={{fontSize:11,color:T.text3,marginTop:2}}>{emp.name.split(' ').slice(1).join(' ')}</div>
+            <div style={{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}}>{(emp.roles||[]).slice(0,2).map(r=>{const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>
+          </div>
+        </div>
+        {/* Day cells */}
+        {DAYS.map((day,di)=>{
+          const date=weekDates[di];
+          const onTO=isOnTimeOff(emp.id,date,timeOff);
+          const assignedBlock=blocks.find(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
+          const isToday=dateToISO(date)===dateToISO(new Date());
+          return(<div key={day} style={{padding:'10px 8px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',alignItems:'center',justifyContent:'center',minHeight:72,background:isToday?(isDark()?T.accent+'11':T.accentLight+'88'):'transparent',position:'relative'}}>
+            {onTO?(
+              <div style={{width:'100%',padding:'8px 10px',borderRadius:8,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
+                <div style={{fontSize:13}}>🌴</div>
+                <div style={{fontSize:11,fontWeight:500,color:T.warning,marginTop:2}}>Leave</div>
+              </div>
+            ):assignedBlock?(()=>{
+              const rs=roleStyles[(emp.roles||[])[0]]||{dot:'#9C9088',bg:'#F2F1EF'};
+              const bh=blockHours(assignedBlock);
+              return(
+                <div style={{width:'100%',padding:'10px 12px',borderRadius:10,background:isDark()?p.dot+'25':p.bg,border:`2px solid ${p.dot}55`,cursor:'default',position:'relative'}}>
+                  <div style={{fontSize:14,fontWeight:700,color:isDark()?p.dot:p.text,marginBottom:2}}>{assignedBlock.name}</div>
+                  <div style={{fontSize:12,color:isDark()?p.dot+'BB':p.text,opacity:0.85}}>{assignedBlock.start} – {assignedBlock.end}</div>
+                  <div style={{fontSize:11,color:isDark()?p.dot+'99':p.text,opacity:0.7,marginTop:2}}>{bh.toFixed(1)}h</div>
+                  <div style={{position:'absolute',top:8,right:8,width:8,height:8,borderRadius:'50%',background:p.dot}}/>
+                </div>
+              );
+            })():(
+              <div style={{width:'100%',height:52,borderRadius:8,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.4}}>
+                <span style={{fontSize:18,color:T.text3}}>—</span>
+              </div>
+            )}
+          </div>);
+        })}
+      </div>);
+    })}
+    {/* Footer summary */}
+    <div style={{display:'grid',gridTemplateColumns:'180px repeat(7,1fr)',minWidth:800,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
+      <div style={{padding:'10px 20px',fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>Total staff</div>
+      {DAYS.map((day,di)=>{
+        const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
+        const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
+        return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
+          <div style={{fontSize:16,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
+          <div style={{fontSize:10,color:T.text3}}>working</div>
+          {onLeave>0&&<div style={{fontSize:10,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
+        </div>);
+      })}
+    </div>
+  </div>
+))}
 
 {/* WEEK VIEW */}
 {calMode==='week'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
