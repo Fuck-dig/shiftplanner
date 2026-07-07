@@ -82,7 +82,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
 
   useEffect(()=>{
     const s=document.createElement('style');
-    s.textContent=`*{box-sizing:border-box}body{margin:0;background:${T.bg}}input,select{font-family:'Hanken Grotesk',sans-serif!important}input:focus,select:focus{outline:2px solid ${T.accent}!important;outline-offset:1px}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}`;
+    s.textContent=`html,body,#root{width:100%;margin:0;padding:0}*{box-sizing:border-box}body{background:${T.bg}}input,select{font-family:'Hanken Grotesk',sans-serif!important}input:focus,select:focus{outline:2px solid ${T.accent}!important;outline-offset:1px}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}`;
     document.head.appendChild(s); document.body.style.background=T.bg;
     return ()=>{try{document.head.removeChild(s);}catch{}};
   },[theme]);
@@ -217,7 +217,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
   const s=styles;
 
   return (
-    <div style={{minHeight:'100vh',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
+    <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:9,marginRight:36}}>
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
@@ -231,7 +231,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn>
       </div>
 
-      <div style={{padding:'24px 28px'}}>
+      <div style={{maxWidth:1100,margin:'0 auto',padding:'24px 20px'}}>
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>

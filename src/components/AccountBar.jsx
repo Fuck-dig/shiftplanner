@@ -26,7 +26,7 @@ export default function AccountBar({ orgs, active, onSwitch, onReload }){
   const wrap = { position:'fixed', bottom:14, left:14, zIndex:100, display:'flex', alignItems:'center', gap:8,
     background:T.surface, border:`1px solid ${T.border}`, borderRadius:10, padding:'6px 8px',
     boxShadow:'0 2px 10px rgba(33,27,21,0.14)', fontFamily:'inherit' };
-  const sel = { fontFamily:'inherit', fontSize:13, color:T.text, background:'transparent', border:'none', cursor:'pointer', maxWidth:200 };
+  const sel = { fontFamily:'inherit', fontSize:13, color:T.text, background:'transparent', border:'none', cursor:'pointer', maxWidth:300 };
   const btn = { fontFamily:'inherit', fontSize:12, color:T.text2, background:'transparent', border:`1px solid ${T.border}`, borderRadius:7, padding:'4px 8px', cursor:'pointer' };
   const inp = { fontFamily:'inherit', fontSize:13, border:`1px solid ${T.border}`, borderRadius:7, padding:'4px 8px', outline:'none' };
 
