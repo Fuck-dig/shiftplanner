@@ -231,7 +231,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn>
       </div>
 
-      <div style={{maxWidth:1100,margin:'0 auto',padding:'24px 20px'}}>
+      <div style={{padding:'24px 28px'}}>
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
