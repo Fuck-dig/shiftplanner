@@ -103,7 +103,7 @@ const DEFAULT_EMPLOYEES = [
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function getMondayDate(off=0){ const n=new Date('2026-05-11'),dy=n.getDay(),m=new Date(n); m.setDate(n.getDate()-dy+(dy===0?-6:1)+off*7); m.setHours(0,0,0,0); return m; }
+function getMondayDate(off=0){ const n=new Date(),dy=n.getDay(),m=new Date(n); m.setDate(n.getDate()-dy+(dy===0?-6:1)+off*7); m.setHours(0,0,0,0); return m; }
 function getWeekDates(off=0){ const m=getMondayDate(off); return DAYS.map((_,i)=>{ const d=new Date(m); d.setDate(m.getDate()+i); return d; }); }
 function weekKey(off){ const m=getMondayDate(off); return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`; }
 function dateToISO(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -130,7 +130,7 @@ function getMonthOffsets(ym){
   }
   return offsets;
 }
-function todayISO(){ return dateToISO(new Date('2026-05-11')); }
+function todayISO(){ return dateToISO(new Date()); }
 function initials(name){ return name.split(' ').map(n=>n[0]).join(''); }
 
 // ─── Scheduler ────────────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ export default function App(){
   const [weekOffset,  setWeekOffset]= useState(0);
   const [roleStyles,  setRoleStylesRaw] = useState(()=>load('sa2_roles', DEFAULT_ROLE_STYLES));
   const allRoles = Object.keys(roleStyles);
-  const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date('2026-05-11'); return {y:n.getFullYear(),m:n.getMonth()}; });
+  const [displayMonth,  setDisplayMonth]  = useState(()=>{ const n=new Date(); return {y:n.getFullYear(),m:n.getMonth()}; });
   const [editingRole,    setEditingRole]    = useState(null); // { name, newName, colorIdx }
   const [confirmDelete,  setConfirmDelete]  = useState(null); // role name
   const [generating,  setGenerating]= useState(false);
@@ -489,7 +489,7 @@ export default function App(){
           })}
         </div>
         {/* Generate */}
-        <button onClick={()=>supabase.auth.signOut()} style={{height:34,padding:"0 14px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:12,fontFamily:"inherit",marginRight:10}}>↪ Log out</button><button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{theme==="dark"?"☀":"☾"}</button><Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
+        <button onClick={()=>{ if(window.confirm('Clear all data and reset Rorota?')){ localStorage.clear(); window.location.reload(); } }} style={{height:34,padding:'0 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',marginRight:8}}>↺ Reset</button><button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{theme==="dark"?"☀":"☾"}</button><Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">
           {generating?'Generating…':'✦ Generate'}
         </Btn>
       </div>
@@ -520,7 +520,7 @@ export default function App(){
                   }
                 }} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
               </div>
-              <button onClick={()=>{ setWeekOffset(0); const n=new Date('2026-05-11'); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>Today</button>
+              <button onClick={()=>{ setWeekOffset(0); const n=new Date(); setDisplayMonth({y:n.getFullYear(),m:n.getMonth()}); }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>Today</button>
               {/* Mode toggle */}
               <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
                 {[['week','Week'],['month','Month'],['staff','Staff']].map(([k,l])=>(
