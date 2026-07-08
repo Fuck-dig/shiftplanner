@@ -672,7 +672,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
   {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
 </div>)}
 
-{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} s={s}/>}
+{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName||'Restaurant'} s={s}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
