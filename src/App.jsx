@@ -22,12 +22,13 @@ function LoadingScreen() {
 
 function isDark() { return T.bg === '#1A1714'; }
 
-function TeamAccess({ orgId, orgName, s }){
+function TeamAccess({ orgId, orgName, isOwner=false, s }){
   const [members,  setMembers]  = useState(null);
   const [invites,  setInvites]  = useState([]);
   const [email,    setEmail]    = useState('');
   const [busy,     setBusy]     = useState(false);
   const [sentTo,   setSentTo]   = useState(null);
+  const [inviteRole, setInviteRole] = useState('employee');
   const [showTemplate, setShowTemplate] = useState(false);
   const [emailSubject, setEmailSubject] = useState(`You're invited to join ${orgName||'our restaurant'} on Rorota`);
   const [emailBody,    setEmailBody]    = useState(`Hi,\n\nYou've been invited to view the staff rota for ${orgName||'our restaurant'} on Rorota.\n\n1. Go to https://rorota.net\n2. Sign up or log in with this email address\n3. You'll automatically get access to the rota.\n\nSee you on the rota!`);
@@ -57,7 +58,7 @@ See you on the rota!`);
     setBusy(true);
     try {
       // 1. Create invitation record in DB
-      await createInvitation(orgId, email.trim());
+      await createInvitation(orgId, email.trim(), inviteRole);
       // 2. Send email via Edge Function
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(
@@ -98,8 +99,17 @@ See you on the rota!`);
             <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
               <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
               <span style={{fontSize:11,color:T.text2,flex:1,fontFamily:"monospace"}}>{m.user_id.slice(0,16)}…</span>
-              <span style={{fontSize:11,fontWeight:500,color:m.role==="manager"?T.accent:T.success,background:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999,border:`1px solid ${m.role==="manager"?T.accent:T.success}33`}}>{m.role}</span>
-              {m.role!=="manager"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
+              {isOwner?(
+                <select value={m.role} onChange={async e=>{await addMember(orgId,m.user_id,e.target.value);reload();}}
+                  style={{fontSize:11,padding:"2px 6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
+                  <option value="owner">Owner</option>
+                  <option value="manager">Manager</option>
+                  <option value="employee">Employee</option>
+                </select>
+              ):(
+                <span style={{fontSize:11,fontWeight:500,color:m.role==="owner"?T.danger:m.role==="manager"?T.accent:T.success,background:m.role==="owner"?T.dangerLight:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{m.role}</span>
+              )}
+              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
             </div>
           ))}
         </div>
@@ -113,8 +123,18 @@ See you on the rota!`);
               <span style={{fontSize:13}}>✉️</span>
               <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
               <span style={{fontSize:10,color:T.warning}}>awaiting signup</span>
-              <button onClick={async()=>{try{const{data:{session}}=await supabase.auth.getSession();await fetch("https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({to:inv.email,orgName,subject:emailSubject,body:emailBody})});alert(`Invite resent to ${inv.email}`);}catch(e){alert(e.message||"Failed to resend");}}} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Resend</button>
-              <button onClick={async()=>{await deleteInvitation(inv.id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
+              <button onClick={async()=>{
+                try{
+                  const{data:{session}}=await supabase.auth.getSession();
+                  await fetch('https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite',{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+                    body:JSON.stringify({to:inv.email,orgName,subject:emailSubject,body:emailBody})
+                  });
+                  alert(`Invite resent to ${inv.email}`);
+                }catch(e){alert(e.message||'Failed to resend');}
+              }} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Resend</button>
+              <button onClick={async()=>{try{await deleteInvitation(inv.id);reload();}catch(e){alert(e.message||'Failed to delete');}}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
             </div>
           ))}
         </div>
@@ -138,6 +158,12 @@ See you on the rota!`);
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <input type="email" placeholder="colleague@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
+        <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
+          style={{padding:"7px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
+          <option value="employee">Employee</option>
+          {isOwner&&<option value="manager">Manager</option>}
+          {isOwner&&<option value="owner">Owner</option>}
+        </select>
         <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?"Sending…":"Send invite"}</Btn>
       </div>
 
@@ -150,7 +176,7 @@ See you on the rota!`);
   );
 }
 
-function Dashboard({ orgId, orgName='Restaurant', theme, toggleTheme }) {
+function Dashboard({ orgId, theme, toggleTheme }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
@@ -710,7 +736,7 @@ function Dashboard({ orgId, orgName='Restaurant', theme, toggleTheme }) {
   {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
 </div>)}
 
-{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} s={s}/>}
+{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} isOwner={isOwner} s={s}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -939,14 +965,15 @@ export default function App(){
   if(orgs.length===0)return<Onboarding onCreated={async id=>{switchOrg(id);await reloadOrgs();}}/>;
   const active=orgs.find(o=>o.id===activeOrg)||orgs[0];
 
-  const isManager = (active.role === 'manager' || !active.role);
+  const isManager = (active.role === 'owner' || active.role === 'manager' || !active.role);
+  const isOwner   = (active.role === 'owner');
 
   if (!isManager) return (
     <EmployeeView orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme}/>
   );
 
   return(<>
-    <Dashboard orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme}/>
+    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} theme={theme} toggleTheme={toggleTheme}/>
     <AccountBar orgs={orgs} active={active} onSwitch={switchOrg} onReload={reloadOrgs}/>
   </>);
 }
