@@ -113,7 +113,7 @@ See you on the rota!`);
               <span style={{fontSize:13}}>✉️</span>
               <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
               <span style={{fontSize:10,color:T.warning}}>awaiting signup</span>
-              <a href={mailtoLink(inv.email)} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit",textDecoration:"none"}}>Resend</a>
+              <button onClick={async()=>{try{const{data:{session}}=await supabase.auth.getSession();await fetch("https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${session.access_token}`},body:JSON.stringify({to:inv.email,orgName,subject:emailSubject,body:emailBody})});alert(`Invite resent to ${inv.email}`);}catch(e){alert(e.message||"Failed to resend");}}} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Resend</button>
               <button onClick={async()=>{await deleteInvitation(inv.id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
             </div>
           ))}
@@ -350,7 +350,7 @@ function Dashboard({ orgId, orgName='Restaurant', theme, toggleTheme }) {
       <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:9,marginRight:36}}>
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
-          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{t('common.restaurant')}</span>
+          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
         </div>
         <div style={{display:'flex',alignItems:'center',flex:1}}>
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
