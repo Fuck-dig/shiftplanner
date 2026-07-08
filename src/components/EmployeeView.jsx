@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { T, styles, computeStyles, THEMES, EMP_PALETTE, DAYS, pal, initials } from '../lib/constants';
-import { getWeekDates, weekKey, fmt, fmtLong, dateToISO, blockHours, todayISO } from '../lib/dates';
-import { isOnTimeOff } from '../lib/schedule';
+import { getWeekDates, weekKey, fmt, dateToISO, todayISO } from '../lib/dates';
+import { blockHours, isOnTimeOff } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff } from '../lib/data';
 import { supabase } from '../lib/supabase';
 
