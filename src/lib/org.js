@@ -66,3 +66,62 @@ export async function findUserByEmail(email){
   if (error) throw error;
   return data; // user_id or null
 }
+
+// ─── Invitations ──────────────────────────────────────────────────────────────
+
+// Create an invitation for an email
+export async function createInvitation(orgId, email, role='employee'){
+  const { data, error } = await supabase
+    .from('invitations')
+    .insert({ org_id: orgId, email: email.toLowerCase().trim(), role })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id; // the invite id becomes the link token
+}
+
+// Check if logged-in user has any pending invitations and accept them
+export async function acceptPendingInvitations(){
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { data: invites } = await supabase
+    .from('invitations')
+    .select('id, org_id, role')
+    .eq('email', user.email)
+    .is('used_at', null);
+
+  if (!invites || invites.length === 0) return;
+
+  for (const invite of invites) {
+    // Add to memberships
+    await supabase.from('memberships').upsert(
+      { org_id: invite.org_id, user_id: user.id, role: invite.role },
+      { onConflict: 'org_id,user_id' }
+    );
+    // Mark invite as used
+    await supabase.from('invitations')
+      .update({ used_at: new Date().toISOString() })
+      .eq('id', invite.id);
+  }
+}
+
+// List pending invitations for an org
+export async function listInvitations(orgId){
+  const { data, error } = await supabase
+    .from('invitations')
+    .select('id, email, role, created_at, used_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+// Delete an invitation
+export async function deleteInvitation(inviteId){
+  const { error } = await supabase
+    .from('invitations')
+    .delete()
+    .eq('id', inviteId);
+  if (error) throw error;
+}

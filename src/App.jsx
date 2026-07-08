@@ -5,7 +5,7 @@ import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, day
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
-import { listOrgs, findUserByEmail, addMember, removeMember, listMembers } from './lib/org';
+import { listOrgs, addMember, removeMember, listMembers, createInvitation, listInvitations, deleteInvitation, acceptPendingInvitations } from './lib/org';
 import { Avatar, RoleBadge, EmpChip, StatusBadge, Btn, SectionLabel, AddRoleInline } from './components/ui';
 import Auth from './components/Auth';
 import EmployeeView from './components/EmployeeView';
@@ -22,51 +22,92 @@ function LoadingScreen() {
 
 function isDark() { return T.bg === '#1A1714'; }
 
+function TeamAccess({ orgId, orgName, s }){
+  const [members,  setMembers]  = useState(null);
+  const [invites,  setInvites]  = useState([]);
+  const [email,    setEmail]    = useState('');
+  const [busy,     setBusy]     = useState(false);
+  const [sentTo,   setSentTo]   = useState(null);
 
-function TeamAccess({ orgId, s }){
-  const [members,setMembers]     = useState(null);
-  const [inviteEmail,setInvEmail]= useState('');
-  const [inviteBusy,setInvBusy]  = useState(false);
-  const [inviteMsg,setInvMsg]    = useState('');
-
-  useEffect(()=>{
+  const reload = () => {
     listMembers(orgId).then(setMembers).catch(()=>setMembers([]));
-  },[orgId]);
+    listInvitations(orgId).then(setInvites).catch(()=>setInvites([]));
+  };
+  useEffect(()=>{ reload(); },[orgId]);
+
+  const mailtoLink = (addr) => {
+    const sub = encodeURIComponent(`You're invited to ${orgName} on Rorota`);
+    const body = encodeURIComponent(`Hi,
+
+You've been invited to view the staff rota for ${orgName} on Rorota.
+
+1. Go to https://rorota.net
+2. Sign up or log in with this email: ${addr}
+3. You'll automatically get access to the rota.
+
+See you on the rota!`);
+    return `mailto:${addr}?subject=${sub}&body=${body}`;
+  };
 
   const invite = async () => {
-    if(!inviteEmail.trim()) return;
-    setInvBusy(true); setInvMsg('');
+    if(!email.trim()) return;
+    setBusy(true);
     try {
-      const userId = await findUserByEmail(inviteEmail.trim().toLowerCase());
-      if(!userId){ setInvMsg('No account found with that email. Ask them to sign up at rorota.net first.'); return; }
-      await addMember(orgId, userId, 'employee');
-      setInvMsg('Added! They can now log in and see the rota.');
-      setInvEmail('');
-      listMembers(orgId).then(setMembers);
-    } catch(e){ setInvMsg(e.message||'Something went wrong.'); }
-    finally { setInvBusy(false); }
+      await createInvitation(orgId, email.trim());
+      setSentTo(email.trim()); setEmail(''); reload();
+    } catch(e){ alert(e.message||'Could not create invitation.'); }
+    finally { setBusy(false); }
   };
 
   if(members===null) return null;
+  const pending = invites.filter(i=>!i.used_at);
+
   return (
     <div style={{...s.card,marginTop:4}}>
       <div style={{fontFamily:"Fraunces, Georgia, serif",fontSize:15,fontWeight:500,marginBottom:4}}>Team Access</div>
-      <div style={{fontSize:12,color:T.text2,marginBottom:14}}>Give staff read-only access to the rota. They sign up at rorota.net first, then you add them here.</div>
-      {members.length>0&&(<div style={{marginBottom:14,display:"flex",flexDirection:"column",gap:6}}>
-        {members.map(m=>(
-          <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-            <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
-            <span style={{fontSize:12,color:T.text2,flex:1}}>{m.user_id.slice(0,8)}…</span>
-            <span style={{fontSize:11,fontWeight:500,color:m.role==="manager"?T.accent:T.success,background:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{m.role}</span>
-            {m.role!=="manager"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);listMembers(orgId).then(setMembers);}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
-          </div>
-        ))}
+      <div style={{fontSize:12,color:T.text2,marginBottom:16}}>Invite staff by email. They sign up at rorota.net and automatically get access to this restaurant's rota.</div>
+
+      {members.length>0&&(<div style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Active members</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {members.map(m=>(
+            <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
+              <span style={{fontSize:11,color:T.text2,flex:1,fontFamily:"monospace"}}>{m.user_id.slice(0,16)}…</span>
+              <span style={{fontSize:11,fontWeight:500,color:m.role==="manager"?T.accent:T.success,background:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999,border:`1px solid ${m.role==="manager"?T.accent:T.success}33`}}>{m.role}</span>
+              {m.role!=="manager"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
+            </div>
+          ))}
+        </div>
       </div>)}
+
+      {pending.length>0&&(<div style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Pending invitations</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {pending.map(inv=>(
+            <div key={inv.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.warningLight,border:`1px solid ${T.warning}33`}}>
+              <span style={{fontSize:13}}>✉️</span>
+              <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
+              <span style={{fontSize:10,color:T.warning}}>awaiting signup</span>
+              <a href={mailtoLink(inv.email)} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit",textDecoration:"none"}}>Resend</a>
+              <button onClick={async()=>{await deleteInvitation(inv.id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
+            </div>
+          ))}
+        </div>
+      </div>)}
+
+      <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Invite someone</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <input type="email" placeholder="staff@email.com" value={inviteEmail} onChange={e=>setInvEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={inviteBusy}/>
-        <Btn onClick={invite} disabled={inviteBusy||!inviteEmail.trim()}>{inviteBusy?"Adding…":"Add to rota"}</Btn>
+        <input type="email" placeholder="colleague@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
+        <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?"Sending…":"Send invite"}</Btn>
       </div>
-      {inviteMsg&&<div style={{marginTop:8,fontSize:12,color:inviteMsg.includes("Added")?T.success:T.danger,background:inviteMsg.includes("Added")?T.successLight:T.dangerLight,border:`1px solid ${inviteMsg.includes("Added")?T.success:T.danger}33`,borderRadius:8,padding:"8px 10px"}}>{inviteMsg}</div>}
+
+      {sentTo&&(<div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:T.successLight,border:`1px solid ${T.success}33`}}>
+        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:6}}>✓ Invitation created for {sentTo}</div>
+        <div style={{fontSize:12,color:T.success,marginBottom:10}}>Click below to open your email app with a pre-written invite.</div>
+        <a href={mailtoLink(sentTo)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:T.success,color:"#fff",fontSize:12,fontWeight:500,textDecoration:"none",fontFamily:"inherit"}}>✉️ Open email to {sentTo}</a>
+        <button onClick={()=>setSentTo(null)} style={{marginLeft:8,padding:"7px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Done</button>
+      </div>)}
     </div>
   );
 }
@@ -631,7 +672,7 @@ function Dashboard({ orgId, theme, toggleTheme }) {
   {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
 </div>)}
 
-{view==='employees'&&<TeamAccess orgId={orgId} s={s}/>}
+{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} s={s}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -827,8 +868,15 @@ export default function App(){
   const [activeOrg,setActiveOrg]=useState(()=>{try{return localStorage.getItem('sa2_active_org')||null;}catch{return null;}});
 
   useEffect(()=>{
-    supabase.auth.getSession().then(({data})=>setSession(data.session));
-    const{data:sub}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s));
+    supabase.auth.getSession().then(({data})=>{
+      setSession(data.session);
+      // Accept any pending invitations when user logs in
+      if(data.session) acceptPendingInvitations().catch(console.error);
+    });
+    const{data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{
+      setSession(s);
+      if(s) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(console.error);
+    });
     return()=>sub.subscription.unsubscribe();
   },[]);
 
@@ -860,7 +908,7 @@ export default function App(){
   );
 
   return(<>
-    <Dashboard orgId={active.id} key={active.id} theme={theme} toggleTheme={toggleTheme}/>
+    <Dashboard orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme}/>
     <AccountBar orgs={orgs} active={active} onSwitch={switchOrg} onReload={reloadOrgs}/>
   </>);
 }
