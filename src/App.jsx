@@ -28,6 +28,9 @@ function TeamAccess({ orgId, orgName, s }){
   const [email,    setEmail]    = useState('');
   const [busy,     setBusy]     = useState(false);
   const [sentTo,   setSentTo]   = useState(null);
+  const [showTemplate, setShowTemplate] = useState(false);
+  const [emailSubject, setEmailSubject] = useState(`You're invited to join ${orgName||'our restaurant'} on Rorota`);
+  const [emailBody,    setEmailBody]    = useState(`Hi,\n\nYou've been invited to view the staff rota for ${orgName||'our restaurant'} on Rorota.\n\n1. Go to https://rorota.net\n2. Sign up or log in with this email address\n3. You'll automatically get access to the rota.\n\nSee you on the rota!`);
 
   const reload = () => {
     listMembers(orgId).then(setMembers).catch(()=>setMembers([]));
@@ -53,9 +56,30 @@ See you on the rota!`);
     if(!email.trim()) return;
     setBusy(true);
     try {
+      // 1. Create invitation record in DB
       await createInvitation(orgId, email.trim());
+      // 2. Send email via Edge Function
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        'https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            to: email.trim(),
+            orgName,
+            subject: emailSubject,
+            body: emailBody,
+          }),
+        }
+      );
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
       setSentTo(email.trim()); setEmail(''); reload();
-    } catch(e){ alert(e.message||'Could not create invitation.'); }
+    } catch(e){ alert(e.message||'Could not send invitation.'); }
     finally { setBusy(false); }
   };
 
@@ -96,23 +120,37 @@ See you on the rota!`);
         </div>
       </div>)}
 
-      <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Invite someone</div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>Invite someone</div>
+        <button onClick={()=>setShowTemplate(p=>!p)} style={{fontSize:11,color:T.text2,background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,padding:'3px 8px',cursor:'pointer',fontFamily:'inherit'}}>{showTemplate?'Hide':'Edit email template'}</button>
+      </div>
+
+      {showTemplate&&(<div style={{marginBottom:12,padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:8}}>
+        <div>
+          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Subject</div>
+          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{...s.input}}/>
+        </div>
+        <div>
+          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Message body</div>
+          <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={6} style={{...s.input,resize:'vertical',lineHeight:1.5}}/>
+        </div>
+      </div>)}
+
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <input type="email" placeholder="colleague@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
         <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?"Sending…":"Send invite"}</Btn>
       </div>
 
       {sentTo&&(<div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:T.successLight,border:`1px solid ${T.success}33`}}>
-        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:6}}>✓ Invitation created for {sentTo}</div>
-        <div style={{fontSize:12,color:T.success,marginBottom:10}}>Click below to open your email app with a pre-written invite.</div>
-        <a href={mailtoLink(sentTo)} style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:T.success,color:"#fff",fontSize:12,fontWeight:500,textDecoration:"none",fontFamily:"inherit"}}>✉️ Open email to {sentTo}</a>
-        <button onClick={()=>setSentTo(null)} style={{marginLeft:8,padding:"7px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Done</button>
+        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:4}}>✓ Email sent to {sentTo}</div>
+        <div style={{fontSize:12,color:T.success}}>They'll receive an invite email from invites@rorota.net with instructions to sign up.</div>
+        <button onClick={()=>setSentTo(null)} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Done</button>
       </div>)}
     </div>
   );
 }
 
-function Dashboard({ orgId, orgName='Restaurant', theme, toggleTheme }) {
+function Dashboard({ orgId, theme, toggleTheme }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
@@ -672,7 +710,7 @@ function Dashboard({ orgId, orgName='Restaurant', theme, toggleTheme }) {
   {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
 </div>)}
 
-{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName||'Restaurant'} s={s}/>}
+{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} s={s}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
