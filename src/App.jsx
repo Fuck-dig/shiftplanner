@@ -177,7 +177,7 @@ See you on the rota!`);
   );
 }
 
-function Dashboard({ orgId, theme, toggleTheme }) {
+function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTheme, onBack=()=>{} }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
