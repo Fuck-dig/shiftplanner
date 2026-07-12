@@ -8,6 +8,7 @@ import { supabase } from './lib/supabase';
 import { listOrgs, addMember, removeMember, listMembers, createInvitation, listInvitations, deleteInvitation, acceptPendingInvitations } from './lib/org';
 import { Avatar, RoleBadge, EmpChip, StatusBadge, Btn, SectionLabel, AddRoleInline } from './components/ui';
 import Auth from './components/Auth';
+import RestaurantPicker from './components/RestaurantPicker';
 import EmployeeView from './components/EmployeeView';
 import Onboarding from './components/Onboarding';
 import AccountBar from './components/AccountBar';
@@ -176,7 +177,7 @@ See you on the rota!`);
   );
 }
 
-function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTheme }) {
+function Dashboard({ orgId, theme, toggleTheme }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
@@ -374,9 +375,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   return (
     <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
-        <div style={{display:'flex',alignItems:'baseline',gap:9,marginRight:36}}>
-          <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
-          <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginRight:36}}>
+          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>‹ All</button>
+          <div style={{display:'flex',alignItems:'baseline',gap:7}}>
+            <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
+            <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
+          </div>
         </div>
         <div style={{display:'flex',alignItems:'center',flex:1}}>
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
@@ -929,7 +933,7 @@ export default function App(){
   const [session,setSession]    =useState(undefined);
   const [orgs,setOrgs]          =useState(undefined);
   const [orgTick,setOrgTick]    =useState(0);
-  const [activeOrg,setActiveOrg]=useState(()=>{try{return localStorage.getItem('sa2_active_org')||null;}catch{return null;}});
+  const [activeOrg,setActiveOrg]=useState(null); // always starts null — user picks on login
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
@@ -951,10 +955,7 @@ export default function App(){
     return()=>{alive=false;};
   },[session,orgTick]);
 
-  useEffect(()=>{
-    if(!orgs||orgs.length===0)return;
-    if(!activeOrg||!orgs.some(o=>o.id===activeOrg)){const first=orgs[0].id;setActiveOrg(first);try{localStorage.setItem('sa2_active_org',first);}catch{}}
-  },[orgs,activeOrg]);
+  // Don't auto-select — let user pick from RestaurantPicker
 
   const switchOrg =id=>{setActiveOrg(id);try{localStorage.setItem('sa2_active_org',id);}catch{}};
   const reloadOrgs=async()=>{setOrgs(undefined);setOrgTick(t=>t+1);};
@@ -962,18 +963,29 @@ export default function App(){
   if(session===undefined)return<LoadingScreen/>;
   if(!session)return<Auth/>;
   if(orgs===undefined)return<LoadingScreen/>;
-  if(orgs.length===0)return<Onboarding onCreated={async id=>{switchOrg(id);await reloadOrgs();}}/>;
-  const active=orgs.find(o=>o.id===activeOrg)||orgs[0];
 
-  const isManager = (active.role === 'owner' || active.role === 'manager' || !active.role);
-  const isOwner   = (active.role === 'owner');
+  // Show restaurant picker if no active org selected or user has no orgs yet
+  if(!activeOrg||!orgs.find(o=>o.id===activeOrg)){
+    return<RestaurantPicker
+      orgs={orgs}
+      onSelect={id=>switchOrg(id)}
+      onCreated={async id=>{await reloadOrgs();switchOrg(id);}}
+      theme={theme}
+      toggleTheme={toggleTheme}
+    />;
+  }
 
-  if (!isManager) return (
-    <EmployeeView orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme}/>
+  const active=orgs.find(o=>o.id===activeOrg);
+  if(!active)return<LoadingScreen/>;
+
+  const isManager=(active.role==='owner'||active.role==='manager'||!active.role);
+  const isOwner=(active.role==='owner');
+
+  if(!isManager)return(
+    <EmployeeView orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
   );
 
-  return(<>
-    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} theme={theme} toggleTheme={toggleTheme}/>
-    <AccountBar orgs={orgs} active={active} onSwitch={switchOrg} onReload={reloadOrgs}/>
-  </>);
+  return(
+    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+  );
 }
