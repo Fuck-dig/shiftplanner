@@ -504,11 +504,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>✦ Generate this week</Btn><Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn></div>
   </div>
 </div>):(()=>{
-  // Sort/group employees
+  // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
   const allRoleOrder=Object.keys(roleStyles);
-  const sorted=gridGroupBy==='role'
-    ?[...employees].sort((a,b)=>{const ra=allRoleOrder.indexOf((a.roles||[])[0]),rb=allRoleOrder.indexOf((b.roles||[])[0]);return ra-rb||a.name.localeCompare(b.name);})
-    :[...employees].sort((a,b)=>a.name.localeCompare(b.name));
+  const rows=gridGroupBy==='role'
+    ?allRoleOrder
+        .filter(role=>employees.some(e=>(e.roles||[]).includes(role)))
+        .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    :[...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=gridTight?140:180;
   return(
@@ -536,17 +538,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         })}
       </div>
       {/* Rows */}
-      {sorted.map((emp,ri)=>{
+      {rows.map((row,ri)=>{
+        const emp=row.emp;
         const p=pal(emp);
-        const prevEmp=sorted[ri-1];
-        const primaryRole=(emp.roles||[])[0];
-        const prevRole=prevEmp?(prevEmp.roles||[])[0]:null;
-        const showDivider=gridGroupBy==='role'&&ri>0&&primaryRole!==prevRole;
-        return(<div key={emp.id}>
+        const prevRole=ri>0?rows[ri-1].role:undefined;
+        const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
+        return(<div key={`${row.role||'all'}-${emp.id}`}>
           {/* Role group divider */}
           {showDivider&&<div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
-              <RoleBadge role={primaryRole} rs={roleStyles[primaryRole]}/>
+              <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
             {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
@@ -574,6 +575,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                   </div>
                 ):assignedBlocks.length>0?assignedBlocks.map(b=>{
                   const bh=blockHours(b);
+                  const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+                  const shiftRole=shiftEntry?.role;
+                  const rrs=shiftRole?(roleStyles[shiftRole]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}):null;
                   return(
                     <div key={b.id} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
@@ -581,6 +585,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                       {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
                       {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{b.start.slice(0,5)}</div>}
                       {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{bh.toFixed(1)}h</div>}
+                      {(emp.roles||[]).length>1&&shiftRole&&<div style={{marginTop:3,display:'inline-block',fontSize:9,fontWeight:600,color:isDark()?rrs.dot:rrs.text,background:isDark()?rrs.dot+'22':rrs.bg,border:`1px solid ${isDark()?rrs.dot+'55':rrs.border}`,padding:'1px 5px',borderRadius:999}}>{shiftRole}</div>}
                     </div>
                   );
                 }):(
