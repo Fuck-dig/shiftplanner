@@ -204,6 +204,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [costsMode,setCostsMode]     = useState('week');
   const [hourlyRate,setHourlyRateRaw]= useState(()=>loadPref('sa2_rate',{amount:150,currency:'kr'}));
   const [lang,setLangRaw]            = useState(()=>loadPref('sa2_lang',detectLang()));
+  const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
+  const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
+  useEffect(()=>{
+    const onResize=()=>setIsMobile(window.innerWidth<860);
+    window.addEventListener('resize',onResize);
+    return ()=>window.removeEventListener('resize',onResize);
+  },[]);
 
   const setLang=v=>{setLangRaw(v);savePref('sa2_lang',v);};
   const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);savePref('sa2_rate',val);};
@@ -414,14 +421,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
   return (
     <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
-      <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12,marginRight:36}}>
-          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
-          <div style={{display:'flex',alignItems:'baseline',gap:7}}>
-            <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
-            <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
+      <div style={{position:'relative'}}>
+      <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginRight:isMobile?'auto':36,minWidth:0,overflow:'hidden'}}>
+          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
+          <div style={{display:'flex',alignItems:'baseline',gap:7,minWidth:0,overflow:'hidden'}}>
+            <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0}}>Rorota</span>
+            <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
           </div>
         </div>
+        {!isMobile&&(<>
         <div style={{display:'flex',alignItems:'center',flex:1}}>
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
         </div>
@@ -429,9 +438,26 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn>
         <span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">🧪 Test: full month</Btn></span>
+        </>)}
+        {isMobile&&(
+          <button onClick={()=>setMobileMenuOpen(p=>!p)} aria-label="Menu" style={{width:36,height:36,marginLeft:8,borderRadius:8,border:`1px solid ${T.border}`,background:mobileMenuOpen?T.surfaceWarm:T.surface,color:T.text,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{mobileMenuOpen?'✕':'☰'}</button>
+        )}
       </div>
 
-      <div style={{maxWidth:1100,margin:'0 auto',padding:'24px 20px'}}>
+      {isMobile&&mobileMenuOpen&&(
+        <div style={{position:'absolute',top:56,left:0,right:0,background:T.surface,borderBottom:`1px solid ${T.border}`,boxShadow:'0 12px 30px -12px rgba(33,27,21,0.35)',zIndex:99,padding:'8px 16px 16px',display:'flex',flexDirection:'column',gap:4,maxHeight:'calc(100vh - 56px)',overflowY:'auto'}}>
+          {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
+          <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+            <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}</select>
+            <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
+          </div>
+          <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn></div>
+          <div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">🧪 Test: full month</Btn></div>
+        </div>
+      )}
+      </div>
+
+      <div style={{maxWidth:1100,margin:'0 auto',padding:isMobile?'20px 14px':'24px 20px'}}>
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
