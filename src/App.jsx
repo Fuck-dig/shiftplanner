@@ -23,7 +23,7 @@ function LoadingScreen() {
 
 function isDark() { return T.bg === '#1A1714'; }
 
-function TeamAccess({ orgId, orgName, isOwner=false, s }){
+function TeamAccess({ orgId, orgName, isOwner=false, s, t }){
   const [members,  setMembers]  = useState(null);
   const [invites,  setInvites]  = useState([]);
   const [email,    setEmail]    = useState('');
@@ -81,7 +81,7 @@ See you on the rota!`);
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       setSentTo(email.trim()); setEmail(''); reload();
-    } catch(e){ alert(e.message||'Could not send invitation.'); }
+    } catch(e){ alert(e.message||t('team.sendFailed')); }
     finally { setBusy(false); }
   };
 
@@ -90,11 +90,11 @@ See you on the rota!`);
 
   return (
     <div style={{...s.card,marginTop:4}}>
-      <div style={{fontFamily:"Fraunces, Georgia, serif",fontSize:15,fontWeight:500,marginBottom:4}}>Team Access</div>
-      <div style={{fontSize:12,color:T.text2,marginBottom:16}}>Invite staff by email. They sign up at rorota.net and automatically get access to this restaurant's rota.</div>
+      <div style={{fontFamily:"Fraunces, Georgia, serif",fontSize:15,fontWeight:500,marginBottom:4}}>{t('team.title')}</div>
+      <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('team.desc')}</div>
 
       {members.length>0&&(<div style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Active members</div>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>{t('team.activeMembers')}</div>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
@@ -103,27 +103,27 @@ See you on the rota!`);
               {isOwner?(
                 <select value={m.role} onChange={async e=>{await addMember(orgId,m.user_id,e.target.value);reload();}}
                   style={{fontSize:11,padding:"2px 6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
-                  <option value="owner">Owner</option>
-                  <option value="manager">Manager</option>
-                  <option value="employee">Employee</option>
+                  <option value="owner">{t('team.roleOwner')}</option>
+                  <option value="manager">{t('team.roleManager')}</option>
+                  <option value="employee">{t('team.roleEmployee')}</option>
                 </select>
               ):(
-                <span style={{fontSize:11,fontWeight:500,color:m.role==="owner"?T.danger:m.role==="manager"?T.accent:T.success,background:m.role==="owner"?T.dangerLight:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{m.role}</span>
+                <span style={{fontSize:11,fontWeight:500,color:m.role==="owner"?T.danger:m.role==="manager"?T.accent:T.success,background:m.role==="owner"?T.dangerLight:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{t('team.role'+(m.role.charAt(0).toUpperCase()+m.role.slice(1)))}</span>
               )}
-              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Remove</button>}
+              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.remove')}</button>}
             </div>
           ))}
         </div>
       </div>)}
 
       {pending.length>0&&(<div style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>Pending invitations</div>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>{t('team.pendingInvites')}</div>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {pending.map(inv=>(
             <div key={inv.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.warningLight,border:`1px solid ${T.warning}33`}}>
               <span style={{fontSize:13}}>✉️</span>
               <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
-              <span style={{fontSize:10,color:T.warning}}>awaiting signup</span>
+              <span style={{fontSize:10,color:T.warning}}>{t('team.awaitingSignup')}</span>
               <button onClick={async()=>{
                 try{
                   const{data:{session}}=await supabase.auth.getSession();
@@ -132,46 +132,46 @@ See you on the rota!`);
                     headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
                     body:JSON.stringify({to:inv.email,orgName,subject:emailSubject,body:emailBody})
                   });
-                  alert(`Invite resent to ${inv.email}`);
-                }catch(e){alert(e.message||'Failed to resend');}
-              }} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Resend</button>
-              <button onClick={async()=>{try{await deleteInvitation(inv.id);reload();}catch(e){alert(e.message||'Failed to delete');}}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
+                  alert(t('team.resendSent',{email:inv.email}));
+                }catch(e){alert(e.message||t('team.resendFailed'));}
+              }} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.resend')}</button>
+              <button onClick={async()=>{try{await deleteInvitation(inv.id);reload();}catch(e){alert(e.message||t('team.deleteFailed'));}}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
             </div>
           ))}
         </div>
       </div>)}
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>Invite someone</div>
-        <button onClick={()=>setShowTemplate(p=>!p)} style={{fontSize:11,color:T.text2,background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,padding:'3px 8px',cursor:'pointer',fontFamily:'inherit'}}>{showTemplate?'Hide':'Edit email template'}</button>
+        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>{t('team.inviteSomeone')}</div>
+        <button onClick={()=>setShowTemplate(p=>!p)} style={{fontSize:11,color:T.text2,background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,padding:'3px 8px',cursor:'pointer',fontFamily:'inherit'}}>{showTemplate?t('team.hideTemplate'):t('team.editTemplate')}</button>
       </div>
 
       {showTemplate&&(<div style={{marginBottom:12,padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:8}}>
         <div>
-          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Subject</div>
+          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('team.subject')}</div>
           <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{...s.input}}/>
         </div>
         <div>
-          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>Message body</div>
+          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('team.messageBody')}</div>
           <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={6} style={{...s.input,resize:'vertical',lineHeight:1.5}}/>
         </div>
       </div>)}
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <input type="email" placeholder="colleague@email.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
+        <input type="email" placeholder={t('team.emailPlaceholder')} value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
         <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
           style={{padding:"7px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-          <option value="employee">Employee</option>
-          {isOwner&&<option value="manager">Manager</option>}
-          {isOwner&&<option value="owner">Owner</option>}
+          <option value="employee">{t('team.roleEmployee')}</option>
+          {isOwner&&<option value="manager">{t('team.roleManager')}</option>}
+          {isOwner&&<option value="owner">{t('team.roleOwner')}</option>}
         </select>
-        <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?"Sending…":"Send invite"}</Btn>
+        <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?t('team.sending'):t('team.sendInvite')}</Btn>
       </div>
 
       {sentTo&&(<div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:T.successLight,border:`1px solid ${T.success}33`}}>
-        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:4}}>✓ Email sent to {sentTo}</div>
-        <div style={{fontSize:12,color:T.success}}>They'll receive an invite email from invites@rorota.net with instructions to sign up.</div>
-        <button onClick={()=>setSentTo(null)} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Done</button>
+        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:4}}>{t('team.sentTo',{email:sentTo})}</div>
+        <div style={{fontSize:12,color:T.success}}>{t('team.sentDesc')}</div>
+        <button onClick={()=>setSentTo(null)} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>{t('team.done')}</button>
       </div>)}
     </div>
   );
@@ -268,8 +268,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setTimeout(()=>{
       const wd=getWeekDates(forOff);
       const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
-      const notes=noMgr.length?`${total} slots filled — ${noMgr.length} block(s) without a manager.`:`${total} slots filled with full manager coverage.`;
-      const warnings=noMgr.map(({day,block})=>`⚠️ ${day} ${block}: No manager available!`);
+      const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
+      const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
       setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,notes,warnings}}));
       setGenerating(false);
     },100);
@@ -282,8 +282,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       getMonthOffsets(displayMonth).forEach(off=>{
         const wd=getWeekDates(off);
         const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
-        const notes=noMgr.length?`${total} slots — ${noMgr.length} without manager.`:`${total} slots with full manager coverage.`;
-        const warnings=noMgr.map(({day,block})=>`⚠️ ${day} ${block}: No manager!`);
+        const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
+        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
       setSchedules(p=>({...p,...updates}));setGenerating(false);
@@ -319,8 +319,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         // week ends up identical.
         const weekEmployees=testEmployees.map(e=>({...e,priority:e.priority+Math.floor(Math.random()*30)}));
         const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,timeOff,allRoles);
-        const notes=noMgr.length?`${total} slots — ${noMgr.length} without manager.`:`${total} slots with full manager coverage.`;
-        const warnings=noMgr.map(({day,block})=>`⚠️ ${day} ${block}: No manager!`);
+        const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
+        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
       setEmployees(testEmployees);
@@ -416,7 +416,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'center',gap:12,marginRight:36}}>
-          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>‹ All</button>
+          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
           <div style={{display:'flex',alignItems:'baseline',gap:7}}>
             <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
             <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
@@ -443,7 +443,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>
     <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('sched.week')],['month',t('sched.month')],['grid','Grid'],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('sched.week')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
     {calMode==='week'&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
@@ -456,21 +456,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>)}
   </div>
   {offThisWeek.length>0&&calMode!=='month'&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{fontSize:13,color:T.warning}}>🌴</span><span style={{fontSize:12,fontWeight:500,color:T.warning}}>{t('sched.onLeaveWeek')}</span><div style={{display:'flex',gap:5,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div></div>)}
-  {selected&&(<div style={{background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span>✋</span><span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b> selected — click another to swap.</span><button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.cancel')}</button></div>)}
-  {confirmed&&calMode!=='month'&&(<div style={{background:T.successLight,border:`1px solid ${T.success}44`,borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span>✅</span><span style={{flex:1,fontSize:12,fontWeight:600,color:T.success}}>Schedule confirmed.</span><Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn></div>)}
+  {selected&&(<div style={{background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span>✋</span><span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b>{t('sched.swapHintTail')}</span><button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.cancel')}</button></div>)}
+  {confirmed&&calMode!=='month'&&(<div style={{background:T.successLight,border:`1px solid ${T.success}44`,borderRadius:10,padding:'10px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10}}><span>✅</span><span style={{flex:1,fontSize:12,fontWeight:600,color:T.success}}>{t('sched.confirmedBanner')}.</span><Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn></div>)}
   {notes&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px',marginBottom:16,display:'flex',gap:8}}><span>💡</span><span>{notes}</span></div>}
   {warnings.filter(w=>w.startsWith('⚠️')).map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'8px 14px',marginBottom:8}}>{w}</div>)}
 
 {/* MONTH VIEW */}
 {calMode==='month'&&(<div style={{...s.cardFlush,padding:0}}>
-  <div style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm}}><div/>{DAYS.map(d=><div key={d} style={{padding:'10px 4px',textAlign:'center',fontSize:11,fontWeight:600,color:T.text2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{d}</div>)}</div>
+  <div style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm}}><div/>{DAYS.map(d=><div key={d} style={{padding:'10px 4px',textAlign:'center',fontSize:11,fontWeight:600,color:T.text2,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('day.'+d)}</div>)}</div>
   {monthOff.map(off=>{
     const wd=getWeekDates(off),k=weekKey(off),ws=schedules[k]?.schedule||null,wConf=schedules[k]?.confirmed||false,isCur=off===weekOffset;
     return(<div key={off} style={{display:'grid',gridTemplateColumns:'48px repeat(7,1fr)',borderBottom:`1px solid ${T.border}`,background:isCur?T.accentLight:wConf?T.successLight+'88':'transparent'}}>
       <div style={{display:'flex',flexDirection:'column',justifyContent:'center',alignItems:'center',gap:4,padding:'8px 4px',borderRight:`1px solid ${T.border}`}}>
         {wConf&&<span style={{fontSize:9,color:T.success,fontWeight:600}}>✓</span>}
-        <button onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${isCur?T.accent:T.border}`,background:isCur?T.accent:'transparent',color:isCur?'#fff':T.text3,fontFamily:'inherit'}}>view</button>
-        {!ws&&<button onClick={()=>generate(off)} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${T.accent}`,background:'transparent',color:T.accent,fontFamily:'inherit'}}>gen</button>}
+        <button onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${isCur?T.accent:T.border}`,background:isCur?T.accent:'transparent',color:isCur?'#fff':T.text3,fontFamily:'inherit'}}>{t('month.view')}</button>
+        {!ws&&<button onClick={()=>generate(off)} style={{fontSize:9,padding:'2px 6px',borderRadius:4,cursor:'pointer',border:`1px solid ${T.accent}`,background:'transparent',color:T.accent,fontFamily:'inherit'}}>{t('month.gen')}</button>}
       </div>
       {wd.map((d,di)=>{
         const dayName=DAYS[di],inMonth=d.getMonth()===displayMonth.m&&d.getFullYear()===displayMonth.y;
@@ -479,7 +479,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         const offCount=employees.filter(e=>isOnTimeOff(e.id,d,timeOff)).length;
         return(<div key={di} onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{padding:'8px 6px',cursor:'pointer',borderRight:di<6?`1px solid ${T.border}`:'none',background:inMonth?dot.bg:'transparent',opacity:inMonth?1:0.35,minHeight:60}}>
           <div style={{fontSize:13,fontWeight:500,color:inMonth?dot.text:T.text3,marginBottom:2}}>{d.getDate()}</div>
-          {ws&&inMonth&&<div style={{fontSize:10,color:dot.text}}>{empCount} staff</div>}
+          {ws&&inMonth&&<div style={{fontSize:10,color:dot.text}}>{t('common.staffN',{n:empCount})}</div>}
           {offCount>0&&inMonth&&<div style={{fontSize:10,color:T.warning}}>🌴 {offCount}</div>}
           {!ws&&inMonth&&<div style={{fontSize:10,color:T.text3}}>—</div>}
         </div>);
@@ -487,19 +487,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>);
   })}
   <div style={{display:'flex',gap:16,padding:'12px 16px',background:T.surfaceWarm,alignItems:'center',flexWrap:'wrap'}}>
-    <span style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Coverage</span>
-    {[['full','Full'],['partial','Partial'],['low','Low'],['empty','Not generated']].map(([sv,l])=>{const d=cDot(sv);return<div key={sv} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:3,background:d.bg,border:`1px solid ${d.border}`}}/><span style={{fontSize:11,color:T.text2}}>{l}</span></div>;})}
-    {monthOff.some(off=>schedules[weekKey(off)])&&<><div style={{flex:1}}/><Btn small variant="danger" onClick={deleteMonth}>Delete whole month</Btn></>}
+    <span style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('month.coverage')}</span>
+    {[['full',t('month.full')],['partial',t('month.partial')],['low',t('month.low')],['empty',t('month.notGenerated')]].map(([sv,l])=>{const d=cDot(sv);return<div key={sv} style={{display:'flex',alignItems:'center',gap:5}}><div style={{width:10,height:10,borderRadius:3,background:d.bg,border:`1px solid ${d.border}`}}/><span style={{fontSize:11,color:T.text2}}>{l}</span></div>;})}
+    {monthOff.some(off=>schedules[weekKey(off)])&&<><div style={{flex:1}}/><Btn small variant="danger" onClick={deleteMonth}>{t('month.deleteMonth')}</Btn></>}
   </div>
 </div>)}
 
 {/* STAFF VIEW */}
 {calMode==='staff'&&(!schedule?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
-  <div style={{position:'relative'}}><div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,marginBottom:8}}>No rota for this week</div><div style={{fontSize:13,color:T.text2,marginBottom:24}}>Generate first to see the staff rota.</div><Btn onClick={()=>generate()}>✦ Generate this week</Btn></div>
+  <div style={{position:'relative'}}><div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,marginBottom:8}}>{t('staff.noRota')}</div><div style={{fontSize:13,color:T.text2,marginBottom:24}}>{t('staff.noRotaDesc')}</div><Btn onClick={()=>generate()}>{'✦ '+t('staff.generateWeek')}</Btn></div>
 </div>):(<div>
   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}}>
-    <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>Weekly Rota</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {employees.length} staff</div></div>
+    <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {t('common.staffN',{n:employees.length})}</div></div>
     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       {allRoles.filter(r=>employees.some(e=>(e.roles||[]).includes(r))).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
       <div style={{width:1,height:16,background:T.border}}/>
@@ -514,23 +514,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:`linear-gradient(to right, ${isDark()?p.dot+'18':p.bg}, ${T.surface})`,borderBottom:`1px solid ${T.border}`}}>
           <Avatar emp={emp} size={36}/>
           <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:T.text}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:2}}>{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div>
-          <div style={{textAlign:'right'}}><div style={{fontSize:13,fontWeight:600,color:h>emp.maxHours?T.danger:h===0?T.text3:T.text}}>{h}h</div><div style={{fontSize:10,color:T.text3}}>of {emp.maxHours}h</div></div>
+          <div style={{textAlign:'right'}}><div style={{fontSize:13,fontWeight:600,color:h>emp.maxHours?T.danger:h===0?T.text3:T.text}}>{h}h</div><div style={{fontSize:10,color:T.text3}}>{t('staff.ofMax',{n:emp.maxHours})}</div></div>
           <div style={{width:60,height:5,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.min(100,(h/emp.maxHours)*100)}%`,borderRadius:999,background:h>emp.maxHours?T.danger:h/emp.maxHours>0.8?T.warning:T.success}}/></div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
           {DAYS.map((day,di)=>{const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff),ab=blocks.find(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));return(
             <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:di>=5?T.surfaceWarm:'transparent',minHeight:72,display:'flex',flexDirection:'column',gap:3}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{day}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
-              {onTO?<span style={{fontSize:11,color:T.warning,fontWeight:500}}>🌴 Leave</span>:ab?<div><div style={{fontSize:11,fontWeight:500,color:T.text}}>{ab.name}</div><div style={{fontSize:10,color:T.text3}}>{ab.start}–{ab.end}</div></div>:<span style={{fontSize:12,color:T.border}}>—</span>}
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{t('day.'+day)}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
+              {onTO?<span style={{fontSize:11,color:T.warning,fontWeight:500}}>{'🌴 '+t('staff.leave')}</span>:ab?<div><div style={{fontSize:11,fontWeight:500,color:T.text}}>{ab.name}</div><div style={{fontSize:10,color:T.text3}}>{ab.start}–{ab.end}</div></div>:<span style={{fontSize:12,color:T.border}}>—</span>}
             </div>);})}
         </div>
       </div>);})}
   </div>
   <div style={{marginTop:16,padding:'12px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
-    <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>Week summary</span>
-    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b> total</span>
-    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b> of {employees.length} working</span>
-    {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b> on leave</span>}
+    <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('staff.weekSummary')}</span>
+    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
+    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:employees.length})}</span>
+    {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b>{t('staff.onLeaveCount')}</span>}
   </div>
 </div>))}
 
@@ -539,10 +539,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
   <div style={{position:'relative'}}>
     <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>Nothing scheduled yet</div>
-    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{employees.length} employees · {blocks.length} blocks</div>
-    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>Generate a schedule to see the grid view.</div>
-    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>✦ Generate this week</Btn><Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn></div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>{t('empty.nothing')}</div>
+    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{t.n('empty.across',blocks.length,{emp:employees.length,blocks:blocks.length})}</div>
+    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
+    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
 </div>):(()=>{
   // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
@@ -567,21 +567,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <button onClick={()=>setWeekOffset(0)} style={{padding:'5px 10px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
         <div style={{width:1,height:18,background:T.border}}/>
         <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-          {[['name','By name'],['role','By role']].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+          {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
         </div>
         <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
-          {gridTight?'Compact':'Comfortable'}
+          {gridTight?t('grid.compact'):t('grid.comfortable')}
         </button>
-        <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length} of {employees.length} scheduled</span>
+        <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{t('grid.scheduledOfTotal',{n:employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length,total:employees.length})}</span>
       </div>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
         {/* Header */}
         <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
-          <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>Employee</div>
+          <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
             return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
-              <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{day}</div>
+              <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
               <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
             </div>);
           })}
@@ -652,13 +652,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       })}
       {/* Footer */}
       <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
-        <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>Total</div>
+        <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
         {DAYS.map((day,di)=>{
           const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
           const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
           return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
             <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
-            <div style={{fontSize:10,color:T.text3}}>working</div>
+            <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
             {onLeave>0&&<div style={{fontSize:10,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
           </div>);
         })}
@@ -672,23 +672,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
   <div style={{position:'relative'}}>
     <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📅</div>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>Nothing scheduled yet</div>
-    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{employees.length} employees · {blocks.length} blocks{offThisWeek.length>0?` · ${offThisWeek.length} on leave`:''}</div>
-    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>Availability, hours caps, roles and approved leave are all respected.</div>
-    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>✦ Generate this week</Btn><Btn onClick={generateMonth} variant="secondary">Generate whole month</Btn></div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>{t('empty.nothing')}</div>
+    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{t.n('empty.across',blocks.length,{emp:employees.length,blocks:blocks.length})}{offThisWeek.length>0?t('empty.leaveSuffix',{n:offThisWeek.length}):''}</div>
+    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
+    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
 </div>):(<div style={{display:'flex',flexDirection:'column',gap:16}}>
   {blocks.map(block=>(
     <div key={block.id} style={s.cardFlush}>
       <div style={{padding:'12px 20px',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12}}>
         <div style={{flex:1}}><span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{block.name}</span><span style={{fontSize:12,color:T.text3,marginLeft:10}}>{block.start} – {block.end} · {blockHours(block).toFixed(1)}h</span></div>
-        <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>Manager enforced</span>
+        <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>{t('week.managerEnforced')}</span>
       </div>
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
-            <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>Role</th>
-            {DAYS.map((day,i)=><th key={day} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:T.text,background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{day}<div style={{fontSize:10,fontWeight:400,color:T.text3}}>{fmt(weekDates[i])}</div></th>)}
+            <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
+            {DAYS.map((day,i)=><th key={day} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:T.text,background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:T.text3}}>{fmt(weekDates[i])}</div></th>)}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
@@ -703,10 +703,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     <div style={{display:'flex',flexDirection:'column',gap:3}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return<EmpChip key={idx} emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>;})}
                       {gap>0&&(<div style={{position:'relative'}}>
-                        <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});}} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:'pointer',fontFamily:'inherit'}}>{isTarget?'+ move here':`−${gap} short`}</button>
+                        <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});}} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:'pointer',fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
                         {!selected&&openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&(()=>{const eligible=eligibleForSlot(day,block.id,role);return(<div style={{position:'absolute',top:'100%',left:0,marginTop:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 4px 16px rgba(28,24,21,0.12)',zIndex:200,minWidth:180,maxWidth:240,padding:8}}>
-                          <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>Add {role} — {day}</div>
-                          {eligible.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>No one available</div>:eligible.map(emp=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>addToSlot(day,block.id,role,emp)} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);})}
+                          <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                          {eligible.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:eligible.map(emp=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>addToSlot(day,block.id,role,emp)} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:p.bg,color:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);})}
                           <div style={{borderTop:`1px solid ${T.border}`,marginTop:4,paddingTop:4}}><button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button></div>
                         </div>);})()} 
                       </div>)}
@@ -721,7 +721,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>
   ))}
   <div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>Weekly Hours</div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('week.weeklyHours')}</div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
       {employees.map(emp=>{const h=empHours(emp.id),pct=Math.min(100,(h/emp.maxHours)*100),over=h>emp.maxHours;return(<div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:500}}>{emp.name.split(' ')[0]}</span></div>
@@ -743,61 +743,61 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <div style={{fontSize:12,color:T.text2}}>{(emp.contractType||'hourly')==='hourly'?`${emp.wage||'—'} kr/h`:`${(emp.wage||0).toLocaleString('da-DK')} kr/mo`} · max {emp.maxHours}h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div>
       </div>
       <div style={{display:'flex',gap:6}}>
-        <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>⧉ Clone</Btn>
+        <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
         <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
         <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
       </div>
     </div>
     {expandedEmp===emp.id&&(<div style={{marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
       <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-        <div style={{flex:'2 1 120px'}}><SectionLabel>Name</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
+        <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
       </div>
       <div style={{marginBottom:12}}>
-        <SectionLabel>Roles</SectionLabel>
+        <SectionLabel>{t('emp.roles')}</SectionLabel>
         <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>
           {allRoles.map(r=>{const active=(emp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=emp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)updateEmp(emp.id,'roles',next);}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
         </div>
       </div>
       <div style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
-        <SectionLabel>Contract</SectionLabel>
+        <SectionLabel>{t('emp.contract')}</SectionLabel>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,alignItems:'flex-start'}}>
-          <div style={{flex:'1 1 140px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>Paid by</div><div style={{display:'flex',gap:3}}>{[['hourly','Hourly'],['fixed','Fixed salary']].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-          <div style={{flex:'1 1 130px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>Period</div><div style={{display:'flex',gap:3}}>{[['week','Per week'],['month','Per month']].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-          <div style={{flex:'1 1 110px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}</div><div style={{display:'flex',alignItems:'center',gap:5}}><input type="number" min="0" step="1" value={emp.wage||0} onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
-          <div style={{flex:'1 1 90px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>Max h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div><input type="number" min="4" max="250" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={s.input}/></div>
-          <div style={{flex:'1 1 80px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>Priority %</div><input type="number" min="10" max="200" step="5" value={emp.priority||100} onChange={e=>updateEmp(emp.id,'priority',Number(e.target.value))} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>Lower = first</div></div>
+          <div style={{flex:'1 1 140px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.paidBy')}</div><div style={{display:'flex',gap:3}}>{[['hourly',t('emp.hourly')],['fixed',t('emp.fixedSalary')]].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
+          <div style={{flex:'1 1 130px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.period')}</div><div style={{display:'flex',gap:3}}>{[['week',t('emp.perWeek')],['month',t('emp.perMonth')]].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
+          <div style={{flex:'1 1 110px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div><div style={{display:'flex',alignItems:'center',gap:5}}><input type="number" min="0" step="1" value={emp.wage||0} onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
+          <div style={{flex:'1 1 90px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractPeriod||'week')==='month'?t('emp.maxHMonth'):t('emp.maxHWeek')}</div><input type="number" min="4" max="250" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={s.input}/></div>
+          <div style={{flex:'1 1 80px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.priority')} %</div><input type="number" min="10" max="200" step="5" value={emp.priority||100} onChange={e=>updateEmp(emp.id,'priority',Number(e.target.value))} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.lowerFirst')}</div></div>
         </div>
       </div>
-      <div style={{marginBottom:10}}><SectionLabel>Quick templates</SectionLabel><div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>{Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{tpl}</button>)}</div></div>
-      <SectionLabel>Weekly availability</SectionLabel>
+      <div style={{marginBottom:10}}><SectionLabel>{t('emp.quickTemplates')}</SectionLabel><div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>{Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{tpl}</button>)}</div></div>
+      <SectionLabel>{t('emp.weeklyAvail')}</SectionLabel>
       <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
         {DAYS.map(day=>{const avail=emp.availability[day],p=pal(emp);return(<div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{day}</button>
-          {avail?(<><span style={{fontSize:11,color:T.text3}}>From</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>to</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>Not available</span>}
+          <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{t('day.'+day)}</button>
+          {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
         </div>);})}
       </div>
     </div>)}
   </div>))}
   {showAddEmp&&(<div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>New employee</div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.newEmployee')}</div>
     <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
-      <input placeholder="Full name" value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...s.input,flex:'2 1 130px'}} autoFocus/>
-      <div style={{flex:'2 1 200px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>Roles</div><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{const active=(newEmp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=newEmp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)setNewEmp(p=>({...p,roles:next}));}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
+      <input placeholder={t('emp.fullName')} value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...s.input,flex:'2 1 130px'}} autoFocus/>
+      <div style={{flex:'2 1 200px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>{t('emp.roles')}</div><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{const active=(newEmp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=newEmp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)setNewEmp(p=>({...p,roles:next}));}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
       </div></div>
     </div>
     <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-start'}}>
-      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>Paid by</div><div style={{display:'flex',gap:3}}>{[['hourly','Hourly'],['fixed','Fixed']].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>Period</div><div style={{display:'flex',gap:3}}>{[['week','Week'],['month','Month']].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-      <div style={{flex:'1 1 100px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractType||'hourly')==='hourly'?'Hourly rate':'Monthly salary'}</div><div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage||0} onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
-      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>Max h/{(newEmp.contractPeriod||'week')==='month'?'mo':'wk'}</div><input type="number" min="4" max="250" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={s.input}/></div>
-      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>Priority %</div><input type="number" min="10" max="200" step="5" value={newEmp.priority||100} onChange={e=>setNewEmp(p=>({...p,priority:Number(e.target.value)}))} style={s.input}/></div>
+      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.paidBy')}</div><div style={{display:'flex',gap:3}}>{[['hourly',t('emp.hourly')],['fixed',t('emp.fixed')]].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
+      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.period')}</div><div style={{display:'flex',gap:3}}>{[['week',t('emp.week')],['month',t('emp.month')]].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
+      <div style={{flex:'1 1 100px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div><div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage||0} onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
+      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractPeriod||'week')==='month'?t('emp.maxHMo'):t('emp.maxHWk')}</div><input type="number" min="4" max="250" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={s.input}/></div>
+      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.priority')} %</div><input type="number" min="10" max="200" step="5" value={newEmp.priority||100} onChange={e=>setNewEmp(p=>({...p,priority:Number(e.target.value)}))} style={s.input}/></div>
     </div>
-    <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('common.add')} employee</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
+    <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
   </div>)}
-  {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">+ Add employee</Btn>}
+  {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">{t('emp.addEmployeeBtn')}</Btn>}
 </div>)}
 
-{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} isOwner={isOwner} s={s}/>}
+{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}/>}
 
 {/* TIME OFF */}
 {view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
@@ -807,32 +807,32 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   </div>)}
   <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['all','All'],['pending','Pending'],['approved','Approved'],['this-week','This week']].map(([k,l])=><button key={k} onClick={()=>setToFilter(k)} style={{padding:'4px 10px',borderRadius:6,background:toFilter===k?T.bg:'transparent',border:toFilter===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:toFilter===k?500:400,color:toFilter===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['all',t('to.all')],['pending',t('to.pending')],['approved',t('to.approved')],['this-week',t('to.thisWeek')]].map(([k,l])=><button key={k} onClick={()=>setToFilter(k)} style={{padding:'4px 10px',borderRadius:6,background:toFilter===k?T.bg:'transparent',border:toFilter===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:toFilter===k?500:400,color:toFilter===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
-    <div style={{marginLeft:'auto'}}><Btn onClick={()=>setShowAddTO(true)}>+ Add request</Btn></div>
+    <div style={{marginLeft:'auto'}}><Btn onClick={()=>setShowAddTO(true)}>{t('to.addRequest')}</Btn></div>
   </div>
   {showAddTO&&(<div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>New time-off request</div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('to.newRequest')}</div>
     <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
-      <div style={{flex:'2 1 140px'}}><SectionLabel>Employee</SectionLabel><select value={newTO.empId} onChange={e=>setNewTO(p=>({...p,empId:e.target.value}))} style={s.select}><option value="">Select…</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
+      <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.employee')}</SectionLabel><select value={newTO.empId} onChange={e=>setNewTO(p=>({...p,empId:e.target.value}))} style={s.select}><option value="">{t('to.selectEllipsis')}</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
       <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.fromCap')}</SectionLabel><input type="date" value={newTO.startDate} onChange={e=>setNewTO(p=>({...p,startDate:e.target.value}))} style={s.input}/></div>
       <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.toCap')}</SectionLabel><input type="date" value={newTO.endDate} onChange={e=>setNewTO(p=>({...p,endDate:e.target.value}))} style={s.input}/></div>
-      <div style={{flex:'1 1 100px'}}><SectionLabel>Type</SectionLabel><select value={newTO.type} onChange={e=>setNewTO(p=>({...p,type:e.target.value}))} style={s.select}>{TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select></div>
-      <div style={{flex:'2 1 140px'}}><SectionLabel>Note</SectionLabel><input placeholder="Optional" value={newTO.note} onChange={e=>setNewTO(p=>({...p,note:e.target.value}))} style={s.input}/></div>
-      <div style={{flex:'1 1 100px'}}><SectionLabel>Status</SectionLabel><select value={newTO.status} onChange={e=>setNewTO(p=>({...p,status:e.target.value}))} style={s.select}><option>Pending</option><option>Approved</option></select></div>
+      <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.type')}</SectionLabel><select value={newTO.type} onChange={e=>setNewTO(p=>({...p,type:e.target.value}))} style={s.select}>{TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select></div>
+      <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.note')}</SectionLabel><input placeholder={t('to.optional')} value={newTO.note} onChange={e=>setNewTO(p=>({...p,note:e.target.value}))} style={s.input}/></div>
+      <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.status')}</SectionLabel><select value={newTO.status} onChange={e=>setNewTO(p=>({...p,status:e.target.value}))} style={s.select}><option>Pending</option><option>Approved</option></select></div>
     </div>
-    <div style={{display:'flex',gap:8}}><Btn onClick={addTO}>{t('common.save')} request</Btn><Btn onClick={()=>setShowAddTO(false)} variant="ghost">{t('common.cancel')}</Btn></div>
+    <div style={{display:'flex',gap:8}}><Btn onClick={addTO}>{t('to.saveRequest')}</Btn><Btn onClick={()=>setShowAddTO(false)} variant="ghost">{t('common.cancel')}</Btn></div>
   </div>)}
   {filteredTO.length===0?(<div style={{...s.card,textAlign:'center',padding:'44px 32px',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.4,pointerEvents:'none'}}/>
-    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>🌴</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>No time-off requests{toFilter!=='all'?' matching this filter':' yet'}</div>{toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>+ Add first request</Btn>}</div>
+    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>🌴</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>{toFilter!=='all'?t('to.noneFilter',{filter:t('to.'+(toFilter==='this-week'?'thisWeek':toFilter)).toLowerCase()}):t('to.noneYet')}</div>{toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>{t('to.addFirst')}</Btn>}</div>
   </div>):filteredTO.map(to=>{
     const emp=employees.find(e=>e.id===to.empId),days=Math.round((new Date(to.endDate)-new Date(to.startDate))/(24*3600*1000))+1,borderColor={Approved:T.success,Pending:T.warning,Rejected:T.danger}[to.status]||T.border;
     return(<div key={to.id} style={{...s.card,borderLeft:`3px solid ${borderColor}`,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
       {emp&&<Avatar emp={emp} size={38}/>}
       <div style={{flex:1,minWidth:140}}>
-        <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{emp?.name||'Unknown'}</div>
-        <div style={{fontSize:12,color:T.text2}}>{fmtLong(to.startDate)} – {fmtLong(to.endDate)} · <b>{days}</b> day{days!==1?'s':''}</div>
+        <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{emp?.name||t('to.unknown')}</div>
+        <div style={{fontSize:12,color:T.text2}}>{fmtLong(to.startDate)} – {fmtLong(to.endDate)} · <b>{days}</b> {t.n('to.dayUnit',days)}</div>
         <div style={{display:'flex',gap:6,marginTop:4,alignItems:'center'}}>
           <span style={{fontSize:11,color:T.text3,background:T.bg,padding:'1px 7px',borderRadius:999,border:`1px solid ${T.border}`}}>{to.type}</span>
           {to.note&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>"{to.note}"</span>}
@@ -840,9 +840,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       </div>
       <StatusBadge status={to.status}/>
       <div style={{display:'flex',gap:6}}>
-        {to.status!=='Approved'&&<Btn onClick={()=>updateTOStatus(to.id,'Approved')} variant="success" small>Approve</Btn>}
-        {to.status!=='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Rejected')} variant="danger" small>Reject</Btn>}
-        {to.status==='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Pending')} variant="ghost" small>Reset</Btn>}
+        {to.status!=='Approved'&&<Btn onClick={()=>updateTOStatus(to.id,'Approved')} variant="success" small>{t('to.approve')}</Btn>}
+        {to.status!=='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Rejected')} variant="danger" small>{t('to.reject')}</Btn>}
+        {to.status==='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Pending')} variant="ghost" small>{t('to.reset')}</Btn>}
         <Btn onClick={()=>removeTO(to.id)} variant="ghost" small>✕</Btn>
       </div>
     </div>);
@@ -852,8 +852,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 {/* COVERAGE */}
 {view==='coverage'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
   <div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>Roles</div>
-    <div style={{fontSize:12,color:T.text2,marginBottom:14}}>Define the roles at your workplace. Manager cannot be removed.</div>
+    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cov.roles')}</div>
+    <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('cov.rolesDesc')}</div>
     <div style={{display:'flex',flexDirection:'column',gap:8}}>
       {allRoles.map(role=>{
         const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'},isProtected=role==='Manager',isEditing=editingRole?.name===role,isDeleting=confirmDelete===role;
@@ -866,22 +866,22 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           </div>
         </div>);
         if(isDeleting)return(<div key={role} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,background:T.dangerLight,border:`1px solid ${T.danger}33`}}>
-          <span style={{fontSize:12,color:T.danger,flex:1}}>Remove <b>{role}</b>? It will be removed from all employees and blocks.</span>
-          <Btn small variant="danger" onClick={()=>{setRoleStyles(p=>{const n={...p};delete n[role];return n;});setEmployees(p=>p.map(e=>({...e,roles:(e.roles||[]).filter(r=>r!==role)})));setBlocks(p=>p.map(b=>{const nr={...b.roles};delete nr[role];return{...b,roles:nr};}));setConfirmDelete(null);}}>Yes, remove</Btn>
+          <span style={{fontSize:12,color:T.danger,flex:1}}>{t('cov.removeRolePre')}<b>{role}</b>{t('cov.removeRolePost')}</span>
+          <Btn small variant="danger" onClick={()=>{setRoleStyles(p=>{const n={...p};delete n[role];return n;});setEmployees(p=>p.map(e=>({...e,roles:(e.roles||[]).filter(r=>r!==role)})));setBlocks(p=>p.map(b=>{const nr={...b.roles};delete nr[role];return{...b,roles:nr};}));setConfirmDelete(null);}}>{t('cov.yesRemove')}</Btn>
           <Btn small variant="ghost" onClick={()=>setConfirmDelete(null)}>{t('common.cancel')}</Btn>
         </div>);
         return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
           <div style={{width:10,height:10,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
           <span style={{fontSize:13,fontWeight:500,color:T.text,flex:1}}>{role}</span>
-          {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>protected</span>}
+          {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.protected')}</span>}
           {!isProtected&&<div style={{display:'flex',gap:4}}><Btn small variant="ghost" onClick={()=>{const ci=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);setEditingRole({name:role,newName:role,colorIdx:ci>=0?ci:0});}}>{t('common.edit')}</Btn><Btn small variant="danger" onClick={()=>setConfirmDelete(role)}>{t('common.remove')}</Btn></div>}
-          {isProtected&&<Btn small variant="ghost" onClick={()=>{const ci=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);setEditingRole({name:role,newName:role,colorIdx:ci>=0?ci:0});}}>Edit colour</Btn>}
+          {isProtected&&<Btn small variant="ghost" onClick={()=>{const ci=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);setEditingRole({name:role,newName:role,colorIdx:ci>=0?ci:0});}}>{t('cov.editColour')}</Btn>}
         </div>);
       })}
       <AddRoleInline t={t} onAdd={name=>{if(!name.trim()||roleStyles[name])return;const idx=Object.keys(roleStyles).length%ROLE_COLOR_PALETTE.length;setRoleStyles(p=>({...p,[name]:ROLE_COLOR_PALETTE[idx]}));}}/>
     </div>
   </div>
-  <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>Define coverage blocks — time windows with required staffing per role. A manager is automatically added to every block that has any staff.</div>
+  <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>{t('cov.blocksDesc')}</div>
   {blocks.map(block=>{
     const overrides=block.overrides||{},daysWithOverride=DAYS.filter(d=>overrides[d]);
     const updDefRole=(role,val)=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,roles:{...b.roles,[role]:Math.max(0,Number(val))}}:b));
@@ -890,46 +890,46 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const remDayOv=day=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};delete ov[day];return{...b,overrides:Object.keys(ov).length?ov:undefined};}));
     return(<div key={block.id} style={s.card}>
       <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'flex-end'}}>
-        <div style={{flex:'2 1 100px'}}><SectionLabel>Block name</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'1 1 80px'}}><SectionLabel>Start</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'1 1 80px'}}><SectionLabel>End</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'0 0 auto'}}><SectionLabel>Duration</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
+        <div style={{flex:'2 1 100px'}}><SectionLabel>{t('cov.blockName')}</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={s.input}/></div>
+        <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.start')}</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={s.input}/></div>
+        <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.end')}</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={s.input}/></div>
+        <div style={{flex:'0 0 auto'}}><SectionLabel>{t('cov.duration')}</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
         <Btn onClick={()=>setBlocks(p=>p.filter(b=>b.id!==block.id))} variant="danger" small>{t('common.remove')}</Btn>
       </div>
-      <SectionLabel>Default staffing (all days)</SectionLabel>
+      <SectionLabel>{t('cov.defaultStaffing')}</SectionLabel>
       <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,marginBottom:16}}>
         {allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1px solid ${isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
           <span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span>
           <input type="number" min="0" max="99" value={block.roles[role]||0} onChange={e=>updDefRole(role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>
         </div>);})}
       </div>
-      <SectionLabel>Day overrides</SectionLabel>
+      <SectionLabel>{t('cov.dayOverrides')}</SectionLabel>
       <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:8}}>
         {daysWithOverride.map(day=>{const dr=overrides[day];return(<div key={day} style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 12px'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{day}</span><span style={{fontSize:11,color:T.text3,flex:1}}>Custom staffing for {day}</span><Btn small variant="ghost" onClick={()=>remDayOv(day)}>✕ Remove</Btn></div>
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{t('day.'+day)}</span><span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day:t('day.'+day)})}</span><Btn small variant="ghost" onClick={()=>remDayOv(day)}>{t('cov.removeX')}</Btn></div>
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isChanged=(dr[role]||0)!==(block.roles[role]||0);return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isChanged?rs.dot:isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}><span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span><input type="number" min="0" max="99" value={dr[role]||0} onChange={e=>updOvRole(day,role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>{isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}</div>);})}
           </div>
         </div>);})}
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><span style={{fontSize:11,color:T.text3}}>Add override for:</span>
-          {DAYS.filter(d=>!overrides[d]).map(day=><button key={day} onClick={()=>addDayOv(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>+ {day}</button>)}
-          {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>All days have custom staffing</span>}
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><span style={{fontSize:11,color:T.text3}}>{t('cov.addOverrideFor')}</span>
+          {DAYS.filter(d=>!overrides[d]).map(day=><button key={day} onClick={()=>addDayOv(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>{'+ '+t('day.'+day)}</button>)}
+          {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.allDaysCustom')}</span>}
         </div>
       </div>
     </div>);
   })}
-  <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(allRoles.map(r=>[r,0]))}])} variant="secondary">+ Add coverage block</Btn></div>
+  <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(allRoles.map(r=>[r,0]))}])} variant="secondary">{t('cov.addBlock')}</Btn></div>
 </div>)}
 
 {/* COSTS */}
 {view==='costs'&&(<div style={{display:'flex',flexDirection:'column',gap:16}}>
   <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week','This week'],['month','This month']].map(([k,l])=><button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('cost.thisWeek')],['month',t('cost.thisMonth')]].map(([k,l])=><button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
-    {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} — {getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length} of {getMonthOffsets(displayMonth).length} weeks generated</span>}
+    {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} — {t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}</span>}
     {costsMode==='week'&&schedule&&<span style={{fontSize:12,color:T.text2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>}
     <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
-      <span style={{fontSize:11,color:T.text3}}>Base rate</span>
+      <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
       <input type="number" min="1" step="1" value={hourlyRate.amount} onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
       <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
       <span style={{fontSize:11,color:T.text3}}>/h</span>
@@ -937,29 +937,29 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   </div>
   {((costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)])))?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
-    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>💷</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>No schedule to analyse</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>Generate a schedule first to see salary cost breakdown.</div><Btn onClick={()=>setView('schedule')}>Go to Schedule</Btn></div>
+    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>💷</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div><Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn></div>
   </div>):(()=>{
     const data=costsMode==='month'?monthCostData:costData,totalCost=costsMode==='month'?totalMonthCostUnits:totalCostUnits,maxCost=costsMode==='month'?maxMonthCostUnits:maxCostUnits,roleCosts=costsMode==='month'?monthRoleCosts:weekRoleCosts,maxRC=Math.max(...Object.values(roleCosts),0.01),workingCount=data.filter(d=>d.hours>0).length,totalHours=data.reduce((sv,d)=>sv+d.hours,0);
     return(<>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-        {[{label:'Estimated cost',value:toMoney(totalCost),sub:`${hourlyRate.amount} ${hourlyRate.currency}/h base`,color:T.accent},{label:'Total hours',value:totalHours+'h',sub:costsMode==='month'?'this month':'this week',color:T.text},{label:'Staff scheduled',value:`${workingCount} of ${employees.length}`,sub:costsMode==='month'?`employees · ${getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length} weeks`:'employees this week',color:T.success},{label:'Avg cost / employee',value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:'among scheduled staff',color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
+        {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
       </div>
       <div style={s.card}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>Employee breakdown</div>
-        <div style={{fontSize:12,color:T.text2,marginBottom:16}}>Cost index = hours × salary%. Higher = relatively more expensive.</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.empBreakdown')}</div>
+        <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.empBreakdownDesc')}</div>
         <div style={{display:'flex',flexDirection:'column',gap:6}}>
           {[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
             <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 80px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
               <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}><Avatar emp={emp} size={26}/><div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div></div>
-              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>priority</div></div>
-              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:hours>emp.maxHours?T.danger:T.text}}>{hours}h</div><div style={{fontSize:10,color:T.text3}}>of {emp.maxHours}</div></div>
+              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>
+              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:hours>emp.maxHours?T.danger:T.text}}>{hours}h</div><div style={{fontSize:10,color:T.text3}}>{t('cost.ofN',{n:emp.maxHours})}</div></div>
               <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
-              <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>🌴 off</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div><div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div></div>}</div>
+              <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{'🌴 '+t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div><div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div></div>}</div>
             </div>);})}
         </div>
       </div>
       <div style={s.card}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:16}}>Cost by role</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:16}}>{t('cost.costByRole')}</div>
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
           {Object.entries(roleCosts).filter(([,v])=>v>0).sort(([,a],[,b])=>b-a).map(([role,cost])=>{const rs=roleStyles[role]||{dot:'#9C9088'},pct=maxRC>0?(cost/maxRC*100):0,cnt=data.filter(d=>(d.emp.roles||[]).includes(role)&&d.hours>0).length;return(
             <div key={role} style={{display:'grid',gridTemplateColumns:'110px 1fr 80px',alignItems:'center',gap:12}}>
@@ -967,10 +967,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               <div style={{position:'relative',height:10,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:rs.dot,borderRadius:999}}/></div>
               <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}><span style={{fontSize:13,fontWeight:600,color:T.text}}>{toMoney(cost)}</span><span style={{fontSize:10,color:T.text3}}>{cnt} staff</span></div>
             </div>);})}
-          {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>No hours assigned yet</div>}
+          {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>}
         </div>
       </div>
-      <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>💡 <b>Estimated cost</b> = hours × priority% × base hourly rate. Set your base rate (top right) for real numbers.</div>
+      <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>💡 {t('cost.infoBox')}</div>
     </>);
   })()}
 </div>)}
