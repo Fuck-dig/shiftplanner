@@ -421,7 +421,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   <div style={{...s.cardFlush,padding:0}}>
     <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',background:T.surfaceWarm}}>
       {DAYS.map((day,di)=>{const date=weekDates[di],isToday=dateToISO(date)===dateToISO(new Date());return(
-        <div key={day} style={{padding:'8px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
+        <div key={day} style={{padding:'8px 10px',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
           <div style={{fontSize:11,fontWeight:600,color:isToday?T.accent:T.text2,textTransform:'uppercase',letterSpacing:'0.05em'}}>{t('day.'+day)}<span style={{fontWeight:400,marginLeft:4,textTransform:'none'}}>{date.getDate()}</span></div>
         </div>
       );})}
@@ -499,7 +499,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-            return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
+            return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none'}}>
               <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
               <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
             </div>);
@@ -520,7 +520,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
-            {DAYS.map((_,i)=>{const isToday=dateToISO(weekDates[i])===dateToISO(new Date());return<div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}/>;})}
+            {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
           <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
             {/* Name cell */}
@@ -537,8 +537,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               const date=weekDates[di];
               const onTO=isOnTimeOff(emp.id,date,timeOff);
               const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
-              const isToday=dateToISO(date)===dateToISO(new Date());
-              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH,background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
+              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
                 {onTO?(
                   <div style={{padding:gridTight?'4px 7px':'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                     <div style={{fontSize:gridTight?11:13}}>🌴</div>
@@ -575,8 +574,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         {DAYS.map((day,di)=>{
           const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
           const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
-          const isToday=dateToISO(weekDates[di])===dateToISO(new Date());
-          return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
+          return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
             <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
             <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
             {onLeave>0&&<div style={{fontSize:10,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
