@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { T } from '../lib/constants';
+import { T, isDark } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { createOrg } from '../lib/org';
-
-function isDark(){ return T.bg === '#1A1714'; }
 
 const roleColors = {
   owner:    { bg: '#F5E2E2', text: '#963030', border: '#E8BABA' },

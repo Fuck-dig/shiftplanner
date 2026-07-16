@@ -24,6 +24,10 @@ export const THEMES = {
 // render so all inline T.xxx references across every component stay in sync.
 export const T = { ...THEMES.light };
 
+// Shared dark-mode check — any component can import this instead of
+// re-deriving it locally, so theme-aware colors stay consistent everywhere.
+export function isDark(){ return T.bg === THEMES.dark.bg; }
+
 export function computeStyles(){
   return {
     card:      { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },

@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
-import { T, styles, DAYS, pal, initials } from '../lib/constants';
+import { T, styles, DAYS, pal, initials, isDark } from '../lib/constants';
 import { getWeekDates, weekKey, fmt, dateToISO, todayISO } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff } from '../lib/data';
 import { supabase } from '../lib/supabase';
-
-
-function isDark(){ return T.bg === '#1A1714'; }
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -76,7 +73,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
   return (
     <div style={{minHeight:'100vh',width:'100%',background:T.bg,fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       {/* Nav */}
-      <div style={{background:isDark()?'rgba(34,30,26,0.92)':'rgba(255,254,251,0.92)',backdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.15)'}}>
+      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.15)'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:9,flex:1}}>
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName}</span>
@@ -127,7 +124,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
                   {/* Name */}
                   <div style={{padding:'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:10,minHeight:72,position:'relative'}}>
                     {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
-                    <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:p.bg,color:isMe?'#fff':p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+                    <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
                     <div>
                       <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}{isMe&&<span style={{fontSize:10,marginLeft:5,color:T.accent,fontWeight:400}}>(you)</span>}</div>
                       <div style={{fontSize:10,color:T.text3,marginTop:1}}>{h}h this week</div>
