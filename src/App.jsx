@@ -65,8 +65,24 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const t=makeT(lang);
   const allRoles=Object.keys(roleStyles);
 
-  // debounce helper
-  const mkDebounce=(fn,ms=600)=>{let timer;return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>fn(...args).catch(console.error),ms);};};
+  // debounce helper — tracks in-flight saves and surfaces failures (with a
+  // retry closure) instead of failing silently to the console.
+  const [savingCount,setSavingCount]=useState(0);
+  const [saveError,setSaveError]   =useState(null); // {label,message,retry} | null
+  const mkDebounce=(fn,label,ms=600)=>{
+    let timer;
+    const attempt=(args)=>{
+      setSavingCount(c=>c+1);
+      fn(...args)
+        .then(()=>{ setSaveError(e=>(e&&e.label===label)?null:e); })
+        .catch(err=>{
+          console.error(`Save failed (${label}):`,err);
+          setSaveError({label,message:err?.message||t('save.failedGeneric'),retry:()=>attempt(args)});
+        })
+        .finally(()=>setSavingCount(c=>Math.max(0,c-1)));
+    };
+    return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>attempt(args),ms);};
+  };
 
   useEffect(()=>{
     let alive=true; setLoading(true);
@@ -80,10 +96,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     return ()=>{alive=false;};
   },[orgId]);
 
-  const dEmp  =useCallback(mkDebounce(v=>syncEmployees(orgId,v)),[orgId]);
-  const dBlk  =useCallback(mkDebounce(v=>syncBlocks(orgId,v)),[orgId]);
-  const dTO   =useCallback(mkDebounce(v=>syncTimeOff(orgId,v)),[orgId]);
-  const dSched=useCallback(mkDebounce(v=>syncSchedules(orgId,v)),[orgId]);
+  const dEmp  =useCallback(mkDebounce(v=>syncEmployees(orgId,v),'employees'),[orgId]);
+  const dBlk  =useCallback(mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
+  const dTO   =useCallback(mkDebounce(v=>syncTimeOff(orgId,v),'timeoff'),[orgId]);
+  const dSched=useCallback(mkDebounce(v=>syncSchedules(orgId,v),'schedules'),[orgId]);
 
   const setEmployees=v=>{const val=typeof v==='function'?v(employees):v;setEmpRaw(val);dEmp(val);};
   const setBlocks   =v=>{const val=typeof v==='function'?v(blocks):v;setBlocksRaw(val);dBlk(val);};
@@ -300,6 +316,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn></div>
           <div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">🧪 Test: full month</Btn></div>
+        </div>
+      )}
+
+      {saveError?(
+        <div style={{position:'fixed',bottom:20,left:isMobile?14:'auto',right:20,maxWidth:isMobile?'calc(100% - 28px)':360,zIndex:200,background:T.surface,border:`1px solid ${T.danger}55`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'flex-start',gap:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)'}}>
+          <span style={{fontSize:14}}>⚠️</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,color:T.danger,fontWeight:500,marginBottom:8}}>{t('save.failedPrefix')} {saveError.message}</div>
+            <div style={{display:'flex',gap:6}}>
+              <Btn small variant="danger" onClick={saveError.retry}>{t('save.retry')}</Btn>
+              <Btn small variant="ghost" onClick={()=>setSaveError(null)}>{t('save.dismiss')}</Btn>
+            </div>
+          </div>
+        </div>
+      ):savingCount>0&&(
+        <div style={{position:'fixed',bottom:20,left:isMobile?14:'auto',right:20,zIndex:200,background:T.surface,border:`1px solid ${T.border}`,borderRadius:999,padding:'6px 14px',fontSize:12,color:T.text3,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
+          {t('save.saving')}
         </div>
       )}
 

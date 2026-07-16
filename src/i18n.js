@@ -257,6 +257,12 @@ const STRINGS = {
     'team.roleOwner':'Owner',
     'team.roleManager':'Manager',
     'team.roleEmployee':'Employee',
+
+    'save.saving':'Saving…',
+    'save.failedGeneric':'Could not save your changes.',
+    'save.failedPrefix':'Save failed:',
+    'save.retry':'Retry',
+    'save.dismiss':'Dismiss',
   },
 
   // ── Dansk ───────────────────────────────────────────────────────────────────
@@ -496,6 +502,12 @@ const STRINGS = {
     'team.roleOwner':'Ejer',
     'team.roleManager':'Leder',
     'team.roleEmployee':'Medarbejder',
+
+    'save.saving':'Gemmer…',
+    'save.failedGeneric':'Kunne ikke gemme dine ændringer.',
+    'save.failedPrefix':'Kunne ikke gemme:',
+    'save.retry':'Prøv igen',
+    'save.dismiss':'Afvis',
   },
 
   // ── Español ─────────────────────────────────────────────────────────────────
@@ -735,6 +747,12 @@ const STRINGS = {
     'team.roleOwner':'Propietario',
     'team.roleManager':'Encargado',
     'team.roleEmployee':'Empleado',
+
+    'save.saving':'Guardando…',
+    'save.failedGeneric':'No se pudieron guardar los cambios.',
+    'save.failedPrefix':'Error al guardar:',
+    'save.retry':'Reintentar',
+    'save.dismiss':'Descartar',
   },
 };
 
