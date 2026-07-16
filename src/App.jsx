@@ -422,7 +422,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   return (
     <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{position:'relative'}}>
-      <div style={{background:isDark()?'rgba(34,30,26,0.88)':'rgba(255,254,251,0.88)',backdropFilter:'blur(10px)',WebkitBackdropFilter:'blur(10px)',borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
+      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'center',gap:12,marginRight:isMobile?'auto':36,minWidth:0,overflow:'hidden'}}>
           <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
           <div style={{display:'flex',alignItems:'baseline',gap:7,minWidth:0,overflow:'hidden'}}>
@@ -524,7 +524,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
   <div style={{position:'relative'}}><div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,marginBottom:8}}>{t('staff.noRota')}</div><div style={{fontSize:13,color:T.text2,marginBottom:24}}>{t('staff.noRotaDesc')}</div><Btn onClick={()=>generate()}>{'✦ '+t('staff.generateWeek')}</Btn></div>
 </div>):(<div>
-  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}}>
+  {/* Sticky controls + day header — stays visible while scrolling the staff list */}
+  <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,paddingTop:8,marginTop:-8,marginBottom:16}}>
+  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:10}}>
     <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {t('common.staffN',{n:employees.length})}</div></div>
     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       {allRoles.filter(r=>employees.some(e=>(e.roles||[]).includes(r))).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
@@ -534,7 +536,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
     </div>
   </div>
-  <div style={{display:'flex',flexDirection:'column',gap:8}}>
+  <div style={{...s.cardFlush,padding:0}}>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',background:T.surfaceWarm}}>
+      {DAYS.map((day,di)=>{const date=weekDates[di],isToday=dateToISO(date)===dateToISO(new Date());return(
+        <div key={day} style={{padding:'8px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
+          <div style={{fontSize:11,fontWeight:600,color:isToday?T.accent:T.text2,textTransform:'uppercase',letterSpacing:'0.05em'}}>{t('day.'+day)}<span style={{fontWeight:400,marginLeft:4,textTransform:'none'}}>{date.getDate()}</span></div>
+        </div>
+      );})}
+    </div>
+  </div>
+  </div>
+  <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
     {employees.map(emp=>{const h=empHours(emp.id),p=pal(emp);return(
       <div key={emp.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,overflow:'hidden'}}>
         <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:`linear-gradient(to right, ${isDark()?p.dot+'18':p.bg}, ${T.surface})`,borderBottom:`1px solid ${T.border}`}}>
@@ -545,8 +557,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
           {DAYS.map((day,di)=>{const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff),ab=blocks.find(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));return(
-            <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:di>=5?T.surfaceWarm:'transparent',minHeight:72,display:'flex',flexDirection:'column',gap:3}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:2}}>{t('day.'+day)}<span style={{fontWeight:400,marginLeft:4}}>{date.getDate()}</span></div>
+            <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:di>=5?T.surfaceWarm:'transparent',minHeight:56,display:'flex',flexDirection:'column',justifyContent:'center',gap:3}}>
               {onTO?<span style={{fontSize:11,color:T.warning,fontWeight:500}}>{'🌴 '+t('staff.leave')}</span>:ab?<div><div style={{fontSize:11,fontWeight:500,color:T.text}}>{ab.name}</div><div style={{fontSize:10,color:T.text3}}>{ab.start}–{ab.end}</div></div>:<span style={{fontSize:12,color:T.border}}>—</span>}
             </div>);})}
         </div>
