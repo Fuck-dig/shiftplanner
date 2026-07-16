@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { T, styles, THEMES, computeStyles, ROLE_COLOR_PALETTE, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, TIMEOFF_TYPES, pal, initials, isDark } from './lib/constants';
-import { getMondayDate, getWeekDates, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO } from './lib/dates';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
+import { getWeekDates, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
-import { listOrgs, addMember, removeMember, listMembers, createInvitation, listInvitations, deleteInvitation, acceptPendingInvitations } from './lib/org';
-import { Avatar, RoleBadge, EmpChip, StatusBadge, Btn, SectionLabel, AddRoleInline } from './components/ui';
+import { listOrgs, acceptPendingInvitations } from './lib/org';
+import { Avatar, RoleBadge, EmpChip, Btn } from './components/ui';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
 import EmployeeView from './components/EmployeeView';
 import Onboarding from './components/Onboarding';
 import AccountBar from './components/AccountBar';
+import EmployeesView from './components/views/EmployeesView';
+import TimeOffView from './components/views/TimeOffView';
+import CoverageView from './components/views/CoverageView';
+import CostsView from './components/views/CostsView';
 import { LANGUAGES, makeT, detectLang } from './i18n';
 
 const loadPref = (k, fb) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):fb; } catch { return fb; } };
@@ -19,160 +23,6 @@ const savePref = (k, v) => { try { localStorage.setItem(k,JSON.stringify(v)); } 
 
 function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
-}
-
-function TeamAccess({ orgId, orgName, isOwner=false, s, t }){
-  const [members,  setMembers]  = useState(null);
-  const [invites,  setInvites]  = useState([]);
-  const [email,    setEmail]    = useState('');
-  const [busy,     setBusy]     = useState(false);
-  const [sentTo,   setSentTo]   = useState(null);
-  const [inviteRole, setInviteRole] = useState('employee');
-  const [showTemplate, setShowTemplate] = useState(false);
-  const [emailSubject, setEmailSubject] = useState(`You're invited to join ${orgName||'our restaurant'} on Rorota`);
-  const [emailBody,    setEmailBody]    = useState(`Hi,\n\nYou've been invited to view the staff rota for ${orgName||'our restaurant'} on Rorota.\n\n1. Go to https://rorota.net\n2. Sign up or log in with this email address\n3. You'll automatically get access to the rota.\n\nSee you on the rota!`);
-
-  const reload = () => {
-    listMembers(orgId).then(setMembers).catch(()=>setMembers([]));
-    listInvitations(orgId).then(setInvites).catch(()=>setInvites([]));
-  };
-  useEffect(()=>{ reload(); },[orgId]);
-
-  const mailtoLink = (addr) => {
-    const sub = encodeURIComponent(`You're invited to ${orgName} on Rorota`);
-    const body = encodeURIComponent(`Hi,
-
-You've been invited to view the staff rota for ${orgName} on Rorota.
-
-1. Go to https://rorota.net
-2. Sign up or log in with this email: ${addr}
-3. You'll automatically get access to the rota.
-
-See you on the rota!`);
-    return `mailto:${addr}?subject=${sub}&body=${body}`;
-  };
-
-  const invite = async () => {
-    if(!email.trim()) return;
-    setBusy(true);
-    try {
-      // 1. Create invitation record in DB
-      await createInvitation(orgId, email.trim(), inviteRole);
-      // 2. Send email via Edge Function
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        'https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-          body: JSON.stringify({
-            to: email.trim(),
-            orgName,
-            subject: emailSubject,
-            body: emailBody,
-          }),
-        }
-      );
-      const json = await res.json();
-      if (json.error) throw new Error(json.error);
-      setSentTo(email.trim()); setEmail(''); reload();
-    } catch(e){ alert(e.message||t('team.sendFailed')); }
-    finally { setBusy(false); }
-  };
-
-  if(members===null) return null;
-  const pending = invites.filter(i=>!i.used_at);
-
-  return (
-    <div style={{...s.card,marginTop:4}}>
-      <div style={{fontFamily:"Fraunces, Georgia, serif",fontSize:15,fontWeight:500,marginBottom:4}}>{t('team.title')}</div>
-      <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('team.desc')}</div>
-
-      {members.length>0&&(<div style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>{t('team.activeMembers')}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {members.map(m=>(
-            <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-              <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
-              <span style={{fontSize:11,color:T.text2,flex:1}}>{m.email||m.user_id.slice(0,16)+'…'}</span>
-              {isOwner?(
-                <select value={m.role} onChange={async e=>{await addMember(orgId,m.user_id,e.target.value);reload();}}
-                  style={{fontSize:11,padding:"2px 6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
-                  <option value="owner">{t('team.roleOwner')}</option>
-                  <option value="manager">{t('team.roleManager')}</option>
-                  <option value="employee">{t('team.roleEmployee')}</option>
-                </select>
-              ):(
-                <span style={{fontSize:11,fontWeight:500,color:m.role==="owner"?T.danger:m.role==="manager"?T.accent:T.success,background:m.role==="owner"?T.dangerLight:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{t('team.role'+(m.role.charAt(0).toUpperCase()+m.role.slice(1)))}</span>
-              )}
-              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.remove')}</button>}
-            </div>
-          ))}
-        </div>
-      </div>)}
-
-      {pending.length>0&&(<div style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:8}}>{t('team.pendingInvites')}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          {pending.map(inv=>(
-            <div key={inv.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.warningLight,border:`1px solid ${T.warning}33`}}>
-              <span style={{fontSize:13}}>✉️</span>
-              <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
-              <span style={{fontSize:10,color:T.warning}}>{t('team.awaitingSignup')}</span>
-              <button onClick={async()=>{
-                try{
-                  const{data:{session}}=await supabase.auth.getSession();
-                  await fetch('https://mnenerpzypiflyrizyzr.supabase.co/functions/v1/send-invite',{
-                    method:'POST',
-                    headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-                    body:JSON.stringify({to:inv.email,orgName,subject:emailSubject,body:emailBody})
-                  });
-                  alert(t('team.resendSent',{email:inv.email}));
-                }catch(e){alert(e.message||t('team.resendFailed'));}
-              }} style={{padding:"3px 10px",borderRadius:6,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.resend')}</button>
-              <button onClick={async()=>{try{await deleteInvitation(inv.id);reload();}catch(e){alert(e.message||t('team.deleteFailed'));}}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>✕</button>
-            </div>
-          ))}
-        </div>
-      </div>)}
-
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em'}}>{t('team.inviteSomeone')}</div>
-        <button onClick={()=>setShowTemplate(p=>!p)} style={{fontSize:11,color:T.text2,background:'transparent',border:`1px solid ${T.border}`,borderRadius:6,padding:'3px 8px',cursor:'pointer',fontFamily:'inherit'}}>{showTemplate?t('team.hideTemplate'):t('team.editTemplate')}</button>
-      </div>
-
-      {showTemplate&&(<div style={{marginBottom:12,padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:8}}>
-        <div>
-          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('team.subject')}</div>
-          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{...s.input}}/>
-        </div>
-        <div>
-          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('team.messageBody')}</div>
-          <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={6} style={{...s.input,resize:'vertical',lineHeight:1.5}}/>
-        </div>
-      </div>)}
-
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <input type="email" placeholder={t('team.emailPlaceholder')} value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&invite()} style={{...s.input,flex:"2 1 200px"}} disabled={busy}/>
-        <select value={inviteRole} onChange={e=>setInviteRole(e.target.value)}
-          style={{padding:"7px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontSize:13,fontFamily:"inherit",cursor:"pointer"}}>
-          <option value="employee">{t('team.roleEmployee')}</option>
-          {isOwner&&<option value="manager">{t('team.roleManager')}</option>}
-          {isOwner&&<option value="owner">{t('team.roleOwner')}</option>}
-        </select>
-        <Btn onClick={invite} disabled={busy||!email.trim()}>{busy?t('team.sending'):t('team.sendInvite')}</Btn>
-      </div>
-
-      {sentTo&&(<div style={{marginTop:12,padding:"12px 14px",borderRadius:10,background:T.successLight,border:`1px solid ${T.success}33`}}>
-        <div style={{fontSize:13,fontWeight:500,color:T.success,marginBottom:4}}>{t('team.sentTo',{email:sentTo})}</div>
-        <div style={{fontSize:12,color:T.success}}>{t('team.sentDesc')}</div>
-        <button onClick={()=>setSentTo(null)} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"transparent",border:`1px solid ${T.success}55`,color:T.success,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>{t('team.done')}</button>
-      </div>)}
-    </div>
-  );
 }
 
 function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTheme, onBack=()=>{} }) {
@@ -767,246 +617,47 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 </div>)}
 
 {/* EMPLOYEES */}
-{view==='employees'&&(<div style={{display:'flex',flexDirection:'column',gap:10}}>
-  {employees.map(emp=>(<div key={emp.id} style={s.card}>
-    <div style={{display:'flex',alignItems:'center',gap:12}}>
-      <Avatar emp={emp} size={40}/>
-      <div style={{flex:1}}>
-        <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
-        <div style={{fontSize:12,color:T.text2}}>{(emp.contractType||'hourly')==='hourly'?`${emp.wage||'—'} kr/h`:`${(emp.wage||0).toLocaleString('da-DK')} kr/mo`} · max {emp.maxHours}h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div>
-      </div>
-      <div style={{display:'flex',gap:6}}>
-        <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
-        <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
-        <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
-      </div>
-    </div>
-    {expandedEmp===emp.id&&(<div style={{marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
-      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
-        <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
-      </div>
-      <div style={{marginBottom:12}}>
-        <SectionLabel>{t('emp.roles')}</SectionLabel>
-        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:4}}>
-          {allRoles.map(r=>{const active=(emp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=emp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)updateEmp(emp.id,'roles',next);}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
-        </div>
-      </div>
-      <div style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
-        <SectionLabel>{t('emp.contract')}</SectionLabel>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,alignItems:'flex-start'}}>
-          <div style={{flex:'1 1 140px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.paidBy')}</div><div style={{display:'flex',gap:3}}>{[['hourly',t('emp.hourly')],['fixed',t('emp.fixedSalary')]].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractType',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractType||'hourly')===k?600:400,background:(emp.contractType||'hourly')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-          <div style={{flex:'1 1 130px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.period')}</div><div style={{display:'flex',gap:3}}>{[['week',t('emp.perWeek')],['month',t('emp.perMonth')]].map(([k,l])=><button key={k} onClick={()=>updateEmp(emp.id,'contractPeriod',k)} style={{flex:1,padding:'5px 8px',borderRadius:7,fontSize:11,fontWeight:(emp.contractPeriod||'week')===k?600:400,background:(emp.contractPeriod||'week')===k?T.surface:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(emp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-          <div style={{flex:'1 1 110px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div><div style={{display:'flex',alignItems:'center',gap:5}}><input type="number" min="0" step="1" value={emp.wage||0} onChange={e=>updateEmp(emp.id,'wage',Number(e.target.value))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(emp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
-          <div style={{flex:'1 1 90px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{(emp.contractPeriod||'week')==='month'?t('emp.maxHMonth'):t('emp.maxHWeek')}</div><input type="number" min="4" max="250" value={emp.maxHours} onChange={e=>updateEmp(emp.id,'maxHours',Number(e.target.value))} style={s.input}/></div>
-          <div style={{flex:'1 1 80px'}}><div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('emp.priority')} %</div><input type="number" min="10" max="200" step="5" value={emp.priority||100} onChange={e=>updateEmp(emp.id,'priority',Number(e.target.value))} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.lowerFirst')}</div></div>
-        </div>
-      </div>
-      <div style={{marginBottom:10}}><SectionLabel>{t('emp.quickTemplates')}</SectionLabel><div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:4}}>{Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>applyTemplate(emp.id,tpl)} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{tpl}</button>)}</div></div>
-      <SectionLabel>{t('emp.weeklyAvail')}</SectionLabel>
-      <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
-        {DAYS.map(day=>{const avail=emp.availability[day],p=pal(emp);return(<div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-          <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{t('day.'+day)}</button>
-          {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
-        </div>);})}
-      </div>
-    </div>)}
-  </div>))}
-  {showAddEmp&&(<div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.newEmployee')}</div>
-    <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
-      <input placeholder={t('emp.fullName')} value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...s.input,flex:'2 1 130px'}} autoFocus/>
-      <div style={{flex:'2 1 200px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>{t('emp.roles')}</div><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{const active=(newEmp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=newEmp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)setNewEmp(p=>({...p,roles:next}));}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
-      </div></div>
-    </div>
-    <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap',alignItems:'flex-start'}}>
-      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.paidBy')}</div><div style={{display:'flex',gap:3}}>{[['hourly',t('emp.hourly')],['fixed',t('emp.fixed')]].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractType:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractType||'hourly')===k?600:400,background:(newEmp.contractType||'hourly')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractType||'hourly')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-      <div style={{flex:'1 1 120px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.period')}</div><div style={{display:'flex',gap:3}}>{[['week',t('emp.week')],['month',t('emp.month')]].map(([k,l])=><button key={k} onClick={()=>setNewEmp(p=>({...p,contractPeriod:k}))} style={{flex:1,padding:'5px 6px',borderRadius:7,fontSize:11,fontWeight:(newEmp.contractPeriod||'week')===k?600:400,background:(newEmp.contractPeriod||'week')===k?T.bg:'transparent',border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',color:(newEmp.contractPeriod||'week')===k?T.text:T.text2}}>{l}</button>)}</div></div>
-      <div style={{flex:'1 1 100px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}</div><div style={{display:'flex',gap:4,alignItems:'center'}}><input type="number" min="0" step="1" value={newEmp.wage||0} onChange={e=>setNewEmp(p=>({...p,wage:Number(e.target.value)}))} style={{...s.input,flex:1}}/><span style={{fontSize:11,color:T.text3,flexShrink:0}}>{(newEmp.contractType||'hourly')==='hourly'?'kr/h':'kr/mo'}</span></div></div>
-      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{(newEmp.contractPeriod||'week')==='month'?t('emp.maxHMo'):t('emp.maxHWk')}</div><input type="number" min="4" max="250" value={newEmp.maxHours} onChange={e=>setNewEmp(p=>({...p,maxHours:Number(e.target.value)}))} style={s.input}/></div>
-      <div style={{flex:'1 1 70px'}}><div style={{fontSize:11,color:T.text3,marginBottom:3}}>{t('emp.priority')} %</div><input type="number" min="10" max="200" step="5" value={newEmp.priority||100} onChange={e=>setNewEmp(p=>({...p,priority:Number(e.target.value)}))} style={s.input}/></div>
-    </div>
-    <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
-  </div>)}
-  {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">{t('emp.addEmployeeBtn')}</Btn>}
-</div>)}
-
-{view==='employees'&&<TeamAccess orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}/>}
+{view==='employees'&&(
+  <EmployeesView
+    employees={employees} allRoles={allRoles} roleStyles={roleStyles}
+    expandedEmp={expandedEmp} setExpandedEmp={setExpandedEmp}
+    updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp}
+    showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
+    orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
+  />
+)}
 
 {/* TIME OFF */}
-{view==='timeoff'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
-  {offThisWeek.length>0&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'12px 16px'}}>
-    <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>🌴 {t('sched.onLeaveWeek')} ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
-    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>
-  </div>)}
-  <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
-    <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['all',t('to.all')],['pending',t('to.pending')],['approved',t('to.approved')],['this-week',t('to.thisWeek')]].map(([k,l])=><button key={k} onClick={()=>setToFilter(k)} style={{padding:'4px 10px',borderRadius:6,background:toFilter===k?T.bg:'transparent',border:toFilter===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:toFilter===k?500:400,color:toFilter===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
-    </div>
-    <div style={{marginLeft:'auto'}}><Btn onClick={()=>setShowAddTO(true)}>{t('to.addRequest')}</Btn></div>
-  </div>
-  {showAddTO&&(<div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('to.newRequest')}</div>
-    <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
-      <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.employee')}</SectionLabel><select value={newTO.empId} onChange={e=>setNewTO(p=>({...p,empId:e.target.value}))} style={s.select}><option value="">{t('to.selectEllipsis')}</option>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></div>
-      <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.fromCap')}</SectionLabel><input type="date" value={newTO.startDate} onChange={e=>setNewTO(p=>({...p,startDate:e.target.value}))} style={s.input}/></div>
-      <div style={{flex:'1 1 120px'}}><SectionLabel>{t('common.toCap')}</SectionLabel><input type="date" value={newTO.endDate} onChange={e=>setNewTO(p=>({...p,endDate:e.target.value}))} style={s.input}/></div>
-      <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.type')}</SectionLabel><select value={newTO.type} onChange={e=>setNewTO(p=>({...p,type:e.target.value}))} style={s.select}>{TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select></div>
-      <div style={{flex:'2 1 140px'}}><SectionLabel>{t('to.note')}</SectionLabel><input placeholder={t('to.optional')} value={newTO.note} onChange={e=>setNewTO(p=>({...p,note:e.target.value}))} style={s.input}/></div>
-      <div style={{flex:'1 1 100px'}}><SectionLabel>{t('to.status')}</SectionLabel><select value={newTO.status} onChange={e=>setNewTO(p=>({...p,status:e.target.value}))} style={s.select}><option>Pending</option><option>Approved</option></select></div>
-    </div>
-    <div style={{display:'flex',gap:8}}><Btn onClick={addTO}>{t('to.saveRequest')}</Btn><Btn onClick={()=>setShowAddTO(false)} variant="ghost">{t('common.cancel')}</Btn></div>
-  </div>)}
-  {filteredTO.length===0?(<div style={{...s.card,textAlign:'center',padding:'44px 32px',position:'relative',overflow:'hidden'}}>
-    <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.4,pointerEvents:'none'}}/>
-    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>🌴</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>{toFilter!=='all'?t('to.noneFilter',{filter:t('to.'+(toFilter==='this-week'?'thisWeek':toFilter)).toLowerCase()}):t('to.noneYet')}</div>{toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>{t('to.addFirst')}</Btn>}</div>
-  </div>):filteredTO.map(to=>{
-    const emp=employees.find(e=>e.id===to.empId),days=Math.round((new Date(to.endDate)-new Date(to.startDate))/(24*3600*1000))+1,borderColor={Approved:T.success,Pending:T.warning,Rejected:T.danger}[to.status]||T.border;
-    return(<div key={to.id} style={{...s.card,borderLeft:`3px solid ${borderColor}`,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
-      {emp&&<Avatar emp={emp} size={38}/>}
-      <div style={{flex:1,minWidth:140}}>
-        <div style={{fontSize:13,fontWeight:500,marginBottom:3}}>{emp?.name||t('to.unknown')}</div>
-        <div style={{fontSize:12,color:T.text2}}>{fmtLong(to.startDate)} – {fmtLong(to.endDate)} · <b>{days}</b> {t.n('to.dayUnit',days)}</div>
-        <div style={{display:'flex',gap:6,marginTop:4,alignItems:'center'}}>
-          <span style={{fontSize:11,color:T.text3,background:T.bg,padding:'1px 7px',borderRadius:999,border:`1px solid ${T.border}`}}>{to.type}</span>
-          {to.note&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>"{to.note}"</span>}
-        </div>
-      </div>
-      <StatusBadge status={to.status}/>
-      <div style={{display:'flex',gap:6}}>
-        {to.status!=='Approved'&&<Btn onClick={()=>updateTOStatus(to.id,'Approved')} variant="success" small>{t('to.approve')}</Btn>}
-        {to.status!=='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Rejected')} variant="danger" small>{t('to.reject')}</Btn>}
-        {to.status==='Rejected'&&<Btn onClick={()=>updateTOStatus(to.id,'Pending')} variant="ghost" small>{t('to.reset')}</Btn>}
-        <Btn onClick={()=>removeTO(to.id)} variant="ghost" small>✕</Btn>
-      </div>
-    </div>);
-  })}
-</div>)}
+{view==='timeoff'&&(
+  <TimeOffView
+    offThisWeek={offThisWeek} weekDates={weekDates}
+    toFilter={toFilter} setToFilter={setToFilter}
+    showAddTO={showAddTO} setShowAddTO={setShowAddTO} newTO={newTO} setNewTO={setNewTO} addTO={addTO}
+    employees={employees} filteredTO={filteredTO} updateTOStatus={updateTOStatus} removeTO={removeTO}
+    s={s} t={t}
+  />
+)}
 
 {/* COVERAGE */}
-{view==='coverage'&&(<div style={{display:'flex',flexDirection:'column',gap:12}}>
-  <div style={s.card}>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cov.roles')}</div>
-    <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('cov.rolesDesc')}</div>
-    <div style={{display:'flex',flexDirection:'column',gap:8}}>
-      {allRoles.map(role=>{
-        const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'},isProtected=role==='Manager',isEditing=editingRole?.name===role,isDeleting=confirmDelete===role;
-        if(isEditing)return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'10px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-          <input autoFocus value={editingRole.newName} onChange={e=>setEditingRole(p=>({...p,newName:e.target.value}))} style={{...s.input,width:130,flex:'0 0 auto'}}/>
-          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{ROLE_COLOR_PALETTE.map((p,i)=><button key={i} onClick={()=>setEditingRole(p=>({...p,colorIdx:i}))} style={{width:20,height:20,borderRadius:'50%',background:p.dot,border:editingRole.colorIdx===i?`2px solid ${T.text}`:'2px solid transparent',cursor:'pointer',padding:0}}/>)}</div>
-          <div style={{display:'flex',gap:6,marginLeft:'auto'}}>
-            <Btn small onClick={()=>{const{name,newName,colorIdx}=editingRole;if(!newName.trim())return;const ns=ROLE_COLOR_PALETTE[colorIdx];if(newName!==name){setRoleStyles(p=>{const n={...p};delete n[name];return{...n,[newName]:ns};});setEmployees(p=>p.map(e=>({...e,roles:(e.roles||[]).map(r=>r===name?newName:r)})));setBlocks(p=>p.map(b=>{const nr={...b.roles};const val=nr[name]||0;delete nr[name];return{...b,roles:{...nr,[newName]:val}};}));}else{setRoleStyles(p=>({...p,[name]:ns}));}setEditingRole(null);}}>{t('common.save')}</Btn>
-            <Btn small variant="ghost" onClick={()=>setEditingRole(null)}>{t('common.cancel')}</Btn>
-          </div>
-        </div>);
-        if(isDeleting)return(<div key={role} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:10,background:T.dangerLight,border:`1px solid ${T.danger}33`}}>
-          <span style={{fontSize:12,color:T.danger,flex:1}}>{t('cov.removeRolePre')}<b>{role}</b>{t('cov.removeRolePost')}</span>
-          <Btn small variant="danger" onClick={()=>{setRoleStyles(p=>{const n={...p};delete n[role];return n;});setEmployees(p=>p.map(e=>({...e,roles:(e.roles||[]).filter(r=>r!==role)})));setBlocks(p=>p.map(b=>{const nr={...b.roles};delete nr[role];return{...b,roles:nr};}));setConfirmDelete(null);}}>{t('cov.yesRemove')}</Btn>
-          <Btn small variant="ghost" onClick={()=>setConfirmDelete(null)}>{t('common.cancel')}</Btn>
-        </div>);
-        return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-          <div style={{width:10,height:10,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
-          <span style={{fontSize:13,fontWeight:500,color:T.text,flex:1}}>{role}</span>
-          {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.protected')}</span>}
-          {!isProtected&&<div style={{display:'flex',gap:4}}><Btn small variant="ghost" onClick={()=>{const ci=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);setEditingRole({name:role,newName:role,colorIdx:ci>=0?ci:0});}}>{t('common.edit')}</Btn><Btn small variant="danger" onClick={()=>setConfirmDelete(role)}>{t('common.remove')}</Btn></div>}
-          {isProtected&&<Btn small variant="ghost" onClick={()=>{const ci=ROLE_COLOR_PALETTE.findIndex(p=>p.dot===rs.dot);setEditingRole({name:role,newName:role,colorIdx:ci>=0?ci:0});}}>{t('cov.editColour')}</Btn>}
-        </div>);
-      })}
-      <AddRoleInline t={t} onAdd={name=>{if(!name.trim()||roleStyles[name])return;const idx=Object.keys(roleStyles).length%ROLE_COLOR_PALETTE.length;setRoleStyles(p=>({...p,[name]:ROLE_COLOR_PALETTE[idx]}));}}/>
-    </div>
-  </div>
-  <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>{t('cov.blocksDesc')}</div>
-  {blocks.map(block=>{
-    const overrides=block.overrides||{},daysWithOverride=DAYS.filter(d=>overrides[d]);
-    const updDefRole=(role,val)=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,roles:{...b.roles,[role]:Math.max(0,Number(val))}}:b));
-    const updOvRole=(day,role,val)=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};ov[day]={...(ov[day]||{...b.roles}),[role]:Math.max(0,Number(val))};return{...b,overrides:ov};}));
-    const addDayOv=day=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};ov[day]={...b.roles};return{...b,overrides:ov};}));
-    const remDayOv=day=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};delete ov[day];return{...b,overrides:Object.keys(ov).length?ov:undefined};}));
-    return(<div key={block.id} style={s.card}>
-      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'flex-end'}}>
-        <div style={{flex:'2 1 100px'}}><SectionLabel>{t('cov.blockName')}</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.start')}</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.end')}</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={s.input}/></div>
-        <div style={{flex:'0 0 auto'}}><SectionLabel>{t('cov.duration')}</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
-        <Btn onClick={()=>setBlocks(p=>p.filter(b=>b.id!==block.id))} variant="danger" small>{t('common.remove')}</Btn>
-      </div>
-      <SectionLabel>{t('cov.defaultStaffing')}</SectionLabel>
-      <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,marginBottom:16}}>
-        {allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1px solid ${isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
-          <span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span>
-          <input type="number" min="0" max="99" value={block.roles[role]||0} onChange={e=>updDefRole(role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>
-        </div>);})}
-      </div>
-      <SectionLabel>{t('cov.dayOverrides')}</SectionLabel>
-      <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:8}}>
-        {daysWithOverride.map(day=>{const dr=overrides[day];return(<div key={day} style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 12px'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{t('day.'+day)}</span><span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day:t('day.'+day)})}</span><Btn small variant="ghost" onClick={()=>remDayOv(day)}>{t('cov.removeX')}</Btn></div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isChanged=(dr[role]||0)!==(block.roles[role]||0);return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isChanged?rs.dot:isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}><span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span><input type="number" min="0" max="99" value={dr[role]||0} onChange={e=>updOvRole(day,role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>{isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}</div>);})}
-          </div>
-        </div>);})}
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><span style={{fontSize:11,color:T.text3}}>{t('cov.addOverrideFor')}</span>
-          {DAYS.filter(d=>!overrides[d]).map(day=><button key={day} onClick={()=>addDayOv(day)} style={{padding:'3px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',background:'transparent',border:`1px dashed ${T.border}`,color:T.text2,fontFamily:'inherit'}} onMouseEnter={e=>{e.target.style.borderColor=T.accent;e.target.style.color=T.accent;}} onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.text2;}}>{'+ '+t('day.'+day)}</button>)}
-          {DAYS.every(d=>overrides[d])&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.allDaysCustom')}</span>}
-        </div>
-      </div>
-    </div>);
-  })}
-  <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(allRoles.map(r=>[r,0]))}])} variant="secondary">{t('cov.addBlock')}</Btn></div>
-</div>)}
+{view==='coverage'&&(
+  <CoverageView
+    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles}
+    editingRole={editingRole} setEditingRole={setEditingRole} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
+    setEmployees={setEmployees} blocks={blocks} setBlocks={setBlocks}
+    s={s} t={t}
+  />
+)}
 
 {/* COSTS */}
-{view==='costs'&&(<div style={{display:'flex',flexDirection:'column',gap:16}}>
-  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-    <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('cost.thisWeek')],['month',t('cost.thisMonth')]].map(([k,l])=><button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
-    </div>
-    {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} — {t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}</span>}
-    {costsMode==='week'&&schedule&&<span style={{fontSize:12,color:T.text2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>}
-    <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
-      <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
-      <input type="number" min="1" step="1" value={hourlyRate.amount} onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
-      <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
-      <span style={{fontSize:11,color:T.text3}}>/h</span>
-    </div>
-  </div>
-  {((costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)])))?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
-    <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
-    <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>💷</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div><Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn></div>
-  </div>):(()=>{
-    const data=costsMode==='month'?monthCostData:costData,totalCost=costsMode==='month'?totalMonthCostUnits:totalCostUnits,maxCost=costsMode==='month'?maxMonthCostUnits:maxCostUnits,roleCosts=costsMode==='month'?monthRoleCosts:weekRoleCosts,maxRC=Math.max(...Object.values(roleCosts),0.01),workingCount=data.filter(d=>d.hours>0).length,totalHours=data.reduce((sv,d)=>sv+d.hours,0);
-    return(<>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-        {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
-      </div>
-      <div style={s.card}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.empBreakdown')}</div>
-        <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.empBreakdownDesc')}</div>
-        <div style={{display:'flex',flexDirection:'column',gap:6}}>
-          {[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
-            <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 80px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}><Avatar emp={emp} size={26}/><div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div></div>
-              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>
-              <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:hours>emp.maxHours?T.danger:T.text}}>{hours}h</div><div style={{fontSize:10,color:T.text3}}>{t('cost.ofN',{n:emp.maxHours})}</div></div>
-              <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
-              <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{'🌴 '+t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div><div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div></div>}</div>
-            </div>);})}
-        </div>
-      </div>
-      <div style={s.card}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:16}}>{t('cost.costByRole')}</div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {Object.entries(roleCosts).filter(([,v])=>v>0).sort(([,a],[,b])=>b-a).map(([role,cost])=>{const rs=roleStyles[role]||{dot:'#9C9088'},pct=maxRC>0?(cost/maxRC*100):0,cnt=data.filter(d=>(d.emp.roles||[]).includes(role)&&d.hours>0).length;return(
-            <div key={role} style={{display:'grid',gridTemplateColumns:'110px 1fr 80px',alignItems:'center',gap:12}}>
-              <RoleBadge role={role} rs={rs}/>
-              <div style={{position:'relative',height:10,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:rs.dot,borderRadius:999}}/></div>
-              <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}><span style={{fontSize:13,fontWeight:600,color:T.text}}>{toMoney(cost)}</span><span style={{fontSize:10,color:T.text3}}>{cnt} staff</span></div>
-            </div>);})}
-          {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>}
-        </div>
-      </div>
-      <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>💡 {t('cost.infoBox')}</div>
-    </>);
-  })()}
-</div>)}
+{view==='costs'&&(
+  <CostsView
+    costsMode={costsMode} setCostsMode={setCostsMode} displayMonth={displayMonth} schedules={schedules} schedule={schedule} weekDates={weekDates}
+    hourlyRate={hourlyRate} setHourlyRate={setHourlyRate}
+    monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
+    toMoney={toMoney} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView}
+    s={s} t={t}
+  />
+)}
 
       </div>
     </div>
