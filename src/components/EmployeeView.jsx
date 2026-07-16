@@ -110,7 +110,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
               <div style={{padding:'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>Team</div>
               {DAYS.map((day,i)=>{
                 const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-                return(<div key={day} style={{padding:'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
+                return(<div key={day} style={{padding:'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
                   <div style={{fontSize:13,fontWeight:600,color:isToday?T.accent:T.text}}>{day}</div>
                   <div style={{fontSize:11,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
                 </div>);
@@ -135,7 +135,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
                     const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff);
                     const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
                     const isToday=dateToISO(date)===dateToISO(new Date());
-                    return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72,background:isToday?T.accentLight:'transparent'}}>
+                    return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72,background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
                       {onTO?(
                         <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                           <div style={{fontSize:13}}>🌴</div>
