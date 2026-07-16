@@ -135,7 +135,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
                     const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff);
                     const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
                     const isToday=dateToISO(date)===dateToISO(new Date());
-                    return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72,background:isToday?(isDark()?T.accent+'11':T.accentLight+'66'):'transparent'}}>
+                    return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72,background:isToday?T.accentLight:'transparent'}}>
                       {onTO?(
                         <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                           <div style={{fontSize:13}}>🌴</div>

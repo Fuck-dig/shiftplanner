@@ -170,17 +170,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setGenerating(true);setSelected(null);
     setTimeout(()=>{
       const fullWeek=Object.fromEntries(DAYS.map(d=>[d,{from:'08:00',to:'00:00'}]));
+      // Real UUIDs — the employees table's id column is typed uuid, so plain
+      // strings like 't1' fail to save (Postgres: "invalid input syntax for
+      // type uuid").
       const testEmployees=[
-        {id:'t1', name:'Alma Berg',     roles:['Manager','Waiter'],            priority:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:'t2', name:'Bo Frank',      roles:['Manager','Kitchen'],           priority:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:'t3', name:'Cecilie Holm',  roles:['Manager'],                     priority:100, palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:'t4', name:'Daniel Vang',   roles:['Waiter','Bartender'],          priority:80,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:'t5', name:'Emilie Skov',   roles:['Waiter','Kitchen'],            priority:80,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:'t6', name:'Frederik Lang', roles:['Waiter'],                      priority:80,  palIdx:5, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:'t7', name:'Gitte Krogh',   roles:['Kitchen','Bartender'],         priority:80,  palIdx:6, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
-        {id:'t8', name:'Henrik Toft',   roles:['Kitchen'],                     priority:80,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
-        {id:'t9', name:'Ida Fog',       roles:['Bartender','Waiter','Kitchen'],priority:80,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:60, availability:fullWeek},
-        {id:'t10',name:'Jacob Ry',      roles:['Bartender'],                   priority:80,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Alma Berg',     roles:['Manager','Waiter'],            priority:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Bo Frank',      roles:['Manager','Kitchen'],           priority:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Cecilie Holm',  roles:['Manager'],                     priority:100, palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Daniel Vang',   roles:['Waiter','Bartender'],          priority:80,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Emilie Skov',   roles:['Waiter','Kitchen'],            priority:80,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Frederik Lang', roles:['Waiter'],                      priority:80,  palIdx:5, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Gitte Krogh',   roles:['Kitchen','Bartender'],         priority:80,  palIdx:6, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Henrik Toft',   roles:['Kitchen'],                     priority:80,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Ida Fog',       roles:['Bartender','Waiter','Kitchen'],priority:80,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:60, availability:fullWeek},
+        {id:crypto.randomUUID(), name:'Jacob Ry',      roles:['Bartender'],                   priority:80,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
       ];
       const updates={};
       getMonthOffsets(displayMonth).forEach(off=>{
@@ -535,7 +538,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               const onTO=isOnTimeOff(emp.id,date,timeOff);
               const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
               const isToday=dateToISO(date)===dateToISO(new Date());
-              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH,background:isToday?(isDark()?T.accent+'11':T.accentLight+'66'):'transparent'}}>
+              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH,background:isToday?T.accentLight:'transparent'}}>
                 {onTO?(
                   <div style={{padding:gridTight?'4px 7px':'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                     <div style={{fontSize:gridTight?11:13}}>🌴</div>
