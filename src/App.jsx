@@ -99,7 +99,7 @@ See you on the rota!`);
           {members.map(m=>(
             <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
               <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
-              <span style={{fontSize:11,color:T.text2,flex:1,fontFamily:"monospace"}}>{m.user_id.slice(0,16)}…</span>
+              <span style={{fontSize:11,color:T.text2,flex:1}}>{m.email||m.user_id.slice(0,16)+'…'}</span>
               {isOwner?(
                 <select value={m.role} onChange={async e=>{await addMember(orgId,m.user_id,e.target.value);reload();}}
                   style={{fontSize:11,padding:"2px 6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
@@ -290,6 +290,42 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     },100);
   };
 
+  // TEST ONLY: replaces the employee list with a set of test staff (several with
+  // multiple roles, full-week availability, generous hours) and fills the whole
+  // displayed month with shifts, so multi-role + full-coverage behavior can be
+  // checked at a glance. Safe to remove once no longer needed.
+  const seedTestDataAndGenerateMonth=()=>{
+    if(!confirm('This replaces your current employee list with test data (10 staff, several with multiple roles, full-week availability) and fills the whole month with shifts.\n\nContinue?')) return;
+    setGenerating(true);setSelected(null);
+    setTimeout(()=>{
+      const fullWeek=Object.fromEntries(DAYS.map(d=>[d,{from:'08:00',to:'00:00'}]));
+      const testEmployees=[
+        {id:'t1', name:'Alma Berg',     roles:['Manager','Waiter'],            priority:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:'t2', name:'Bo Frank',      roles:['Manager','Kitchen'],           priority:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:'t3', name:'Cecilie Holm',  roles:['Manager'],                     priority:100, palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
+        {id:'t4', name:'Daniel Vang',   roles:['Waiter','Bartender'],          priority:80,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:'t5', name:'Emilie Skov',   roles:['Waiter','Kitchen'],            priority:80,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:'t6', name:'Frederik Lang', roles:['Waiter'],                      priority:80,  palIdx:5, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+        {id:'t7', name:'Gitte Krogh',   roles:['Kitchen','Bartender'],         priority:80,  palIdx:6, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
+        {id:'t8', name:'Henrik Toft',   roles:['Kitchen'],                     priority:80,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
+        {id:'t9', name:'Ida Fog',       roles:['Bartender','Waiter','Kitchen'],priority:80,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:60, availability:fullWeek},
+        {id:'t10',name:'Jacob Ry',      roles:['Bartender'],                   priority:80,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
+      ];
+      const updates={};
+      getMonthOffsets(displayMonth).forEach(off=>{
+        const wd=getWeekDates(off);
+        const{schedule:s,total,noMgr}=buildSchedule(testEmployees,blocks,wd,timeOff,allRoles);
+        const notes=noMgr.length?`${total} slots — ${noMgr.length} without manager.`:`${total} slots with full manager coverage.`;
+        const warnings=noMgr.map(({day,block})=>`⚠️ ${day} ${block}: No manager!`);
+        updates[weekKey(off)]={schedule:s,notes,warnings};
+      });
+      setEmployees(testEmployees);
+      setSchedules(p=>({...p,...updates}));
+      setCalMode('month');
+      setGenerating(false);
+    },100);
+  };
+
   const confirmSchedule   =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));
   const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
   const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);};
@@ -388,6 +424,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}</select>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn>
+        <span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">🧪 Test: full month</Btn></span>
       </div>
 
       <div style={{maxWidth:1100,margin:'0 auto',padding:'24px 20px'}}>

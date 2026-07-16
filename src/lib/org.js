@@ -29,13 +29,11 @@ export async function createOrg(name){
   if (error) throw error;
   return data;
 }
-// List all members of an org (manager-only use)
+// List all members of an org (manager-only use).
+// Uses a server-side RPC since we can't join auth.users from the client directly.
 export async function listMembers(orgId){
   const { data, error } = await supabase
-    .from('memberships')
-    .select('user_id, role, created_at')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true });
+    .rpc('list_org_members', { target_org: orgId });
   if (error) throw error;
   return data || [];
 }
