@@ -314,7 +314,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       const updates={};
       getMonthOffsets(displayMonth).forEach(off=>{
         const wd=getWeekDates(off);
-        const{schedule:s,total,noMgr}=buildSchedule(testEmployees,blocks,wd,timeOff,allRoles);
+        // Jitter priority per week so a different mix of same-tier staff gets
+        // picked each week — otherwise buildSchedule is deterministic and every
+        // week ends up identical.
+        const weekEmployees=testEmployees.map(e=>({...e,priority:e.priority+Math.floor(Math.random()*30)}));
+        const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,timeOff,allRoles);
         const notes=noMgr.length?`${total} slots — ${noMgr.length} without manager.`:`${total} slots with full manager coverage.`;
         const warnings=noMgr.map(({day,block})=>`⚠️ ${day} ${block}: No manager!`);
         updates[weekKey(off)]={schedule:s,notes,warnings};
@@ -552,28 +556,39 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const nameW=gridTight?140:180;
   return(
   <div>
-    {/* Grid controls */}
-    <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-      <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-        {[['name','By name'],['role','By role']].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+    {/* Grid controls + header — sticky so they stay visible while scrolling the employee list */}
+    <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,paddingTop:8,marginTop:-8}}>
+      <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+          <button onClick={()=>setWeekOffset(w=>w-1)} style={{padding:'3px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+          <span style={{fontSize:12,fontWeight:500,minWidth:100,textAlign:'center',color:T.text}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>
+          <button onClick={()=>setWeekOffset(w=>w+1)} style={{padding:'3px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+        </div>
+        <button onClick={()=>setWeekOffset(0)} style={{padding:'5px 10px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+        <div style={{width:1,height:18,background:T.border}}/>
+        <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+          {[['name','By name'],['role','By role']].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+        </div>
+        <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
+          {gridTight?'Compact':'Comfortable'}
+        </button>
+        <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length} of {employees.length} scheduled</span>
       </div>
-      <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
-        {gridTight?'Compact':'Comfortable'}
-      </button>
-      <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length} of {employees.length} scheduled</span>
+      <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
+        {/* Header */}
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+          <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>Employee</div>
+          {DAYS.map((day,i)=>{
+            const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
+            return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
+              <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{day}</div>
+              <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
+            </div>);
+          })}
+        </div>
+      </div>
     </div>
-    <div style={{...s.cardFlush,overflowX:'auto'}}>
-      {/* Header */}
-      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
-        <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>Employee</div>
-        {DAYS.map((day,i)=>{
-          const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-          return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent'}}>
-            <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{day}</div>
-            <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
-          </div>);
-        })}
-      </div>
+    <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderTop:'none',borderTopLeftRadius:0,borderTopRightRadius:0}}>
       {/* Rows */}
       {rows.map((row,ri)=>{
         const emp=row.emp;
