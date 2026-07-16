@@ -520,7 +520,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
-            {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
+            {DAYS.map((_,i)=>{const isToday=dateToISO(weekDates[i])===dateToISO(new Date());return<div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}/>;})}
           </div>}
           <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
             {/* Name cell */}
@@ -575,7 +575,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         {DAYS.map((day,di)=>{
           const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
           const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
-          return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
+          const isToday=dateToISO(weekDates[di])===dateToISO(new Date());
+          return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none',background:isToday?`linear-gradient(90deg, transparent, ${T.accentLight}, transparent)`:'transparent'}}>
             <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
             <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
             {onLeave>0&&<div style={{fontSize:10,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
