@@ -125,6 +125,9 @@ const STRINGS = {
     'filter.open':'Open shifts',
     'filter.everyone':'Everyone',
     'week.weeklyHours':'Weekly Hours',
+    'week.isolateDay':'Click to show only this day',
+    'week.showAllDays':'Show all days',
+    'week.showingDay':'Showing {day} only',
 
     'emp.salaryMax':'max {n}h/week',
     'emp.clone':'Clone',
@@ -370,6 +373,9 @@ const STRINGS = {
     'filter.open':'Ledige vagter',
     'filter.everyone':'Alle personer',
     'week.weeklyHours':'Ugentlige timer',
+    'week.isolateDay':'Klik for kun at vise denne dag',
+    'week.showAllDays':'Vis alle dage',
+    'week.showingDay':'Viser kun {day}',
 
     'emp.salaryMax':'maks. {n}t/uge',
     'emp.clone':'Kopiér',
@@ -615,6 +621,9 @@ const STRINGS = {
     'filter.open':'Turnos libres',
     'filter.everyone':'Todas las personas',
     'week.weeklyHours':'Horas semanales',
+    'week.isolateDay':'Haz clic para mostrar solo este día',
+    'week.showAllDays':'Mostrar todos los días',
+    'week.showingDay':'Mostrando solo {day}',
 
     'emp.salaryMax':'máx. {n}h/semana',
     'emp.clone':'Clonar',
