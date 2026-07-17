@@ -610,12 +610,27 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
     return (schedule[effectiveDay]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
   }):[];
-  const dayShifts=[...dayShiftsRaw].sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
+  const byEmp=new Map();
+  dayShiftsRaw.forEach(s=>{
+    if(!byEmp.has(s.empId))byEmp.set(s.empId,{empId:s.empId,name:s.name,role:s.role,segs:[]});
+    byEmp.get(s.empId).segs.push({start:s.start,end:s.end,startStr:s.startStr,endStr:s.endStr});
+  });
+  const dayRows=[...byEmp.values()].map(r=>{
+    const sorted=[...r.segs].sort((a,b)=>a.start-b.start);
+    const merged=[];
+    sorted.forEach(seg=>{
+      const last=merged[merged.length-1];
+      if(last&&seg.start<=last.end){ if(seg.end>last.end){last.end=seg.end;last.endStr=seg.endStr;} }
+      else merged.push({...seg});
+    });
+    return {...r,merged};
+  }).sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
   let timeline=null;
-  if(effectiveDay&&dayShifts.length){
-    const rangeStart=Math.floor(Math.min(...dayShifts.map(s=>s.start))/60)*60;
-    const rangeEnd=Math.ceil(Math.max(...dayShifts.map(s=>s.end))/60)*60;
+  if(effectiveDay&&dayRows.length){
+    const allStarts=dayRows.flatMap(r=>r.merged.map(m=>m.start)),allEnds=dayRows.flatMap(r=>r.merged.map(m=>m.end));
+    const rangeStart=Math.floor(Math.min(...allStarts)/60)*60;
+    const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
     timeline=(
@@ -630,18 +645,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         </div>
         <div style={{display:'flex',gap:8}}>
           <div style={{width:112,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayShifts.map((sft,idx)=>{const rs=roleStyles[sft.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={idx} style={{height:24,display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{sft.name}</div>);})}
+            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:24,display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
-              {dayShifts.map((sft,idx)=>{
-                const emp=employees.find(e=>e.id===sft.empId),p=pal(emp||{palIdx:0});
-                const leftPct=(sft.start-rangeStart)/totalMin*100,widthPct=(sft.end-sft.start)/totalMin*100;
-                return(<div key={idx} style={{position:'relative',height:24,background:T.surfaceWarm,borderRadius:6}}>
-                  <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                    <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{sft.startStr}–{sft.endStr}</span>
-                  </div>
+              {dayRows.map(row=>{
+                const emp=employees.find(e=>e.id===row.empId),p=pal(emp||{palIdx:0});
+                return(<div key={row.empId} style={{position:'relative',height:24,background:T.surfaceWarm,borderRadius:6}}>
+                  {row.merged.map((seg,si)=>{
+                    const leftPct=(seg.start-rangeStart)/totalMin*100,widthPct=(seg.end-seg.start)/totalMin*100;
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                      <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                    </div>);
+                  })}
                 </div>);
               })}
             </div>
