@@ -47,6 +47,7 @@ const STRINGS = {
     'nav.costs':'Costs',
 
     'sched.week':'Week',
+    'sched.day':'Day',
     'sched.month':'Month',
     'sched.staff':'Staff',
     'sched.grid':'Grid',
@@ -296,6 +297,7 @@ const STRINGS = {
     'nav.costs':'Omkostninger',
 
     'sched.week':'Uge',
+    'sched.day':'Dag',
     'sched.month':'Måned',
     'sched.staff':'Personale',
     'sched.grid':'Gitter',
@@ -545,6 +547,7 @@ const STRINGS = {
     'nav.costs':'Costes',
 
     'sched.week':'Semana',
+    'sched.day':'Día',
     'sched.month':'Mes',
     'sched.staff':'Personal',
     'sched.grid':'Cuadrícula',

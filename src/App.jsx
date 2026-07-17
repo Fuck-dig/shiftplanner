@@ -352,13 +352,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>
     <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('sched.week')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('sched.week')],['day',t('sched.day')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>{setCalMode(k);if(k==='day'&&!dayFilter){const jsDay=new Date().getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
+    {calMode==='day'&&(<div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+      {DAYS.map((d,i)=>{const active=(dayFilter||DAYS[0])===d;return(<button key={d} onClick={()=>setDayFilter(d)} style={{padding:'4px 10px',borderRadius:6,background:active?T.accent:T.surface,border:`1px solid ${active?T.accent:T.border}`,color:active?'#fff':T.text2,cursor:'pointer',fontSize:12,fontWeight:active?600:400,fontFamily:'inherit'}}>{t('day.'+d)} <span style={{opacity:0.8}}>{weekDates[i].getDate()}</span></button>);})}
+    </div>)}
     {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
-    {calMode==='week'&&dayFilter&&(()=>{const offDate=weekDates[DAYS.indexOf(dayFilter)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
+    {(calMode==='week'||calMode==='day')&&(dayFilter||calMode==='day')&&(()=>{const d=dayFilter||DAYS[0],offDate=weekDates[DAYS.indexOf(d)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
       <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>🌴 {t('week.offToday',{n:off.length})}</span>
     );})()}
-    {calMode==='week'&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+    {(calMode==='week'||calMode==='day')&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
       {stats?.missing>0&&<span style={{fontSize:12,color:T.danger,fontWeight:500,background:T.dangerLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.danger}33`}}>{stats.missing} missing</span>}
       {stats?.missing===0&&<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>{t('sched.fullCoverage')} ✓</span>}
@@ -591,7 +594,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   );
 })())}
 {/* WEEK VIEW */}
-{calMode==='week'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+{(calMode==='week'||calMode==='day')&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
   <div style={{position:'relative'}}>
     <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📅</div>
@@ -600,14 +603,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
-</div>):(()=>{const filterDays=dayFilter?[dayFilter]:DAYS;
-  const dayShifts=dayFilter?blocks.flatMap(b=>{
+</div>):(()=>{const effectiveDay=calMode==='day'?(dayFilter||DAYS[0]):dayFilter;
+  const filterDays=effectiveDay?[effectiveDay]:DAYS;
+  const dayShifts=effectiveDay?blocks.flatMap(b=>{
     const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
-    return (schedule[dayFilter]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
+    return (schedule[effectiveDay]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
   }):[];
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
   let timeline=null;
-  if(dayFilter&&dayShifts.length){
+  if(effectiveDay&&dayShifts.length){
     const rangeStart=Math.floor(Math.min(...dayShifts.map(s=>s.start))/60)*60;
     const rangeEnd=Math.ceil(Math.max(...dayShifts.map(s=>s.end))/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
@@ -622,7 +626,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             {dayShifts.map((sft,idx)=>(<div key={idx} style={{height:24,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sft.name}</div>))}
           </div>
           <div style={{position:'relative',flex:1}}>
-            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
+            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayShifts.map((sft,idx)=>{
                 const emp=employees.find(e=>e.id===sft.empId),p=pal(emp||{palIdx:0});
@@ -651,7 +655,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=dayFilter===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>calMode==='day'?day:(f===day?null:day))} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
@@ -667,7 +671,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
                           <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
-                          {dayFilter&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{block.start}–{block.end}</div>}
+                          {effectiveDay&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{block.start}–{block.end}</div>}
                         </div>
                       );})}
                       {gap>0&&(<div style={{position:'relative'}}>
