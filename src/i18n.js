@@ -128,6 +128,7 @@ const STRINGS = {
     'week.isolateDay':'Click to show only this day',
     'week.showAllDays':'Show all days',
     'week.showingDay':'Showing {day} only',
+    'week.offToday':'{n} off today',
 
     'emp.salaryMax':'max {n}h/week',
     'emp.clone':'Clone',
@@ -376,6 +377,7 @@ const STRINGS = {
     'week.isolateDay':'Klik for kun at vise denne dag',
     'week.showAllDays':'Vis alle dage',
     'week.showingDay':'Viser kun {day}',
+    'week.offToday':'{n} har fri i dag',
 
     'emp.salaryMax':'maks. {n}t/uge',
     'emp.clone':'Kopiér',
@@ -624,6 +626,7 @@ const STRINGS = {
     'week.isolateDay':'Haz clic para mostrar solo este día',
     'week.showAllDays':'Mostrar todos los días',
     'week.showingDay':'Mostrando solo {day}',
+    'week.offToday':'{n} libran hoy',
 
     'emp.salaryMax':'máx. {n}h/semana',
     'emp.clone':'Clonar',
