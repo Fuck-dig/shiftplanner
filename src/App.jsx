@@ -358,8 +358,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     {calMode==='day'&&(<div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
       {DAYS.map((d,i)=>{const active=(dayFilter||DAYS[0])===d;return(<button key={d} onClick={()=>setDayFilter(d)} style={{padding:'4px 10px',borderRadius:6,background:active?T.accent:T.surface,border:`1px solid ${active?T.accent:T.border}`,color:active?'#fff':T.text2,cursor:'pointer',fontSize:12,fontWeight:active?600:400,fontFamily:'inherit'}}>{t('day.'+d)} <span style={{opacity:0.8}}>{weekDates[i].getDate()}</span></button>);})}
     </div>)}
-    {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
-    {(calMode==='week'||calMode==='day')&&(dayFilter||calMode==='day')&&(()=>{const d=dayFilter||DAYS[0],offDate=weekDates[DAYS.indexOf(d)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
+    {calMode==='day'&&(()=>{const d=dayFilter||DAYS[0],offDate=weekDates[DAYS.indexOf(d)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
       <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>🌴 {t('week.offToday',{n:off.length})}</span>
     );})()}
     {(calMode==='week'||calMode==='day')&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -635,7 +634,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
     timeline=(
       <div style={{...s.cardFlush,padding:'16px 18px 14px'}}>
-        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10}}>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+            {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
+          </div>
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
             {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
           </div>
@@ -679,7 +681,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>calMode==='day'?day:(f===day?null:day))} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>{setDayFilter(day);setCalMode('day');}} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
