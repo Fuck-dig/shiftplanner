@@ -617,20 +617,24 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <div style={{position:'relative',height:16,marginLeft:120,marginBottom:10}}>
           {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
         </div>
-        <div style={{marginLeft:120,height:1,background:T.border,marginBottom:10}}/>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {dayShifts.map((sft,idx)=>{
-            const emp=employees.find(e=>e.id===sft.empId),p=pal(emp||{palIdx:0});
-            const leftPct=(sft.start-rangeStart)/totalMin*100,widthPct=(sft.end-sft.start)/totalMin*100;
-            return(<div key={idx} style={{display:'flex',alignItems:'center',gap:8}}>
-              <div style={{width:112,flexShrink:0,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sft.name}</div>
-              <div style={{position:'relative',flex:1,height:24,background:T.surfaceWarm,borderRadius:6}}>
-                <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                  <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{sft.startStr}–{sft.endStr}</span>
-                </div>
-              </div>
-            </div>);
-          })}
+        <div style={{display:'flex',gap:8}}>
+          <div style={{width:112,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            {dayShifts.map((sft,idx)=>(<div key={idx} style={{height:24,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sft.name}</div>))}
+          </div>
+          <div style={{position:'relative',flex:1}}>
+            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
+            <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
+              {dayShifts.map((sft,idx)=>{
+                const emp=employees.find(e=>e.id===sft.empId),p=pal(emp||{palIdx:0});
+                const leftPct=(sft.start-rangeStart)/totalMin*100,widthPct=(sft.end-sft.start)/totalMin*100;
+                return(<div key={idx} style={{position:'relative',height:24,background:T.surfaceWarm,borderRadius:6}}>
+                  <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                    <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{sft.startStr}–{sft.endStr}</span>
+                  </div>
+                </div>);
+              })}
+            </div>
+          </div>
         </div>
       </div>
     );
