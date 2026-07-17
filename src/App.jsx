@@ -50,6 +50,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [gridGroupBy,setGridGroupBy] = useState('name');  // 'name' | 'role'
   const [gridTight,setGridTight]     = useState(false);
   const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
+  const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
   const [costsMode,setCostsMode]     = useState('week');
   const [hourlyRate,setHourlyRateRaw]= useState(()=>loadPref('sa2_rate',{amount:150,currency:'kr'}));
   const [lang,setLangRaw]            = useState(()=>loadPref('sa2_lang',detectLang()));
@@ -605,10 +606,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   </div>
 </div>):(()=>{const effectiveDay=calMode==='day'?(dayFilter||DAYS[0]):dayFilter;
   const filterDays=effectiveDay?[effectiveDay]:DAYS;
-  const dayShifts=effectiveDay?blocks.flatMap(b=>{
+  const dayShiftsRaw=effectiveDay?blocks.flatMap(b=>{
     const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
     return (schedule[effectiveDay]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
   }):[];
+  const dayShifts=[...dayShiftsRaw].sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
   let timeline=null;
   if(effectiveDay&&dayShifts.length){
@@ -618,12 +620,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
     timeline=(
       <div style={{...s.cardFlush,padding:'16px 18px 14px'}}>
+        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+            {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+          </div>
+        </div>
         <div style={{position:'relative',height:16,marginLeft:120,marginBottom:10}}>
           {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
         </div>
         <div style={{display:'flex',gap:8}}>
           <div style={{width:112,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayShifts.map((sft,idx)=>(<div key={idx} style={{height:24,display:'flex',alignItems:'center',fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sft.name}</div>))}
+            {dayShifts.map((sft,idx)=>{const rs=roleStyles[sft.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={idx} style={{height:24,display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{sft.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
