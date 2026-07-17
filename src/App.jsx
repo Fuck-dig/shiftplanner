@@ -600,7 +600,43 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
-</div>):(()=>{const filterDays=dayFilter?[dayFilter]:DAYS;return(<div style={{display:'flex',flexDirection:'column',gap:16}}>
+</div>):(()=>{const filterDays=dayFilter?[dayFilter]:DAYS;
+  const dayShifts=dayFilter?blocks.flatMap(b=>{
+    const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
+    return (schedule[dayFilter]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
+  }):[];
+  const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
+  let timeline=null;
+  if(dayFilter&&dayShifts.length){
+    const rangeStart=Math.floor(Math.min(...dayShifts.map(s=>s.start))/60)*60;
+    const rangeEnd=Math.ceil(Math.max(...dayShifts.map(s=>s.end))/60)*60;
+    const totalMin=Math.max(60,rangeEnd-rangeStart);
+    const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
+    timeline=(
+      <div style={{...s.cardFlush,padding:'16px 18px 14px'}}>
+        <div style={{position:'relative',height:16,marginLeft:120,marginBottom:10}}>
+          {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
+        </div>
+        <div style={{marginLeft:120,height:1,background:T.border,marginBottom:10}}/>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {dayShifts.map((sft,idx)=>{
+            const emp=employees.find(e=>e.id===sft.empId),p=pal(emp||{palIdx:0});
+            const leftPct=(sft.start-rangeStart)/totalMin*100,widthPct=(sft.end-sft.start)/totalMin*100;
+            return(<div key={idx} style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:112,flexShrink:0,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sft.name}</div>
+              <div style={{position:'relative',flex:1,height:24,background:T.surfaceWarm,borderRadius:6}}>
+                <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                  <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{sft.startStr}–{sft.endStr}</span>
+                </div>
+              </div>
+            </div>);
+          })}
+        </div>
+      </div>
+    );
+  }
+  return(<div style={{display:'flex',flexDirection:'column',gap:16}}>
+  {timeline}
   {blocks.map(block=>(
     <div key={block.id} style={s.cardFlush}>
       <div style={{padding:'12px 20px',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12}}>
