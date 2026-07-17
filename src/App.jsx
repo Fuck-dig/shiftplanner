@@ -353,7 +353,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>
     <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('sched.week')],['day',t('sched.day')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>{setCalMode(k);if(k==='day'&&!dayFilter){const jsDay=new Date().getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('sched.week')],['day',t('sched.day')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>{if(k==='day'){if(!dayFilter){const jsDay=new Date().getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}else{setDayFilter(null);}setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
     {calMode==='day'&&(<div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
       {DAYS.map((d,i)=>{const active=(dayFilter||DAYS[0])===d;return(<button key={d} onClick={()=>setDayFilter(d)} style={{padding:'4px 10px',borderRadius:6,background:active?T.accent:T.surface,border:`1px solid ${active?T.accent:T.border}`,color:active?'#fff':T.text2,cursor:'pointer',fontSize:12,fontWeight:active?600:400,fontFamily:'inherit'}}>{t('day.'+d)} <span style={{opacity:0.8}}>{weekDates[i].getDate()}</span></button>);})}
@@ -651,12 +651,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayRows.map(row=>{
-                const emp=employees.find(e=>e.id===row.empId),p=pal(emp||{palIdx:0});
+                const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
                 return(<div key={row.empId} style={{position:'relative',height:24,background:T.surfaceWarm,borderRadius:6}}>
                   {row.merged.map((seg,si)=>{
                     const leftPct=(seg.start-rangeStart)/totalMin*100,widthPct=(seg.end-seg.start)/totalMin*100;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?p.dot+'40':p.dot+'30',border:`1.5px solid ${p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      <span style={{fontSize:10,fontWeight:600,color:isDark()?p.dot:p.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                      <span style={{fontSize:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
                     </div>);
                   })}
                 </div>);
