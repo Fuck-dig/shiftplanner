@@ -6,6 +6,10 @@ export const migrateEmployee=e=>({
   contractType:   e.contractType   || 'hourly',
   contractPeriod: e.contractPeriod || 'week',
   wage:           e.wage           || 0,
+  maxHours:       e.maxHours       ?? 40,
+  // Soft weekly-hours preference for the schedule builder. Defaults to
+  // maxHours (i.e. no different preference) until a manager sets one.
+  targetHours:    (e.targetHours!=null && e.targetHours>0) ? e.targetHours : (e.maxHours ?? 40),
 });
 export const load=(k,fb)=>{
   try{

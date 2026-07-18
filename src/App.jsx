@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
-import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from './lib/schedule';
+import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
@@ -10,8 +10,6 @@ import { Avatar, RoleBadge, EmpChip, Btn } from './components/ui';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
 import EmployeeView from './components/EmployeeView';
-import Onboarding from './components/Onboarding';
-import AccountBar from './components/AccountBar';
 import EmployeesView from './components/views/EmployeesView';
 import TimeOffView from './components/views/TimeOffView';
 import CoverageView from './components/views/CoverageView';
@@ -43,7 +41,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [openPicker,setOpenPicker]   = useState(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
-  const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});
+  const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
   const [showAddTO,setShowAddTO]     = useState(false);
   const [newTO,setNewTO]             = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,setToFilter]       = useState('all');
@@ -92,7 +90,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId)])
       .then(([emps,blks,to,scheds])=>{
         if(!alive) return;
-        setEmpRaw(emps.length?emps.map(migrateEmployee):DEFAULT_EMPLOYEES);
+        setEmpRaw((emps.length?emps:DEFAULT_EMPLOYEES).map(migrateEmployee));
         setBlocksRaw(blks.length?blks:DEFAULT_BLOCKS);
         setTORaw(to); setSchedsRaw(scheds); setLoading(false);
       }).catch(err=>{console.error('Load error:',err);if(alive)setLoading(false);});
@@ -344,14 +342,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
     setEmployees(p=>[...p,{...newEmp,id:crypto.randomUUID(),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]);
-    setNewEmp({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40});setShowAddEmp(false);
+    setNewEmp({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});setShowAddEmp(false);
   };
 
   const addTO         =()=>{if(!newTO.empId)return;setTimeOff(p=>[...p,{...newTO,id:crypto.randomUUID()}]);setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});setShowAddTO(false);};
   const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
   const removeTO      =id=>setTimeOff(p=>p.filter(t=>t.id!==id));
 
-  const calcWageCost=(e,hours)=>{const wage=e.wage||0;if(!wage)return parseFloat((hours*(e.priority||100)/100).toFixed(2));if((e.contractType||'hourly')==='hourly')return parseFloat((hours*wage).toFixed(2));const cm=e.maxHours||40,wim=4.33,mh=(e.contractPeriod||'week')==='month'?cm:cm*wim;return parseFloat(((hours/mh)*((e.contractPeriod||'week')==='month'?wage:wage*wim)).toFixed(2));};
+  const calcWageCost=(e,hours)=>{const rate=effectiveHourlyRate(e);if(rate==null)return parseFloat((hours*(e.priority||100)/100).toFixed(2));return parseFloat((hours*rate).toFixed(2));};
   const hasWages=employees.some(e=>e.wage>0);
   const costData=employees.map(e=>({emp:e,hours:empHours(e.id),costUnits:hasWages?calcWageCost(e,empHours(e.id)):parseFloat((empHours(e.id)*(e.priority||100)/100).toFixed(2))}));
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
@@ -389,7 +387,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}</select>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn>
-        <span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">🧪 Test: full month</Btn></span>
+        {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">🧪 Test: full month</Btn></span>}
         </>)}
         {isMobile&&(
           <button onClick={()=>setMobileMenuOpen(p=>!p)} aria-label="Menu" style={{width:36,height:36,marginLeft:8,borderRadius:8,border:`1px solid ${T.border}`,background:mobileMenuOpen?T.surfaceWarm:T.surface,color:T.text,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{mobileMenuOpen?'✕':'☰'}</button>
@@ -404,7 +402,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):'✦ '+t('common.generate')}</Btn></div>
-          <div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">🧪 Test: full month</Btn></div>
+          {isOwner&&<div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">🧪 Test: full month</Btn></div>}
         </div>
       )}
 
@@ -510,7 +508,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     :[...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
-  const nameW=gridTight?140:180;
+  const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
+  const gridMinW=isMobile?nameW+7*54:700;
   return(
   <div>
     {/* Grid controls + header — sticky so they stay visible while scrolling the employee list */}
@@ -526,7 +525,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       </div>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
         {/* Header */}
-        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
@@ -547,13 +546,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
         return(<div key={`${row.role||'all'}-${emp.id}`}>
           {/* Role group divider */}
-          {showDivider&&<div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
+          {showDivider&&<div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
             {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
-          <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
+          <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
             {/* Name cell */}
             <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?8:10,minHeight:rowH}}>
               {!gridTight&&<div style={{width:36,height:36,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>}
@@ -606,7 +605,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         </div>);
       })}
       {/* Footer */}
-      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
+      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
         <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
         {DAYS.map((day,di)=>{
           const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
@@ -667,9 +666,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
+    const ganttSideW=isMobile?76:112,ganttRowH=isMobile?20:24;
     timeline=(
-      <div style={{...s.cardFlush,padding:'16px 18px 14px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10}}>
+      <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
             {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
           </div>
@@ -677,23 +677,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
           </div>
         </div>
-        <div style={{position:'relative',height:16,marginLeft:120,marginBottom:10}}>
+        <div style={{position:'relative',height:16,marginLeft:ganttSideW,marginBottom:10,minWidth:isMobile?480-ganttSideW:'auto'}}>
           {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
         </div>
-        <div style={{display:'flex',gap:8}}>
-          <div style={{width:112,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:24,display:'flex',alignItems:'center',gap:5,fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+        <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
+          <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:5,fontSize:isMobile?11:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayRows.map(row=>{
                 const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
-                return(<div key={row.empId} style={{position:'relative',height:24,background:T.surfaceWarm,borderRadius:6}}>
+                return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6}}>
                   {row.merged.map((seg,si)=>{
                     const leftPct=(seg.start-rangeStart)/totalMin*100,widthPct=(seg.end-seg.start)/totalMin*100;
                     return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      <span style={{fontSize:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
                     </div>);
                   })}
                 </div>);

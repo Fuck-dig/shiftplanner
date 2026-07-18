@@ -11,6 +11,7 @@ const empToRow = (orgId, e) => ({
   contract_period: e.contractPeriod || 'week',
   wage:            e.wage || 0,
   max_hours:       e.maxHours ?? 40,
+  target_hours:    e.targetHours ?? null,
   availability:    e.availability || {},
   pal_idx:         e.palIdx ?? 0,
 });
@@ -24,6 +25,7 @@ const empFromRow = (r) => ({
   contractPeriod: r.contract_period || 'week',
   wage:           Number(r.wage) || 0,
   maxHours:       r.max_hours ?? 40,
+  targetHours:    r.target_hours ?? null,
   availability:   r.availability || {},
   palIdx:         r.pal_idx ?? 0,
 });

@@ -35,18 +35,3 @@ export function AddRoleInline({onAdd,t}){
   );
 }
 
-export function SaveTemplateInline({onSave,t}){
-  const [editing,setEditing]=useState(false);
-  const [val,setVal]=useState('');
-  const commit=()=>{ if(val.trim()){ onSave(val.trim()); setVal(''); setEditing(false); } };
-  if(!editing) return (
-    <button onClick={()=>setEditing(true)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,background:'transparent',border:`1px dashed ${T.border}`,color:T.text3,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>{t('tpl.saveAs')}</button>
-  );
-  return (
-    <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
-      <input autoFocus value={val} onChange={e=>setVal(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape'){ setVal(''); setEditing(false); } }} placeholder={t('tpl.namePlaceholder')+'…'} style={{padding:'4px 8px',borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontSize:12,fontFamily:'inherit',width:130,outline:'none'}}/>
-      <button onClick={commit} style={{padding:'4px 8px',borderRadius:6,background:T.accent,color:'#fff',border:'none',fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{t('common.save')}</button>
-      <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
-    </div>
-  );
-}
