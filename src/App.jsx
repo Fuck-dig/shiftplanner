@@ -131,6 +131,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     return ()=>{try{document.head.removeChild(link);}catch{}};
   },[]);
 
+  // Safety net: the add-staff modal locks background scroll while open by
+  // setting document.body.style.overflow directly (not React state), so if
+  // this component ever unmounts while it happens to be open, make sure the
+  // lock doesn't outlive it.
+  useEffect(()=>()=>{ document.body.style.overflow=''; },[]);
+
   if(loading) return <LoadingScreen/>;
 
   const weekDates  =getWeekDates(weekOffset);
@@ -337,7 +343,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     });
   };
   const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); };
-  useEffect(()=>()=>{ document.body.style.overflow=''; },[]); // safety net if this unmounts while locked
 
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
