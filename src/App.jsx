@@ -355,7 +355,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
-  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode==='day'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
+  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode!=='grid'&&calMode!=='staff'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
       <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='day'){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
       <span style={{fontSize:13,fontWeight:500,minWidth:calMode==='month'?120:calMode==='day'?130:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='day'?`${t('day.'+(dayFilter||DAYS[0]))} ${fmt(weekDates[DAYS.indexOf(dayFilter||DAYS[0])])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
@@ -424,7 +424,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   {/* Sticky controls + day header — stays visible while scrolling the staff list */}
   <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,marginBottom:16}}>
   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:10}}>
-    <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])} · {t('common.staffN',{n:employees.length})}</div></div>
+    <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{t('common.staffN',{n:employees.length})}</div></div>
     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       {allRoles.filter(r=>employees.some(e=>(e.roles||[]).includes(r))).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
       <div style={{width:1,height:16,background:T.border}}/>
@@ -493,13 +493,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     {/* Grid controls + header — sticky so they stay visible while scrolling the employee list */}
     <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8}}>
       <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
-        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-          <button onClick={()=>setWeekOffset(w=>w-1)} style={{padding:'3px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-          <span style={{fontSize:12,fontWeight:500,minWidth:100,textAlign:'center',color:T.text}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>
-          <button onClick={()=>setWeekOffset(w=>w+1)} style={{padding:'3px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
-        </div>
-        <button onClick={()=>setWeekOffset(0)} style={{padding:'5px 10px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
-        <div style={{width:1,height:18,background:T.border}}/>
         <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
           {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
         </div>
