@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
-import { getWeekDates, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
+import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
 import { migrateEmployee } from './lib/storage';
@@ -135,6 +135,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const pendingCount=timeOff.filter(t=>t.status==='Pending').length;
   const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
+  const shiftDay=(delta)=>{
+    const cur=weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
+    const nd=new Date(cur); nd.setDate(cur.getDate()+delta);
+    const dow=nd.getDay();
+    const mondayOfNd=new Date(nd); mondayOfNd.setDate(nd.getDate()-(dow===0?6:dow-1));
+    const baseMonday=getMondayDate(0);
+    const newOffset=Math.round((mondayOfNd-baseMonday)/(7*86400000));
+    setWeekOffset(newOffset);
+    setDayFilter(DAYS[dow===0?6:dow-1]);
+  };
 
   const generate=(forOff=weekOffset)=>{
     setGenerating(true);setSelected(null);
@@ -347,17 +357,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 {view==='schedule'&&(<div>
   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode==='day'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-      <span style={{fontSize:13,fontWeight:500,minWidth:calMode==='month'?120:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='day'){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+      <span style={{fontSize:13,fontWeight:500,minWidth:calMode==='month'?120:calMode==='day'?130:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='day'?`${t('day.'+(dayFilter||DAYS[0]))} ${fmt(weekDates[DAYS.indexOf(dayFilter||DAYS[0])])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='day'){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
     </div>
-    <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+    <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});if(calMode==='day'){const jsDay=n.getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
       {[['week',t('sched.week')],['day',t('sched.day')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>{if(k==='day'){if(!dayFilter){const jsDay=new Date().getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}else{setDayFilter(null);}setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
-    {calMode==='day'&&(<div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-      {DAYS.map((d,i)=>{const active=(dayFilter||DAYS[0])===d;return(<button key={d} onClick={()=>setDayFilter(d)} style={{padding:'4px 10px',borderRadius:6,background:active?T.accent:T.surface,border:`1px solid ${active?T.accent:T.border}`,color:active?'#fff':T.text2,cursor:'pointer',fontSize:12,fontWeight:active?600:400,fontFamily:'inherit'}}>{t('day.'+d)} <span style={{opacity:0.8}}>{weekDates[i].getDate()}</span></button>);})}
-    </div>)}
     {calMode==='day'&&(()=>{const d=dayFilter||DAYS[0],offDate=weekDates[DAYS.indexOf(d)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
       <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>🌴 {t('week.offToday',{n:off.length})}</span>
     );})()}
