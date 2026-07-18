@@ -422,20 +422,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
-  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode!=='grid'&&calMode!=='staff'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
+  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode!=='grid'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='day'){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-      <span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='day'?`${t('day.'+(dayFilter||DAYS[0]))} ${fmt(weekDates[DAYS.indexOf(dayFilter||DAYS[0])])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='day'){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+      <span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
     </div>
-    <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});if(calMode==='day'){const jsDay=n.getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+    <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});if(calMode==='week'&&dayFilter){const jsDay=n.getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-      {[['week',t('sched.week')],['day',t('sched.day')],['month',t('sched.month')],['grid',t('sched.grid')],['staff',t('sched.staff')]].map(([k,l])=><button key={k} onClick={()=>{if(k==='day'){if(!dayFilter){const jsDay=new Date().getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}else{setDayFilter(null);}setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      {[['week',t('sched.week')],['month',t('sched.month')],['grid',t('sched.team')]].map(([k,l])=><button key={k} onClick={()=>{setDayFilter(null);setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
-    {calMode==='day'&&(()=>{const d=dayFilter||DAYS[0],offDate=weekDates[DAYS.indexOf(d)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
+    {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
+    {calMode==='week'&&dayFilter&&(()=>{const offDate=weekDates[DAYS.indexOf(dayFilter)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
       <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>🌴 {t('week.offToday',{n:off.length})}</span>
     );})()}
-    {(calMode==='week'||calMode==='day')&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+    {calMode==='week'&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
       {stats?.missing>0&&<span style={{fontSize:12,color:T.danger,fontWeight:500,background:T.dangerLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.danger}33`}}>{stats.missing} missing</span>}
       {stats?.missing===0&&<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>{t('sched.fullCoverage')} ✓</span>}
@@ -482,58 +483,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     {monthOff.some(off=>schedules[weekKey(off)])&&<><div style={{flex:1}}/><Btn small variant="danger" onClick={deleteMonth}>{t('month.deleteMonth')}</Btn></>}
   </div>
 </div>)}
-
-{/* STAFF VIEW */}
-{calMode==='staff'&&(!schedule?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
-  <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
-  <div style={{position:'relative'}}><div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,marginBottom:8}}>{t('staff.noRota')}</div><div style={{fontSize:13,color:T.text2,marginBottom:24}}>{t('staff.noRotaDesc')}</div><Btn onClick={()=>generate()}>{'✦ '+t('staff.generateWeek')}</Btn></div>
-</div>):(<div>
-  {/* Sticky controls + day header — stays visible while scrolling the staff list */}
-  <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,marginBottom:16}}>
-  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:10}}>
-    <div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text}}>{t('staff.weeklyRota')}</div><div style={{fontSize:13,color:T.text2,marginTop:2}}>{t('common.staffN',{n:employees.length})}</div></div>
-    <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-      {allRoles.filter(r=>employees.some(e=>(e.roles||[]).includes(r))).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}
-      <div style={{width:1,height:16,background:T.border}}/>
-      {confirmed?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('sched.confirmed')}</span>:<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>}
-      {!confirmed&&<Btn small onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
-      <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
-    </div>
-  </div>
-  <div style={{...s.cardFlush,padding:0}}>
-    <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',background:T.surfaceWarm}}>
-      {DAYS.map((day,di)=>{const date=weekDates[di],isToday=dateToISO(date)===dateToISO(new Date());return(
-        <div key={day} style={{padding:'8px 10px',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
-          <div style={{fontSize:11,fontWeight:600,color:isToday?T.accent:T.text2,textTransform:'uppercase',letterSpacing:'0.05em'}}>{t('day.'+day)}<span style={{fontWeight:400,marginLeft:4,textTransform:'none'}}>{date.getDate()}</span></div>
-        </div>
-      );})}
-    </div>
-  </div>
-  </div>
-  <div style={{display:'flex',flexDirection:'column',gap:8,marginTop:16}}>
-    {employees.map(emp=>{const h=empHours(emp.id),p=pal(emp);return(
-      <div key={emp.id} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,overflow:'hidden'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',background:`linear-gradient(to right, ${isDark()?p.dot+'18':p.bg}, ${T.surface})`,borderBottom:`1px solid ${T.border}`}}>
-          <Avatar emp={emp} size={36}/>
-          <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600,color:T.text}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:2}}>{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div>
-          <div style={{textAlign:'right'}}><div style={{fontSize:13,fontWeight:600,color:h>emp.maxHours?T.danger:h===0?T.text3:T.text}}>{h}h</div><div style={{fontSize:10,color:T.text3}}>{t('staff.ofMax',{n:emp.maxHours})}</div></div>
-          <div style={{width:60,height:5,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.min(100,(h/emp.maxHours)*100)}%`,borderRadius:999,background:h>emp.maxHours?T.danger:h/emp.maxHours>0.8?T.warning:T.success}}/></div>
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)'}}>
-          {DAYS.map((day,di)=>{const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff),ab=blocks.find(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));return(
-            <div key={day} style={{padding:'10px 10px',borderRight:di<6?`1px solid ${T.border}`:'none',background:di>=5?T.surfaceWarm:'transparent',minHeight:56,display:'flex',flexDirection:'column',justifyContent:'center',gap:3}}>
-              {onTO?<span style={{fontSize:11,color:T.warning,fontWeight:500}}>{'🌴 '+t('staff.leave')}</span>:ab?<div><div style={{fontSize:11,fontWeight:500,color:T.text}}>{ab.name}</div><div style={{fontSize:10,color:T.text3}}>{ab.start}–{ab.end}</div></div>:<span style={{fontSize:12,color:T.border}}>—</span>}
-            </div>);})}
-        </div>
-      </div>);})}
-  </div>
-  <div style={{marginTop:16,padding:'12px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
-    <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('staff.weekSummary')}</span>
-    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
-    <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:employees.length})}</span>
-    {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b>{t('staff.onLeaveCount')}</span>}
-  </div>
-</div>))}
 
 {/* GRID VIEW — Planday-style: employees as rows, days as columns */}
 {calMode==='grid'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
@@ -605,6 +554,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                 <div style={{fontSize:gridTight?12:14,fontWeight:600,color:T.text,lineHeight:1.2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gridTight?emp.name.split(' ')[0]:emp.name}</div>
                 {!gridTight&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>{emp.name.split(' ').slice(1).join(' ')}</div>}
                 {!gridTight&&<div style={{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}}>{(emp.roles||[]).slice(0,2).map(r=>{const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}
+                {!gridTight&&(()=>{const h=empHours(emp.id);return(
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:5}}>
+                    <div style={{height:4,width:50,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.min(100,(h/emp.maxHours)*100)}%`,borderRadius:999,background:h>emp.maxHours?T.danger:h/emp.maxHours>0.8?T.warning:T.success}}/></div>
+                    <span style={{fontSize:10,color:h>emp.maxHours?T.danger:T.text3}}>{h}h / {emp.maxHours}h</span>
+                  </div>
+                );})()}
               </div>
             </div>
             {/* Day cells */}
@@ -657,11 +612,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         })}
       </div>
     </div>
+    <div style={{marginTop:16,padding:'12px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
+      <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('staff.weekSummary')}</span>
+      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
+      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{employees.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:employees.length})}</span>
+      {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b>{t('staff.onLeaveCount')}</span>}
+    </div>
   </div>
   );
 })())}
 {/* WEEK VIEW */}
-{(calMode==='week'||calMode==='day')&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+{calMode==='week'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
   <div style={{position:'relative'}}>
     <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📅</div>
@@ -670,7 +631,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
-</div>):(()=>{const effectiveDay=calMode==='day'?(dayFilter||DAYS[0]):dayFilter;
+</div>):(()=>{const effectiveDay=dayFilter;
   const filterDays=effectiveDay?[effectiveDay]:DAYS;
   const dayShiftsRaw=effectiveDay?blocks.flatMap(b=>{
     const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
@@ -748,7 +709,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>{setDayFilter(day);setCalMode('day');}} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
