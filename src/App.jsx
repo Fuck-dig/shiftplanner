@@ -296,7 +296,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const deleteMonth       =()=>{const offs=getMonthOffsets(displayMonth);setSchedules(p=>{const n={...p};offs.forEach(off=>delete n[weekKey(off)]);return n;});};
 
   const handleSlotClick=(day,blockId,entry,idx)=>{
-    if(!schedule)return;setOpenPicker(null);
+    if(!schedule)return;closePicker();
     if(!selected){setSelected({...entry,day,blockId,idx});return;}
     if(selected.day===day&&selected.blockId===blockId&&selected.idx===idx){setSelected(null);return;}
     const ns=JSON.parse(JSON.stringify(schedule));
@@ -323,6 +323,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     if(selected&&selected.day===day&&selected.blockId===blockId&&selected.idx===idx)setSelected(null);
   };
+
+  // The add-staff picker is a proper centered modal (not an anchored popover
+  // tied to the trigger's on-screen position) — that approach kept breaking:
+  // the page could still scroll behind/away from it, leaving it looking
+  // disconnected from whatever it was supposed to be next to. A modal with a
+  // scroll-locked backdrop sidesteps the whole problem.
+  const openPickerFor=(day,blockId,role)=>{
+    setOpenPicker(p=>{
+      if(p&&p.day===day&&p.blockId===blockId&&p.role===role){ document.body.style.overflow=''; return null; }
+      document.body.style.overflow='hidden';
+      return{day,blockId,role};
+    });
+  };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); };
+  useEffect(()=>()=>{ document.body.style.overflow=''; },[]); // safety net if this unmounts while locked
 
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
@@ -786,36 +801,35 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                       );})}
                       {(()=>{
                         const pickerOpen=openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&!selected;
-                        // Rendered via a portal straight into document.body so it's structurally
-                        // outside the table/card entirely — position:fixed anchored to the
-                        // trigger's on-screen position (captured on click) can then never be
-                        // trapped by an ancestor's scroll container, so opening it never grows
-                        // the block card or forces the page to scroll.
-                        const personRow=(emp,dim)=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);setOpenPicker(null);}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',opacity:dim?0.75:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);};
-                        const picker=pickerOpen&&(()=>{const{available,unavailable}=candidatesForSlot(day,block.id,role);const{x,y}=openPicker;return createPortal(<>
-                          <div onClick={()=>setOpenPicker(null)} style={{position:'fixed',inset:0,zIndex:199}}/>
-                          <div style={{position:'fixed',left:x,top:y+6,transform:'translateX(-50%)',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 10px 30px -8px rgba(28,24,21,0.28)',zIndex:200,width:210,maxHeight:`min(360px, calc(100vh - ${y+16}px))`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-                            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'8px 8px 6px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
-                            <div style={{overflowY:'auto',padding:'0 8px'}}>
-                              {available.length===0&&unavailable.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
-                                {available.map(emp=>personRow(emp,false))}
-                                {unavailable.length>0&&<>
-                                  <div style={{fontSize:9,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'8px 4px 4px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?4:0}}>{t('week.allStaff')}</div>
-                                  {unavailable.map(emp=>personRow(emp,true))}
+                        // A centered modal, not an anchored popover — an anchored popup kept
+                        // failing because the page could still scroll behind/away from it,
+                        // leaving it stranded over unrelated content. A modal with a
+                        // scroll-locked backdrop can't drift like that.
+                        const personRow=(emp,dim)=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);closePicker();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'8px 10px',borderRadius:8,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',opacity:dim?0.7:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:30,height:30,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div><div style={{fontSize:13,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:11,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);};
+                        const picker=pickerOpen&&(()=>{const{available,unavailable}=candidatesForSlot(day,block.id,role);return createPortal(
+                          <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                            <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(320px,100%)',maxHeight:'min(70vh,480px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+                              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'16px 18px 10px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                              <div style={{overflowY:'auto',padding:'0 10px',flex:1,minHeight:0}}>
+                                {available.length===0&&unavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
+                                  {available.map(emp=>personRow(emp,false))}
+                                  {unavailable.length>0&&<>
+                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'10px 8px 6px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?6:0}}>{t('week.allStaff')}</div>
+                                    {unavailable.map(emp=>personRow(emp,true))}
+                                  </>}
                                 </>}
-                              </>}
+                              </div>
+                              <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0}}><Btn variant="ghost" onClick={closePicker}>{t('common.cancel')}</Btn></div>
                             </div>
-                            <div style={{borderTop:`1px solid ${T.border}`,padding:8,flexShrink:0}}><button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button></div>
                           </div>
-                        </>,document.body);})();
+                        ,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
-                        const openAt=e=>{const r=e.currentTarget.getBoundingClientRect();const x=Math.min(Math.max(r.left+r.width/2,110),window.innerWidth-110);setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role,x,y:r.bottom});};
                         if(gap>0)return(<div style={{position:'relative'}}>
-                          <button onClick={e=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openAt(e);}} disabled={blocked} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
                           {picker}
                         </div>);
                         return(<div style={{position:'relative'}}>
-                          <button onClick={e=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openAt(e);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
                           {picker}
                         </div>);
                       })()}
