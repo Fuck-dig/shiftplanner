@@ -40,7 +40,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [generating,setGenerating]   = useState(false);
   const [selected,setSelected]       = useState(null);
   const [openPicker,setOpenPicker]   = useState(null);
-  const [pickerRoleFilter,setPickerRoleFilter] = useState(null);
+  const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -342,9 +342,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       document.body.style.overflow='hidden';
       return{day,blockId,role};
     });
-    setPickerRoleFilter(null);
+    setPickerRoleFilter([]);
   };
-  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter(null); };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); };
 
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
@@ -818,15 +818,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         const picker=pickerOpen&&(()=>{
                           const{available,unavailable}=candidatesForSlot(day,block.id,role);
                           const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
-                          const matchesFilter=emp=>!pickerRoleFilter||(emp.roles||[]).includes(pickerRoleFilter);
+                          const matchesFilter=emp=>pickerRoleFilter.length===0||(emp.roles||[]).some(r=>pickerRoleFilter.includes(r));
                           const filteredAvailable=available.filter(matchesFilter),filteredUnavailable=unavailable.filter(matchesFilter);
+                          const toggleRoleFilter=r=>setPickerRoleFilter(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]);
                           return createPortal(
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
                             <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(320px,100%)',maxHeight:'min(70vh,480px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
                               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'16px 18px 10px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
                               {rolesPresent.length>1&&<div style={{display:'flex',gap:4,flexWrap:'wrap',padding:'0 18px 10px',flexShrink:0}}>
-                                <button onClick={()=>setPickerRoleFilter(null)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${!pickerRoleFilter?T.accent:T.border}`,background:!pickerRoleFilter?T.accent+'15':'transparent',color:!pickerRoleFilter?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{t('week.allRoles')}</button>
-                                {rolesPresent.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=pickerRoleFilter===r;return(<button key={r} onClick={()=>setPickerRoleFilter(active?null:r)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${active?rs.dot:T.border}`,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>);})}
+                                <button onClick={()=>setPickerRoleFilter([])} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${pickerRoleFilter.length===0?T.accent:T.border}`,background:pickerRoleFilter.length===0?T.accent+'15':'transparent',color:pickerRoleFilter.length===0?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{t('week.allRoles')}</button>
+                                {rolesPresent.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=pickerRoleFilter.includes(r);return(<button key={r} onClick={()=>toggleRoleFilter(r)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${active?rs.dot:T.border}`,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>);})}
                               </div>}
                               <div style={{overflowY:'auto',padding:'0 10px',flex:1,minHeight:0}}>
                                 {filteredAvailable.length===0&&filteredUnavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
