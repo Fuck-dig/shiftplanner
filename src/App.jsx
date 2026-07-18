@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
@@ -330,12 +331,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   },{});
   const empHours=id=>empHoursMap[id]||0;
 
-  const eligibleForSlot=(day,blockId,role)=>{
-    if(!schedule)return[];
-    const block=blocks.find(b=>b.id===blockId);if(!block)return[];
+  // Split into two groups: people whose declared weekly availability actually
+  // covers this shift, and people who could still work it (right role, not on
+  // approved leave, under their hour cap) but haven't marked themselves free
+  // then — shown as a deliberate override for real-world exceptions.
+  const candidatesForSlot=(day,blockId,role)=>{
+    if(!schedule)return{available:[],unavailable:[]};
+    const block=blocks.find(b=>b.id===blockId);if(!block)return{available:[],unavailable:[]};
     const bh=blockHours(block),date=weekDates[DAYS.indexOf(day)];
     const working=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
-    return employees.filter(e=>(e.roles||[]).includes(role)&&coversBlock(e.availability[day],block)&&!isOnTimeOff(e.id,date,timeOff)&&!working.has(e.id)&&empHours(e.id)+bh<=e.maxHours).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    const base=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!working.has(e.id)&&empHours(e.id)+bh<=e.maxHours).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    return{
+      available:base.filter(e=>coversBlock(e.availability[day],block)),
+      unavailable:base.filter(e=>!coversBlock(e.availability[day],block)),
+    };
   };
 
   const addToSlot=(day,blockId,role,emp)=>{
@@ -655,6 +664,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
   </div>
 </div>):(()=>{const effectiveDay=dayFilter;
+  // The person currently picked up for a move/swap — if they have more than
+  // one role, they should be a valid move target for ANY of their roles, not
+  // just whichever role they happened to be filling in their original slot.
+  const selectedEmp=selected?employees.find(e=>e.id===selected.empId):null;
+  const selectedRoles=selectedEmp?(selectedEmp.roles||[]):(selected?[selected.role]:[]);
   const filterDays=effectiveDay?[effectiveDay]:DAYS;
   const dayShiftsRaw=effectiveDay?blocks.flatMap(b=>{
     const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
@@ -761,7 +775,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               return(<tr key={role} style={{borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:'10px 20px',verticalAlign:'top',background:T.surface}}><RoleBadge role={role} rs={rs}/></td>
                 {filterDays.map(day=>{
-                  const allA=schedule[day]?.[block.id]||[],assigned=allA.filter(a=>a.role===role),req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selected.role===role&&selected.day!==day;
+                  const allA=schedule[day]?.[block.id]||[],assigned=allA.filter(a=>a.role===role),req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selectedRoles.includes(role)&&selected.day!==day;
                   return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
@@ -772,19 +786,28 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                       );})}
                       {(()=>{
                         const pickerOpen=openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&!selected;
-                        // Picker floats via position:fixed anchored to the trigger's on-screen
-                        // position (captured on click), so opening it can never grow the block's
-                        // card or force the page to scroll — only the list inside it scrolls.
-                        const picker=pickerOpen&&(()=>{const eligible=eligibleForSlot(day,block.id,role);const{x,y}=openPicker;return(<>
+                        // Rendered via a portal straight into document.body so it's structurally
+                        // outside the table/card entirely — position:fixed anchored to the
+                        // trigger's on-screen position (captured on click) can then never be
+                        // trapped by an ancestor's scroll container, so opening it never grows
+                        // the block card or forces the page to scroll.
+                        const personRow=(emp,dim)=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);setOpenPicker(null);}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',opacity:dim?0.75:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);};
+                        const picker=pickerOpen&&(()=>{const{available,unavailable}=candidatesForSlot(day,block.id,role);const{x,y}=openPicker;return createPortal(<>
                           <div onClick={()=>setOpenPicker(null)} style={{position:'fixed',inset:0,zIndex:199}}/>
-                          <div style={{position:'fixed',left:x,top:y+6,transform:'translateX(-50%)',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 10px 30px -8px rgba(28,24,21,0.28)',zIndex:200,width:200,maxHeight:`min(320px, calc(100vh - ${y+16}px))`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+                          <div style={{position:'fixed',left:x,top:y+6,transform:'translateX(-50%)',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 10px 30px -8px rgba(28,24,21,0.28)',zIndex:200,width:210,maxHeight:`min(360px, calc(100vh - ${y+16}px))`,display:'flex',flexDirection:'column',overflow:'hidden'}}>
                             <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'8px 8px 6px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
                             <div style={{overflowY:'auto',padding:'0 8px'}}>
-                              {eligible.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:eligible.map(emp=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);setOpenPicker(null);}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);})}
+                              {available.length===0&&unavailable.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
+                                {available.map(emp=>personRow(emp,false))}
+                                {unavailable.length>0&&<>
+                                  <div style={{fontSize:9,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'8px 4px 4px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?4:0}}>{t('week.notUsuallyAvailable')}</div>
+                                  {unavailable.map(emp=>personRow(emp,true))}
+                                </>}
+                              </>}
                             </div>
                             <div style={{borderTop:`1px solid ${T.border}`,padding:8,flexShrink:0}}><button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button></div>
                           </div>
-                        </>);})();
+                        </>,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const openAt=e=>{const r=e.currentTarget.getBoundingClientRect();const x=Math.min(Math.max(r.left+r.width/2,110),window.innerWidth-110);setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role,x,y:r.bottom});};
                         if(gap>0)return(<div style={{position:'relative'}}>
