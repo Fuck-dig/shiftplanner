@@ -51,6 +51,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
   const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
   const [costsMode,setCostsMode]     = useState('week');
+  const [costsWeekOffset,setCostsWeekOffset]=useState(0); // independent of the Schedule tab's own week
   const [hourlyRate,setHourlyRateRaw]= useState(()=>loadPref('sa2_rate',{amount:150,currency:'kr'}));
   const [lang,setLangRaw]            = useState(()=>loadPref('sa2_lang',detectLang()));
   const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
@@ -351,7 +352,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
   const calcWageCost=(e,hours)=>{const rate=effectiveHourlyRate(e);if(rate==null)return parseFloat((hours*(e.priority||100)/100).toFixed(2));return parseFloat((hours*rate).toFixed(2));};
   const hasWages=employees.some(e=>e.wage>0);
-  const costData=employees.map(e=>({emp:e,hours:empHours(e.id),costUnits:hasWages?calcWageCost(e,empHours(e.id)):parseFloat((empHours(e.id)*(e.priority||100)/100).toFixed(2))}));
+  // Costs tab has its own week selector, independent of whatever week the
+  // Schedule tab is currently showing.
+  const costsWeekDates=getWeekDates(costsWeekOffset);
+  const costsWKey=weekKey(costsWeekOffset);
+  const costsSchedule=schedules[costsWKey]?.schedule||null;
+  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ if((ws[day]?.[b.id]||[]).some(a=>a.empId===empId)) h+=blockHours(b); })); return h; };
+  const costData=employees.map(e=>{const hours=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
   const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{if((ws[day]?.[b.id]||[]).some(a=>a.empId===e.id))h+=blockHours(b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
@@ -812,7 +819,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 {/* COSTS */}
 {view==='costs'&&(
   <CostsView
-    costsMode={costsMode} setCostsMode={setCostsMode} displayMonth={displayMonth} schedules={schedules} schedule={schedule} weekDates={weekDates}
+    costsMode={costsMode} setCostsMode={setCostsMode} costsWeekOffset={costsWeekOffset} setCostsWeekOffset={setCostsWeekOffset} displayMonth={displayMonth} schedules={schedules} schedule={costsSchedule} weekDates={costsWeekDates}
     hourlyRate={hourlyRate} setHourlyRate={setHourlyRate}
     monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
     toMoney={toMoney} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView}

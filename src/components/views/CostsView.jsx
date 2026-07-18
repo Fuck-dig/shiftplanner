@@ -4,7 +4,7 @@ import { isOnTimeOff } from '../../lib/schedule';
 import { Avatar, RoleBadge, Btn } from '../ui';
 
 export default function CostsView({
-  costsMode, setCostsMode, displayMonth, schedules, schedule, weekDates,
+  costsMode, setCostsMode, costsWeekOffset, setCostsWeekOffset, displayMonth, schedules, schedule, weekDates,
   hourlyRate, setHourlyRate,
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
   toMoney, employees, timeOff, roleStyles, setView,
@@ -16,7 +16,16 @@ export default function CostsView({
         {[['week',t('cost.thisWeek')],['month',t('cost.thisMonth')]].map(([k,l])=><button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
       </div>
       {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} — {t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}</span>}
-      {costsMode==='week'&&schedule&&<span style={{fontSize:12,color:T.text2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>}
+      {costsMode==='week'&&(
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{display:'flex',alignItems:'center',gap:2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+            <button onClick={()=>setCostsWeekOffset(o=>o-1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+            <span style={{fontSize:12,fontWeight:500,color:T.text,minWidth:120,textAlign:'center',padding:'0 2px'}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</span>
+            <button onClick={()=>setCostsWeekOffset(o=>o+1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+          </div>
+          {costsWeekOffset!==0&&<button onClick={()=>setCostsWeekOffset(0)} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>}
+        </div>
+      )}
       <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
         <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
         <input type="number" min="1" step="1" value={hourlyRate.amount} onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
