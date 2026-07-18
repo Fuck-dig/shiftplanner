@@ -351,20 +351,22 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   },{});
   const empHours=id=>empHoursMap[id]||0;
 
-  // Split into two groups: people whose declared weekly availability actually
-  // covers this shift, and people who could still work it (right role, not on
-  // approved leave, under their hour cap) but haven't marked themselves free
-  // then — shown as a deliberate override for real-world exceptions.
+  // Two groups: a recommended list (right role, available, not on leave,
+  // under their hour cap), and a true "everyone else" roster with no
+  // filtering at all — a deliberate full-override escape hatch so a manager
+  // can add literally anyone, for whatever real-world reason isn't captured
+  // by role/availability/hours. Only exclusion in the second group: someone
+  // already assigned to this exact shift (that'd just be a no-op duplicate).
   const candidatesForSlot=(day,blockId,role)=>{
     if(!schedule)return{available:[],unavailable:[]};
     const block=blocks.find(b=>b.id===blockId);if(!block)return{available:[],unavailable:[]};
     const bh=blockHours(block),date=weekDates[DAYS.indexOf(day)];
+    const alreadyHere=new Set((schedule[day]?.[blockId]||[]).map(a=>a.empId));
     const working=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
-    const base=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!working.has(e.id)&&empHours(e.id)+bh<=e.maxHours).sort((a,b)=>(a.priority||100)-(b.priority||100));
-    return{
-      available:base.filter(e=>coversBlock(e.availability[day],block)),
-      unavailable:base.filter(e=>!coversBlock(e.availability[day],block)),
-    };
+    const recommended=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!working.has(e.id)&&empHours(e.id)+bh<=e.maxHours&&coversBlock(e.availability[day],block)).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    const recommendedIds=new Set(recommended.map(e=>e.id));
+    const everyoneElse=employees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name));
+    return{available:recommended,unavailable:everyoneElse};
   };
 
   const addToSlot=(day,blockId,role,emp)=>{
