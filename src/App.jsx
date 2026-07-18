@@ -722,6 +722,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     );
   }
   return(<div style={{display:'flex',flexDirection:'column',gap:16}}>
+  {selected&&(
+    <div style={{position:'fixed',bottom:20,left:isMobile?14:20,right:isMobile?14:'auto',maxWidth:isMobile?'calc(100% - 28px)':340,zIndex:210,background:T.surface,border:`1px solid ${T.accent}55`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'flex-start',gap:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)'}}>
+      <span style={{fontSize:14}}>✥</span>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12,fontWeight:600,color:T.text,marginBottom:2}}>{t('week.moving',{name:selected.name})}</div>
+        <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('week.movingHint')}</div>
+        <div style={{display:'flex',gap:6}}>
+          <Btn small variant="danger" onClick={()=>{removeFromSlot(selected.day,selected.blockId,selected.idx);setSelected(null);}}>{t('common.remove')}</Btn>
+          <Btn small variant="ghost" onClick={()=>setSelected(null)}>{t('common.cancel')}</Btn>
+        </div>
+      </div>
+    </div>
+  )}
   {timeline}
   {blocks.map(block=>{
     const isCollapsed=!!collapsedBlocks[block.id];
@@ -752,27 +765,30 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                   return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
-                        <div key={idx} style={{position:'relative'}}>
+                        <div key={idx}>
                           <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
-                          <button onClick={e=>{e.stopPropagation();removeFromSlot(day,block.id,realIdx);}} title={t('week.removeFromShift')} style={{position:'absolute',top:-6,right:-6,width:15,height:15,borderRadius:'50%',background:T.danger,color:'#fff',border:`1.5px solid ${T.surface}`,fontSize:9,lineHeight:'12px',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,fontFamily:'inherit'}}>✕</button>
                           {effectiveDay&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{block.start}–{block.end}</div>}
                         </div>
                       );})}
                       {(()=>{
-                        const picker=openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&!selected&&(()=>{const eligible=eligibleForSlot(day,block.id,role);return(<div style={{position:'absolute',top:'100%',left:0,marginTop:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 4px 16px rgba(28,24,21,0.12)',zIndex:200,minWidth:180,maxWidth:240,padding:8}}>
-                          <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
-                          {eligible.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:eligible.map(emp=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>addToSlot(day,block.id,role,emp)} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);})}
-                          <div style={{borderTop:`1px solid ${T.border}`,marginTop:4,paddingTop:4}}><button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button></div>
-                        </div>);})();
+                        const pickerOpen=openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&!selected;
+                        const picker=pickerOpen&&(()=>{const eligible=eligibleForSlot(day,block.id,role);return(<>
+                          <div onClick={()=>setOpenPicker(null)} style={{position:'fixed',inset:0,zIndex:199}}/>
+                          <div style={{position:'absolute',top:'100%',left:'50%',transform:'translateX(-50%)',marginTop:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 10px 30px -8px rgba(28,24,21,0.28)',zIndex:200,minWidth:180,maxWidth:220,padding:8}}>
+                            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'2px 4px 6px'}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                            {eligible.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:eligible.map(emp=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>addToSlot(day,block.id,role,emp)} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'6px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left'}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:24,height:24,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700}}>{initials(emp.name)}</div><div><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:10,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);})}
+                            <div style={{borderTop:`1px solid ${T.border}`,marginTop:4,paddingTop:4}}><button onClick={()=>setOpenPicker(null)} style={{display:'block',width:'100%',padding:'4px 8px',borderRadius:6,background:'transparent',border:'none',cursor:'pointer',fontSize:11,color:T.text3,textAlign:'left',fontFamily:'inherit'}}>{t('common.cancel')}</button></div>
+                          </div>
+                        </>);})();
+                        const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         if(gap>0)return(<div style={{position:'relative'}}>
-                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});}} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:'pointer',fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});}} disabled={blocked} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
                           {picker}
                         </div>);
-                        if(!selected)return(<div style={{position:'relative'}}>
-                          <button onClick={()=>setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role})} title={t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:999,fontSize:12,fontWeight:600,lineHeight:1,background:'transparent',color:T.text3,border:`1px dashed ${T.border}`,cursor:'pointer',fontFamily:'inherit'}}>+</button>
+                        return(<div style={{position:'relative'}}>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)setOpenPicker(p=>p&&p.day===day&&p.blockId===block.id&&p.role===role?null:{day,blockId:block.id,role});}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
                           {picker}
                         </div>);
-                        return null;
                       })()}
                     </div>
                   </td>);})}
