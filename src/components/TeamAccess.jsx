@@ -68,7 +68,7 @@ export default function TeamAccess({ orgId, orgName, isOwner=false, s, t }){
               <div style={{width:28,height:28,borderRadius:"50%",background:m.role==="manager"?T.accentLight:T.successLight,color:m.role==="manager"?T.accent:T.success,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700}}>{m.role==="manager"?"M":"E"}</div>
               <span style={{fontSize:11,color:T.text2,flex:1}}>{m.email||m.user_id.slice(0,16)+'…'}</span>
               {isOwner?(
-                <select value={m.role} onChange={async e=>{await addMember(orgId,m.user_id,e.target.value);reload();}}
+                <select value={m.role} onChange={async e=>{const newRole=e.target.value;try{await addMember(orgId,m.user_id,newRole);reload();}catch(err){alert(err.message||t('team.roleChangeFailed'));}}}
                   style={{fontSize:11,padding:"2px 6px",borderRadius:6,border:`1px solid ${T.border}`,background:T.surface,color:T.text,fontFamily:"inherit",cursor:"pointer"}}>
                   <option value="owner">{t('team.roleOwner')}</option>
                   <option value="manager">{t('team.roleManager')}</option>
@@ -77,7 +77,7 @@ export default function TeamAccess({ orgId, orgName, isOwner=false, s, t }){
               ):(
                 <span style={{fontSize:11,fontWeight:500,color:m.role==="owner"?T.danger:m.role==="manager"?T.accent:T.success,background:m.role==="owner"?T.dangerLight:m.role==="manager"?T.accentLight:T.successLight,padding:"2px 8px",borderRadius:999}}>{t('team.role'+(m.role.charAt(0).toUpperCase()+m.role.slice(1)))}</span>
               )}
-              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{await removeMember(orgId,m.user_id);reload();}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.remove')}</button>}
+              {(isOwner||m.role==="employee")&&m.role!=="owner"&&<button onClick={async()=>{try{await removeMember(orgId,m.user_id);reload();}catch(err){alert(err.message||t('team.removeFailed'));}}} style={{padding:"3px 8px",borderRadius:6,background:T.dangerLight,border:`1px solid ${T.danger}33`,color:T.danger,cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>{t('team.remove')}</button>}
             </div>
           ))}
         </div>

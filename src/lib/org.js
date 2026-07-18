@@ -78,30 +78,42 @@ export async function createInvitation(orgId, email, role='employee'){
   return data.id; // the invite id becomes the link token
 }
 
-// Check if logged-in user has any pending invitations and accept them
+// Check if logged-in user has any pending invitations and accept them.
+// Returns the number of invitations successfully accepted; throws an
+// aggregate error (after attempting all invites) if any failed, so a bad
+// invite doesn't silently vanish and doesn't block the others either.
 export async function acceptPendingInvitations(){
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  if (!user) return 0;
 
-  const { data: invites } = await supabase
+  const { data: invites, error: fetchErr } = await supabase
     .from('invitations')
     .select('id, org_id, role')
     .eq('email', user.email)
     .is('used_at', null);
+  if (fetchErr) throw fetchErr;
 
-  if (!invites || invites.length === 0) return;
+  if (!invites || invites.length === 0) return 0;
 
+  let accepted = 0;
+  const errors = [];
   for (const invite of invites) {
-    // Add to memberships
-    await supabase.from('memberships').upsert(
+    // Add to memberships. If this fails, do NOT mark the invite as used —
+    // otherwise a failed write silently loses the invitation forever.
+    const { error: memErr } = await supabase.from('memberships').upsert(
       { org_id: invite.org_id, user_id: user.id, role: invite.role },
       { onConflict: 'org_id,user_id' }
     );
+    if (memErr) { errors.push(memErr); continue; }
     // Mark invite as used
-    await supabase.from('invitations')
+    const { error: usedErr } = await supabase.from('invitations')
       .update({ used_at: new Date().toISOString() })
       .eq('id', invite.id);
+    if (usedErr) { errors.push(usedErr); continue; }
+    accepted++;
   }
+  if (errors.length) throw new Error(`Failed to accept ${errors.length} invitation(s): ${errors[0].message}`);
+  return accepted;
 }
 
 // List pending invitations for an org

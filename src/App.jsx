@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from './lib/schedule';
@@ -99,9 +99,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     return ()=>{alive=false;};
   },[orgId]);
 
-  const dEmp  =useCallback(mkDebounce(v=>syncEmployees(orgId,v),'employees'),[orgId]);
+  // time_off.employee_id has a FK on employees.id, so a time-off save that
+  // races ahead of an in-flight/pending employees save can violate that
+  // constraint (e.g. add an employee, then quickly add their time off).
+  // Track the latest employees-save promise so the time-off sync can wait
+  // for it to settle before writing, regardless of the independent debounce timers.
+  const empSaveRef=useRef(Promise.resolve());
+  const dEmp  =useCallback(mkDebounce(v=>{const p=syncEmployees(orgId,v);empSaveRef.current=p.catch(()=>{});return p;},'employees'),[orgId]);
   const dBlk  =useCallback(mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
-  const dTO   =useCallback(mkDebounce(v=>syncTimeOff(orgId,v),'timeoff'),[orgId]);
+  const dTO   =useCallback(mkDebounce(v=>empSaveRef.current.then(()=>syncTimeOff(orgId,v)),'timeoff'),[orgId]);
   const dSched=useCallback(mkDebounce(v=>syncSchedules(orgId,v),'schedules'),[orgId]);
 
   const setEmployees=v=>{const val=typeof v==='function'?v(employees):v;setEmpRaw(val);dEmp(val);};
@@ -359,7 +365,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
   const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
   const stats=totalStats();
-  const cDot=s=>({full:{bg:'#D4F0E2',border:'#5AAE80',text:'#236040'},partial:{bg:'#FBF0D5',border:'#D4A830',text:'#7A5010'},low:{bg:'#F5E2E2',border:'#D06060',text:'#783030'},empty:{bg:T.bg,border:T.border,text:T.text3}}[s]);
+  const cDot=s=>(isDark()?{full:{bg:'#5AAE8025',border:'#5AAE8080',text:'#7BC79A'},partial:{bg:'#D4A83025',border:'#D4A83080',text:'#E0BC5E'},low:{bg:'#D0606025',border:'#D0606080',text:'#E08585'},empty:{bg:T.bg,border:T.border,text:T.text3}}:{full:{bg:'#D4F0E2',border:'#5AAE80',text:'#236040'},partial:{bg:'#FBF0D5',border:'#D4A830',text:'#7A5010'},low:{bg:'#F5E2E2',border:'#D06060',text:'#783030'},empty:{bg:T.bg,border:T.border,text:T.text3}})[s];
   const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:pendingCount?`${t('nav.timeoff')} · ${pendingCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
@@ -554,7 +560,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               <div style={{minWidth:0}}>
                 <div style={{fontSize:gridTight?12:14,fontWeight:600,color:T.text,lineHeight:1.2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{gridTight?emp.name.split(' ')[0]:emp.name}</div>
                 {!gridTight&&<div style={{fontSize:11,color:T.text3,marginTop:2}}>{emp.name.split(' ').slice(1).join(' ')}</div>}
-                {!gridTight&&<div style={{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}}>{(emp.roles||[]).slice(0,2).map(r=>{const rs=roleStyles[r]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'};return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}
+                {!gridTight&&<div style={{display:'flex',gap:3,marginTop:3,flexWrap:'wrap'}}>{(emp.roles||[]).slice(0,2).map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}
                 {!gridTight&&(()=>{const h=empHours(emp.id);return(
                   <div style={{display:'flex',alignItems:'center',gap:6,marginTop:5}}>
                     <div style={{height:4,width:50,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${Math.min(100,(h/emp.maxHours)*100)}%`,borderRadius:999,background:h>emp.maxHours?T.danger:h/emp.maxHours>0.8?T.warning:T.success}}/></div>
@@ -578,7 +584,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                   const bh=blockHours(b);
                   const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
                   const shiftRole=shiftEntry?.role;
-                  const rrs=shiftRole?(roleStyles[shiftRole]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'}):null;
+                  const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
                   return(
                     <div key={b.id} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
@@ -835,11 +841,11 @@ export default function App(){
     supabase.auth.getSession().then(({data})=>{
       setSession(data.session);
       // Accept any pending invitations when user logs in
-      if(data.session) acceptPendingInvitations().catch(console.error);
+      if(data.session) acceptPendingInvitations().catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
     });
     const{data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{
       setSession(s);
-      if(s) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(console.error);
+      if(s) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
     });
     return()=>sub.subscription.unsubscribe();
   },[]);

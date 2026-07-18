@@ -14,7 +14,7 @@ export default function CoverageView({
       <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('cov.rolesDesc')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
         {allRoles.map(role=>{
-          const rs=roleStyles[role]||{dot:'#9C9088',bg:'#F2F1EF',text:'#5C5248',border:'#C8C4BE'},isProtected=role==='Manager',isEditing=editingRole?.name===role,isDeleting=confirmDelete===role;
+          const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isProtected=role==='Manager',isEditing=editingRole?.name===role,isDeleting=confirmDelete===role;
           if(isEditing)return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'10px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
             <input autoFocus value={editingRole.newName} onChange={e=>setEditingRole(p=>({...p,newName:e.target.value}))} style={{...s.input,width:130,flex:'0 0 auto'}}/>
             <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{ROLE_COLOR_PALETTE.map((p,i)=><button key={i} onClick={()=>setEditingRole(p=>({...p,colorIdx:i}))} style={{width:20,height:20,borderRadius:'50%',background:p.dot,border:editingRole.colorIdx===i?`2px solid ${T.text}`:'2px solid transparent',cursor:'pointer',padding:0}}/>)}</div>
@@ -75,6 +75,6 @@ export default function CoverageView({
         </div>
       </div>);
     })}
-    <div><Btn onClick={()=>setBlocks(p=>[...p,{id:`b${Date.now()}`,name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(allRoles.map(r=>[r,0]))}])} variant="secondary">{t('cov.addBlock')}</Btn></div>
+    <div><Btn onClick={()=>setBlocks(p=>[...p,{id:crypto.randomUUID(),name:'New Block',start:'09:00',end:'17:00',roles:Object.fromEntries(allRoles.map(r=>[r,0]))}])} variant="secondary">{t('cov.addBlock')}</Btn></div>
   </div>);
 }
