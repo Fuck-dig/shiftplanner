@@ -800,7 +800,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                               {available.length===0&&unavailable.length===0?<div style={{fontSize:11,color:T.text3,padding:'6px 4px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
                                 {available.map(emp=>personRow(emp,false))}
                                 {unavailable.length>0&&<>
-                                  <div style={{fontSize:9,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'8px 4px 4px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?4:0}}>{t('week.notUsuallyAvailable')}</div>
+                                  <div style={{fontSize:9,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'8px 4px 4px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?4:0}}>{t('week.allStaff')}</div>
                                   {unavailable.map(emp=>personRow(emp,true))}
                                 </>}
                               </>}
