@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
@@ -178,25 +178,70 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   // displayed month with shifts, so multi-role + full-coverage behavior can be
   // checked at a glance. Safe to remove once no longer needed.
   const seedTestDataAndGenerateMonth=()=>{
-    if(!confirm('This replaces your current employee list with test data (10 staff, several with multiple roles, full-week availability) and fills the whole month with shifts.\n\nContinue?')) return;
+    const input=window.prompt('How many test employees? (4–40)','12');
+    if(input===null)return;
+    let n=parseInt(input,10);
+    if(!Number.isFinite(n))return;
+    n=Math.max(4,Math.min(40,n));
+    if(!confirm(`This replaces your current employee list with ${n} generated test employees (varied roles, availability, and some approved time off) and fills the whole month with shifts.\n\nContinue?`))return;
     setGenerating(true);setSelected(null);
     setTimeout(()=>{
-      const fullWeek=Object.fromEntries(DAYS.map(d=>[d,{from:'08:00',to:'00:00'}]));
-      // Real UUIDs — the employees table's id column is typed uuid, so plain
-      // strings like 't1' fail to save (Postgres: "invalid input syntax for
-      // type uuid").
-      const testEmployees=[
-        {id:crypto.randomUUID(), name:'Alma Berg',     roles:['Manager','Waiter'],            priority:100, palIdx:0, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Bo Frank',      roles:['Manager','Kitchen'],           priority:100, palIdx:1, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Cecilie Holm',  roles:['Manager'],                     priority:100, palIdx:2, contractType:'fixed',  contractPeriod:'month', wage:35000, maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Daniel Vang',   roles:['Waiter','Bartender'],          priority:80,  palIdx:3, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Emilie Skov',   roles:['Waiter','Kitchen'],            priority:80,  palIdx:4, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Frederik Lang', roles:['Waiter'],                      priority:80,  palIdx:5, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Gitte Krogh',   roles:['Kitchen','Bartender'],         priority:80,  palIdx:6, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Henrik Toft',   roles:['Kitchen'],                     priority:80,  palIdx:0, contractType:'hourly', contractPeriod:'week',  wage:170,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Ida Fog',       roles:['Bartender','Waiter','Kitchen'],priority:80,  palIdx:1, contractType:'hourly', contractPeriod:'week',  wage:168,   maxHours:60, availability:fullWeek},
-        {id:crypto.randomUUID(), name:'Jacob Ry',      roles:['Bartender'],                   priority:80,  palIdx:2, contractType:'hourly', contractPeriod:'week',  wage:165,   maxHours:60, availability:fullWeek},
-      ];
+      const FIRST_NAMES=['Alma','Bo','Cecilie','Daniel','Emilie','Frederik','Gitte','Henrik','Ida','Jacob','Karen','Lars','Maja','Nikolaj','Oliver','Pernille','Rasmus','Sofie','Thomas','Ulla','Viggo','Winnie','Anders','Birgit','Christian','Ditte'];
+      const LAST_NAMES=['Berg','Frank','Holm','Vang','Skov','Lang','Krogh','Toft','Fog','Ry','Møller','Nielsen','Hansen','Jensen','Larsen','Sørensen','Christensen','Pedersen','Andersen','Thomsen'];
+      const SHIFT_TEMPLATES=[{from:'08:00',to:'16:00'},{from:'10:00',to:'16:00'},{from:'16:00',to:'00:00'},{from:'10:00',to:'00:00'},{from:'08:00',to:'00:00'}];
+      const nonMgrRoles=allRoles.filter(r=>r!=='Manager');
+      const usedNames=new Set();
+      const randomName=()=>{
+        let name;
+        do{ name=`${FIRST_NAMES[Math.floor(Math.random()*FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random()*LAST_NAMES.length)]}`; }
+        while(usedNames.has(name)&&usedNames.size<FIRST_NAMES.length*LAST_NAMES.length);
+        usedNames.add(name);
+        return name;
+      };
+      const randomRoles=()=>{
+        const roles=[];
+        if(Math.random()<0.18)roles.push('Manager');
+        const shuffled=[...nonMgrRoles].sort(()=>Math.random()-0.5);
+        const count=Math.random()<0.35?2:1;
+        shuffled.slice(0,count).forEach(r=>roles.push(r));
+        if(!roles.length)roles.push(nonMgrRoles[0]||'Waiter');
+        return roles;
+      };
+      const randomAvailability=()=>{
+        const avail={};
+        DAYS.forEach(d=>{ avail[d]=Math.random()<0.22?null:SHIFT_TEMPLATES[Math.floor(Math.random()*SHIFT_TEMPLATES.length)]; });
+        const availableDays=DAYS.filter(d=>avail[d]);
+        if(availableDays.length<3)DAYS.filter(d=>!avail[d]).slice(0,3-availableDays.length).forEach(d=>{avail[d]=SHIFT_TEMPLATES[Math.floor(Math.random()*SHIFT_TEMPLATES.length)];});
+        return avail;
+      };
+      const testEmployees=Array.from({length:n},(_,i)=>{
+        const isCore=i<Math.ceil(n*0.3);
+        return {
+          id:crypto.randomUUID(), name:randomName(), roles:randomRoles(),
+          priority:isCore?100:70+Math.floor(Math.random()*20),
+          palIdx:i%EMP_PALETTE.length,
+          contractType:isCore?'fixed':'hourly',
+          contractPeriod:isCore?'month':'week',
+          wage:isCore?30000+Math.floor(Math.random()*8000):150+Math.floor(Math.random()*30),
+          maxHours:isCore?40+Math.floor(Math.random()*20):15+Math.floor(Math.random()*20),
+          availability:randomAvailability(),
+        };
+      });
+      // A handful of employees get a fake approved vacation/time-off entry
+      // somewhere in the target month, so the generated schedule actually has
+      // to work around real unavailability instead of everyone being free.
+      const monthStart=new Date(displayMonth.y,displayMonth.m,1);
+      const daysInMonth=new Date(displayMonth.y,displayMonth.m+1,0).getDate();
+      const fakeTimeOff=[];
+      testEmployees.forEach((e,i)=>{
+        if(Math.random()<0.25){
+          const span=1+Math.floor(Math.random()*4);
+          const startOffset=Math.floor(Math.random()*Math.max(1,daysInMonth-span));
+          const start=new Date(monthStart); start.setDate(1+startOffset);
+          const end=new Date(start); end.setDate(start.getDate()+span-1);
+          fakeTimeOff.push({id:`${Date.now()}-${i}`, empId:e.id, startDate:dateToISO(start), endDate:dateToISO(end), type:TIMEOFF_TYPES[Math.floor(Math.random()*TIMEOFF_TYPES.length)], note:'', status:'Approved'});
+        }
+      });
       const updates={};
       getMonthOffsets(displayMonth).forEach(off=>{
         const wd=getWeekDates(off);
@@ -204,12 +249,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         // picked each week — otherwise buildSchedule is deterministic and every
         // week ends up identical.
         const weekEmployees=testEmployees.map(e=>({...e,priority:e.priority+Math.floor(Math.random()*30)}));
-        const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,timeOff,allRoles);
+        const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,fakeTimeOff,allRoles);
         const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
         const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
       setEmployees(testEmployees);
+      setTimeOff(fakeTimeOff);
       setSchedules(p=>({...p,...updates}));
       setCalMode('month');
       setGenerating(false);
