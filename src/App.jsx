@@ -40,6 +40,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [generating,setGenerating]   = useState(false);
   const [selected,setSelected]       = useState(null);
   const [openPicker,setOpenPicker]   = useState(null);
+  const [pickerRoleFilter,setPickerRoleFilter] = useState(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -341,8 +342,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       document.body.style.overflow='hidden';
       return{day,blockId,role};
     });
+    setPickerRoleFilter(null);
   };
-  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter(null); };
 
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
@@ -812,17 +814,26 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         // failing because the page could still scroll behind/away from it,
                         // leaving it stranded over unrelated content. A modal with a
                         // scroll-locked backdrop can't drift like that.
-                        const personRow=(emp,dim)=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);closePicker();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'8px 10px',borderRadius:8,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',opacity:dim?0.7:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:30,height:30,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div><div style={{fontSize:13,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:11,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div></div></button>);};
-                        const picker=pickerOpen&&(()=>{const{available,unavailable}=candidatesForSlot(day,block.id,role);return createPortal(
+                        const personRow=(emp,dim)=>{const p=pal(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);closePicker();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'8px 10px',borderRadius:8,background:'transparent',border:'none',cursor:'pointer',fontFamily:'inherit',textAlign:'left',opacity:dim?0.7:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:30,height:30,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div style={{minWidth:0,flex:1}}><div style={{fontSize:13,fontWeight:500,color:T.text}}>{emp.name}</div><div style={{fontSize:11,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div>{(emp.roles||[]).length>0&&<div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:3}}>{(emp.roles||[]).map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}</div></button>);};
+                        const picker=pickerOpen&&(()=>{
+                          const{available,unavailable}=candidatesForSlot(day,block.id,role);
+                          const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
+                          const matchesFilter=emp=>!pickerRoleFilter||(emp.roles||[]).includes(pickerRoleFilter);
+                          const filteredAvailable=available.filter(matchesFilter),filteredUnavailable=unavailable.filter(matchesFilter);
+                          return createPortal(
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
                             <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(320px,100%)',maxHeight:'min(70vh,480px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
                               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'16px 18px 10px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                              {rolesPresent.length>1&&<div style={{display:'flex',gap:4,flexWrap:'wrap',padding:'0 18px 10px',flexShrink:0}}>
+                                <button onClick={()=>setPickerRoleFilter(null)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${!pickerRoleFilter?T.accent:T.border}`,background:!pickerRoleFilter?T.accent+'15':'transparent',color:!pickerRoleFilter?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{t('week.allRoles')}</button>
+                                {rolesPresent.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=pickerRoleFilter===r;return(<button key={r} onClick={()=>setPickerRoleFilter(active?null:r)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${active?rs.dot:T.border}`,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>);})}
+                              </div>}
                               <div style={{overflowY:'auto',padding:'0 10px',flex:1,minHeight:0}}>
-                                {available.length===0&&unavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
-                                  {available.map(emp=>personRow(emp,false))}
-                                  {unavailable.length>0&&<>
-                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'10px 8px 6px',borderTop:available.length>0?`1px solid ${T.border}`:'none',marginTop:available.length>0?6:0}}>{t('week.allStaff')}</div>
-                                    {unavailable.map(emp=>personRow(emp,true))}
+                                {filteredAvailable.length===0&&filteredUnavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
+                                  {filteredAvailable.map(emp=>personRow(emp,false))}
+                                  {filteredUnavailable.length>0&&<>
+                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'10px 8px 6px',borderTop:filteredAvailable.length>0?`1px solid ${T.border}`:'none',marginTop:filteredAvailable.length>0?6:0}}>{t('week.allStaff')}</div>
+                                    {filteredUnavailable.map(emp=>personRow(emp,true))}
                                   </>}
                                 </>}
                               </div>
