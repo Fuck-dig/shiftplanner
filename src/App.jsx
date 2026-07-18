@@ -51,6 +51,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [gridTight,setGridTight]     = useState(false);
   const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
   const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
+  const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
   const [costsMode,setCostsMode]     = useState('week');
   const [hourlyRate,setHourlyRateRaw]= useState(()=>loadPref('sa2_rate',{amount:150,currency:'kr'}));
   const [lang,setLangRaw]            = useState(()=>loadPref('sa2_lang',detectLang()));
@@ -699,13 +700,18 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   }
   return(<div style={{display:'flex',flexDirection:'column',gap:16}}>
   {timeline}
-  {blocks.map(block=>(
+  {blocks.map(block=>{
+    const isCollapsed=!!collapsedBlocks[block.id];
+    const blockWarnings=warnings.filter(w=>w.includes(block.name));
+    return(
     <div key={block.id} style={s.cardFlush}>
-      <div style={{padding:'12px 20px',borderBottom:`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12}}>
+      <div onClick={()=>setCollapsedBlocks(p=>({...p,[block.id]:!p[block.id]}))} style={{padding:'12px 20px',borderBottom:isCollapsed?'none':`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12,cursor:'pointer',userSelect:'none'}}>
+        <span style={{fontSize:11,color:T.text3,transform:isCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
         <div style={{flex:1}}><span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{block.name}</span><span style={{fontSize:12,color:T.text3,marginLeft:10}}>{block.start} – {block.end} · {blockHours(block).toFixed(1)}h</span></div>
+        {blockWarnings.length>0&&<span style={{fontSize:10,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>⚠️ {blockWarnings.length}</span>}
         <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>{t('week.managerEnforced')}</span>
       </div>
-      <div style={{overflowX:'auto'}}>
+      {!isCollapsed&&<div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
@@ -743,9 +749,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             })}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
-  ))}
+    );})}
   <div style={s.card}>
     <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
       <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{t('week.weeklyHours')}</div>
