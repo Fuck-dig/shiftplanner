@@ -152,7 +152,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       const wd=getWeekDates(forOff);
       const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
       const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
-      const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
+      const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
       setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,notes,warnings}}));
       setGenerating(false);
     },100);
@@ -166,7 +166,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         const wd=getWeekDates(off);
         const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
         const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
-        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
+        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
       setSchedules(p=>({...p,...updates}));setGenerating(false);
@@ -251,14 +251,35 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         const weekEmployees=testEmployees.map(e=>({...e,priority:e.priority+Math.floor(Math.random()*30)}));
         const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,fakeTimeOff,allRoles);
         const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
-        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:t('day.'+day),block}));
+        const warnings=noMgr.map(({day,block})=>'⚠️ '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
-      setEmployees(testEmployees);
-      setTimeOff(fakeTimeOff);
+      // Update local state directly (not the debounced setters) so the two
+      // saves below can be strictly ordered — time_off.employee_id has a
+      // foreign-key constraint on employees.id, so the employees insert must
+      // land in the DB before the time-off insert that references it. Firing
+      // both through the independent per-field debounces races them instead.
+      setEmpRaw(testEmployees);
+      setTORaw(fakeTimeOff);
       setSchedules(p=>({...p,...updates}));
       setCalMode('month');
       setGenerating(false);
+      const runSeedSync=()=>{
+        setSavingCount(c=>c+1);
+        (async()=>{
+          try{
+            await syncEmployees(orgId,testEmployees);
+            await syncTimeOff(orgId,fakeTimeOff);
+            setSaveError(e=>(e&&e.label==='seed')?null:e);
+          }catch(err){
+            console.error('Seed sync failed:',err);
+            setSaveError({label:'seed',message:err?.message||t('save.failedGeneric'),retry:runSeedSync});
+          }finally{
+            setSavingCount(c=>Math.max(0,c-1));
+          }
+        })();
+      };
+      runSeedSync();
     },100);
   };
 
