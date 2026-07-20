@@ -150,7 +150,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const weekData   =schedules[wKey]||null;
   const schedule   =weekData?.schedule||null;
   const confirmed  =weekData?.confirmed||false;
-  const monthOff   =getMonthOffsets(calMode==='month'?displayMonth:weekOffset);
+  const monthOff   =getMonthOffsets((calMode==='month'||calMode==='grid')?displayMonth:weekOffset);
   const pendingCount=timeOff.filter(t=>t.status==='Pending').length;
   const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
@@ -392,8 +392,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   // without having to first go find the right cell in the Schedule grid.
   // Uses its own independent week selector (like the Costs tab) so browsing
   // weeks here doesn't affect whatever week the Schedule tab has open.
-  const openShiftModalFor=emp=>{
-    setShiftModalEmp(emp);setShiftModalWeekOffset(0);setShiftModalDay(null);
+  const openShiftModalFor=(emp,weekOff=0,day=null)=>{
+    setShiftModalEmp(emp);setShiftModalWeekOffset(weekOff);setShiftModalDay(day);
     document.body.style.overflow='hidden';
   };
   const closeShiftModal=()=>{ document.body.style.overflow=''; setShiftModalEmp(null); setShiftModalDay(null); };
@@ -611,9 +611,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 {view==='schedule'&&(<div>
   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode!=='grid'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-      <span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+      <button onClick={()=>{if(calMode==='month'||calMode==='grid'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+      <span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{(calMode==='month'||calMode==='grid')?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
+      <button onClick={()=>{if(calMode==='month'||calMode==='grid'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
     </div>
     <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});if(calMode==='week'&&dayFilter){const jsDay=n.getDay();setDayFilter(DAYS[jsDay===0?6:jsDay-1]);}}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
@@ -671,17 +671,24 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   </div>
 </div>)}
 
-{/* GRID VIEW — Planday-style: employees as rows, days as columns */}
-{calMode==='grid'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
-  <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
-  <div style={{position:'relative'}}>
-    <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
-    <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>{t('empty.nothing')}</div>
-    <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{t.n('empty.across',blocks.length,{emp:employees.length,blocks:blocks.length})}</div>
-    <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
-    <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
-  </div>
-</div>):(()=>{
+{/* GRID VIEW — Planday-style: employees as rows, days as columns. Shows every
+   day in the currently displayed month (not just one week), each looked up
+   from its own week's schedule, so managers can scan and fill an entire
+   month's gaps in one place instead of week by week. */}
+{calMode==='grid'&&(()=>{
+  const teamDays=monthOff.flatMap(off=>getWeekDates(off).map((d,di)=>({date:d,dayName:DAYS[di],weekOff:off})).filter(x=>x.date.getMonth()===displayMonth.m&&x.date.getFullYear()===displayMonth.y));
+  const scheduledWeeks=[...new Set(teamDays.map(d=>d.weekOff))];
+  const anyMonthSchedule=scheduledWeeks.some(off=>schedules[weekKey(off)]?.schedule);
+  if(!anyMonthSchedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+    <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
+    <div style={{position:'relative'}}>
+      <div style={{fontSize:40,marginBottom:16,opacity:0.25}}>📋</div>
+      <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>{t('empty.nothing')}</div>
+      <div style={{fontSize:13,color:T.text2,marginBottom:4}}>{t.n('empty.across',blocks.length,{emp:employees.length,blocks:blocks.length})}</div>
+      <div style={{fontSize:12,color:T.text3,marginBottom:28}}>{t('empty.respected')}</div>
+      <div style={{display:'flex',gap:10,justifyContent:'center',flexWrap:'wrap'}}><Btn onClick={()=>generate()}>{'✦ '+t('empty.generateWeek')}</Btn><Btn onClick={generateMonth} variant="secondary">{t('empty.generateMonth')}</Btn></div>
+    </div>
+  </div>);
   // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
   const allRoleOrder=Object.keys(roleStyles);
   const rows=gridGroupBy==='role'
@@ -691,7 +698,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     :[...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
-  const gridMinW=isMobile?nameW+7*54:700;
+  const dayColW=isMobile?50:76;
+  const gridMinW=nameW+teamDays.length*dayColW;
+  const gridCols=`${nameW}px repeat(${teamDays.length},1fr)`;
+  const scheduledEmpIds=new Set();
+  scheduledWeeks.forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(ws)Object.values(ws).forEach(day=>Object.values(day).forEach(arr=>arr.forEach(a=>scheduledEmpIds.add(a.empId))));});
   return(
   <div>
     {/* Grid controls + header — sticky so they stay visible while scrolling the employee list */}
@@ -703,17 +714,18 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
           {gridTight?t('grid.compact'):t('grid.comfortable')}
         </button>
-        <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{t('grid.scheduledOfTotal',{n:employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length,total:employees.length})}</span>
+        <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{t('grid.scheduledOfTotal',{n:scheduledEmpIds.size,total:employees.length})}</span>
+        <span style={{fontSize:11,color:T.text3,marginLeft:'auto'}}>{t('grid.clickToAdd')}</span>
       </div>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
         {/* Header */}
-        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+        <div style={{display:'grid',gridTemplateColumns:gridCols,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
-          {DAYS.map((day,i)=>{
-            const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-            return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none'}}>
-              <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
-              <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
+          {teamDays.map(({date,dayName},i)=>{
+            const isToday=dateToISO(date)===dateToISO(new Date());
+            return(<div key={i} style={{padding:gridTight?'10px 4px':'14px 6px',textAlign:'center',borderRight:i<teamDays.length-1?`1px solid ${T.border}`:'none'}}>
+              <div style={{fontSize:gridTight?11:12,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+dayName).slice(0,3)}</div>
+              <div style={{fontSize:gridTight?10:11,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()}</div>
             </div>);
           })}
         </div>
@@ -728,13 +740,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
         return(<div key={`${row.role||'all'}-${emp.id}`}>
           {/* Role group divider */}
-          {showDivider&&<div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
+          {showDivider&&<div style={{display:'grid',gridTemplateColumns:gridCols,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
-            {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
+            {teamDays.map((_,i)=><div key={i} style={{borderRight:i<teamDays.length-1?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
-          <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
+          <div style={{display:'grid',gridTemplateColumns:gridCols,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
             {/* Name cell */}
             <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?8:10,minHeight:rowH}}>
               {!gridTight&&<div style={{width:36,height:36,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>}
@@ -751,35 +763,40 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               </div>
             </div>
             {/* Day cells */}
-            {DAYS.map((day,di)=>{
-              const date=weekDates[di];
+            {teamDays.map(({date,dayName,weekOff},di)=>{
+              const ws=schedules[weekKey(weekOff)]?.schedule||null;
               const onTO=isOnTimeOff(emp.id,date,timeOff);
-              const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
-              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
+              const assignedBlocks=ws?blocks.filter(b=>(ws[dayName]?.[b.id]||[]).some(a=>a.empId===emp.id)):[];
+              const isLast=di===teamDays.length-1;
+              return(<div key={di} style={{padding:gridTight?'6px 4px':'8px 5px',borderRight:isLast?'none':`1px solid ${T.border}`,display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
                 {onTO?(
-                  <div style={{padding:gridTight?'4px 7px':'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
+                  <div style={{padding:gridTight?'4px 5px':'7px 6px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                     <div style={{fontSize:gridTight?11:13}}>🌴</div>
-                    {!gridTight&&<div style={{fontSize:10,fontWeight:500,color:T.warning,marginTop:1}}>Leave</div>}
+                    {!gridTight&&<div style={{fontSize:9,fontWeight:500,color:T.warning,marginTop:1}}>Leave</div>}
+                  </div>
+                ):!ws?(
+                  <div title={t('grid.noScheduleThatWeek')} style={{height:gridTight?32:46,borderRadius:7,border:`1px dashed ${T.border}88`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.18}}>
+                    <span style={{fontSize:13,color:T.text3}}>·</span>
                   </div>
                 ):assignedBlocks.length>0?assignedBlocks.map(b=>{
                   const bh=blockHours(b);
-                  const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+                  const shiftEntry=(ws[dayName]?.[b.id]||[]).find(a=>a.empId===emp.id);
                   const shiftRole=shiftEntry?.role;
                   const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
                   return(
-                    <div key={b.id} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
+                    <div key={b.id} style={{padding:gridTight?'5px 6px':'9px 8px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
-                      <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
-                      {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
+                      <div style={{fontSize:gridTight?10:13,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
+                      {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
                       {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{b.start.slice(0,5)}</div>}
                       {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{bh.toFixed(1)}h</div>}
                       {(emp.roles||[]).length>1&&shiftRole&&<div style={{marginTop:3,display:'inline-block',fontSize:9,fontWeight:600,color:isDark()?rrs.dot:rrs.text,background:isDark()?rrs.dot+'22':rrs.bg,border:`1px solid ${isDark()?rrs.dot+'55':rrs.border}`,padding:'1px 5px',borderRadius:999}}>{shiftRole}</div>}
                     </div>
                   );
                 }):(
-                  <div style={{height:gridTight?32:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
-                    <span style={{fontSize:16,color:T.text3}}>—</span>
-                  </div>
+                  <button onClick={()=>openShiftModalFor(emp,weekOff,dayName)} title={t('grid.addShiftTitle')} style={{height:gridTight?32:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.4,background:'transparent',cursor:'pointer',fontFamily:'inherit',transition:'opacity 0.15s,border-color 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.style.borderColor=T.accent;}} onMouseLeave={e=>{e.currentTarget.style.opacity=0.4;e.currentTarget.style.borderColor=T.border;}}>
+                    <span style={{fontSize:15,color:T.text3}}>+</span>
+                  </button>
                 )}
               </div>);
             })}
@@ -787,15 +804,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         </div>);
       })}
       {/* Footer */}
-      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
+      <div style={{display:'grid',gridTemplateColumns:gridCols,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
         <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
-        {DAYS.map((day,di)=>{
-          const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
-          const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
-          return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
-            <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
-            <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
-            {onLeave>0&&<div style={{fontSize:10,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
+        {teamDays.map(({date,dayName,weekOff},di)=>{
+          const ws=schedules[weekKey(weekOff)]?.schedule||null;
+          const count=ws?[...new Set(blocks.flatMap(b=>(ws[dayName]?.[b.id]||[]).map(a=>a.empId)))].length:0;
+          const onLeave=employees.filter(e=>isOnTimeOff(e.id,date,timeOff)).length;
+          return(<div key={di} style={{padding:'10px 6px',textAlign:'center',borderRight:di<teamDays.length-1?`1px solid ${T.border}`:'none'}}>
+            <div style={{fontSize:14,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
+            <div style={{fontSize:9,color:T.text3}}>{t('grid.workingLabel')}</div>
+            {onLeave>0&&<div style={{fontSize:9,color:T.warning,marginTop:2}}>🌴 {onLeave}</div>}
           </div>);
         })}
       </div>
@@ -808,7 +826,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     </div>
   </div>
   );
-})())}
+})()}
 {/* WEEK VIEW */}
 {calMode==='week'&&(!schedule?(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
   <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
