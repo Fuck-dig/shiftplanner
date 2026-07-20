@@ -831,7 +831,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                               </div>}
                               <div style={{overflowY:'auto',padding:'0 10px',flex:1,minHeight:0}}>
                                 {filteredAvailable.length===0&&filteredUnavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
-                                  {filteredAvailable.map(emp=>personRow(emp,false))}
+                                  {filteredAvailable.length===0?<div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.danger,padding:'10px 8px',fontStyle:'italic'}}>⚠ {t('week.noOneAvailableForRole')}</div>:filteredAvailable.map(emp=>personRow(emp,false))}
                                   {filteredUnavailable.length>0&&<>
                                     <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'10px 8px 6px',borderTop:filteredAvailable.length>0?`1px solid ${T.border}`:'none',marginTop:filteredAvailable.length>0?6:0}}>{t('week.allStaff')}</div>
                                     {filteredUnavailable.map(emp=>personRow(emp,true))}
