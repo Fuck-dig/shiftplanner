@@ -46,6 +46,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
   const [shiftModalMonth,setShiftModalMonth]     = useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [shiftModalDaySel,setShiftModalDaySel]   = useState(null); // {date,dayName,weekOff} — a specific calendar day chosen from the month grid
+  const [shiftModalRole,setShiftModalRole]       = useState(null); // which of the employee's roles to add — one row per block instead of one per block×role
+  const [shiftModalTimes,setShiftModalTimes]     = useState({}); // per-blockId custom {start,end} override, defaults to the block's own hours
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -397,18 +399,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setShiftModalEmp(emp);
     const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});
     setShiftModalDaySel(null);
+    setShiftModalRole((emp.roles||[])[0]||allRoles[0]||null);
+    setShiftModalTimes({});
     document.body.style.overflow='hidden';
   };
   const closeShiftModal=()=>{ document.body.style.overflow=''; setShiftModalEmp(null); setShiftModalDaySel(null); };
   const shiftModalDays=getMonthOffsets(shiftModalMonth).flatMap(off=>getWeekDates(off).map((d,di)=>({date:d,dayName:DAYS[di],weekOff:off})).filter(x=>x.date.getMonth()===shiftModalMonth.m&&x.date.getFullYear()===shiftModalMonth.y));
   const shiftModalSchedule=shiftModalDaySel?(schedules[weekKey(shiftModalDaySel.weekOff)]?.schedule||null):null;
-  const addShiftForEmployee=(day,blockId,role,emp)=>{
+  const addShiftForEmployee=(day,blockId,role,emp,customStart,customEnd)=>{
     if(!shiftModalDaySel)return;
     const wKeyD=weekKey(shiftModalDaySel.weekOff);
+    const block=blocks.find(b=>b.id===blockId);
     setSchedules(p=>{
       const wd=p[wKeyD];if(!wd||!wd.schedule)return p;
       const ns=JSON.parse(JSON.stringify(wd.schedule));
-      ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
+      const entry={empId:emp.id,name:emp.name,role};
+      if(block&&customStart&&customEnd&&(customStart!==block.start||customEnd!==block.end)){entry.start=customStart;entry.end=customEnd;}
+      ns[day][blockId]=[...(ns[day][blockId]||[]),entry];
       return{...p,[wKeyD]:{...wd,schedule:ns,confirmed:false}};
     });
   };
@@ -593,22 +600,43 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           })}
         </div>
       </div>
+      {(()=>{
+        const empRoles=(shiftModalEmp.roles||[]).length?shiftModalEmp.roles:allRoles;
+        if(empRoles.length<=1)return null;
+        return(<div style={{padding:'0 18px 10px',flexShrink:0}}>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+            {empRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=(shiftModalRole||empRoles[0])===r;return(<button key={r} onClick={()=>setShiftModalRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
+          </div>
+        </div>);
+      })()}
       <div style={{overflowY:'auto',padding:'0 10px 6px',flex:1,minHeight:0}}>
         {shiftModalDaySel&&!shiftModalSchedule&&<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('emp.noScheduleForWeek')}</div>}
         {shiftModalSchedule&&shiftModalDaySel&&(()=>{
           const dayName=shiftModalDaySel.dayName;
           const empRoles=(shiftModalEmp.roles||[]).length?shiftModalEmp.roles:allRoles;
-          const rows=blocks.flatMap(b=>empRoles.map(r=>({block:b,role:r})));
-          if(rows.length===0)return <div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>;
-          return rows.map(({block,role})=>{
+          const role=shiftModalRole||empRoles[0];
+          if(!role)return <div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>;
+          const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
+          return blocks.map(block=>{
             const already=(shiftModalSchedule[dayName]?.[block.id]||[]).some(a=>a.empId===shiftModalEmp.id);
-            const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
-            return(<div key={block.id+role} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
-                <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
+            const times=shiftModalTimes[block.id]||{start:block.start,end:block.end};
+            const customized=times.start!==block.start||times.end!==block.end;
+            const setTime=(field,val)=>setShiftModalTimes(p=>({...p,[block.id]:{...(p[block.id]||{start:block.start,end:block.end}),[field]:val}}));
+            return(<div key={block.id} style={{display:'flex',flexDirection:'column',gap:6,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{display:'flex',alignItems:'center',gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
+                  <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
+                </div>
+                <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,times.start,times.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
               </div>
-              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+              {!already&&<div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:10,color:T.text3}}>{t('emp.customTime')}</span>
+                <input type="time" value={times.start} onChange={e=>setTime('start',e.target.value)} style={{...s.input,width:'auto',padding:'3px 7px',fontSize:12}}/>
+                <span style={{fontSize:11,color:T.text3}}>–</span>
+                <input type="time" value={times.end} onChange={e=>setTime('end',e.target.value)} style={{...s.input,width:'auto',padding:'3px 7px',fontSize:12}}/>
+                {customized&&<button onClick={()=>setShiftModalTimes(p=>{const n={...p};delete n[block.id];return n;})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
+              </div>}
             </div>);
           });
         })()}
