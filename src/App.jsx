@@ -41,6 +41,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [selected,setSelected]       = useState(null);
   const [openPicker,setOpenPicker]   = useState(null);
   const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
+  const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
+  const ganttDragRef = useRef(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -346,9 +348,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   };
   const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); };
 
+  // Assignments can carry an optional per-person start/end override (set by
+  // dragging their bar in the Gantt view) that takes precedence over the
+  // block's default hours — this is what lets someone's actual worked time
+  // for a shift differ from the block's nominal window.
+  const assignmentHours=(a,b)=>blockHours({start:a.start||b.start,end:a.end||b.end});
+
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
-    let h=0;DAYS.forEach(day=>blocks.forEach(b=>{if((schedule[day]?.[b.id]||[]).some(a=>a.empId===e.id))h+=blockHours(b);}));
+    let h=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=assignmentHours(a,b);}));
     acc[e.id]=h;return acc;
   },{});
   const empHours=id=>empHoursMap[id]||0;
@@ -377,6 +385,61 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
   };
 
+  // Dragging a Gantt bar's edge sets a per-person start/end override on that
+  // one assignment for that one day, so someone's actual worked time for a
+  // shift can differ from the block's nominal window (e.g. covering half of
+  // Lunch instead of the whole thing).
+  const minToHHMM=m=>{m=((Math.round(m)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');};
+  const applyGanttResize=(day,blockId,empId,startMin,endMin)=>{
+    const block=blocks.find(b=>b.id===blockId);if(!block)return;
+    const newStart=minToHHMM(startMin),newEnd=minToHHMM(endMin);
+    setSchedules(p=>{
+      const wd=p[wKey];if(!wd)return p;
+      const ns=JSON.parse(JSON.stringify(wd.schedule));
+      const arr=ns[day]?.[blockId];if(!arr)return p;
+      const idx=arr.findIndex(a=>a.empId===empId);if(idx<0)return p;
+      if(newStart===block.start&&newEnd===block.end){ delete arr[idx].start; delete arr[idx].end; }
+      else { arr[idx]={...arr[idx],start:newStart,end:newEnd}; }
+      return{...p,[wKey]:{...wd,schedule:ns,confirmed:false}};
+    });
+  };
+  const beginGanttDrag=(e,{day,blockId,empId,edge,origStart,origEnd,railEl,rangeStart,totalMin})=>{
+    e.preventDefault();e.stopPropagation();
+    const SNAP=15;
+    const rect=railEl.getBoundingClientRect();
+    const state={day,blockId,empId,edge,rect,rangeStart,totalMin,live:{start:origStart,end:origEnd}};
+    ganttDragRef.current=state;
+    setGanttPreview({day,blockId,empId,start:origStart,end:origEnd});
+    const clientXOf=ev=>ev.touches?ev.touches[0].clientX:ev.clientX;
+    const onMove=ev=>{
+      const st=ganttDragRef.current;if(!st)return;
+      if(ev.cancelable)ev.preventDefault();
+      const x=clientXOf(ev);
+      const pct=Math.min(1,Math.max(0,(x-st.rect.left)/st.rect.width));
+      let mins=st.rangeStart+pct*st.totalMin;
+      mins=Math.round(mins/SNAP)*SNAP;
+      let{start,end}=st.live;
+      if(st.edge==='start') start=Math.min(mins,end-SNAP);
+      else end=Math.max(mins,start+SNAP);
+      st.live={start,end};
+      setGanttPreview({day:st.day,blockId:st.blockId,empId:st.empId,start,end});
+    };
+    const onUp=()=>{
+      window.removeEventListener('mousemove',onMove);
+      window.removeEventListener('mouseup',onUp);
+      window.removeEventListener('touchmove',onMove);
+      window.removeEventListener('touchend',onUp);
+      const st=ganttDragRef.current;
+      ganttDragRef.current=null;
+      setGanttPreview(null);
+      if(st) applyGanttResize(st.day,st.blockId,st.empId,st.live.start,st.live.end);
+    };
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+    window.addEventListener('touchmove',onMove,{passive:false});
+    window.addEventListener('touchend',onUp);
+  };
+
   const updateEmp   =(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
   const updateAvail =(id,day,f,v)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day]||{from:'10:00',to:'18:00'};return{...e,availability:{...e.availability,[day]:{...cur,[f]:v}}};}));
   const toggleDay   =(id,day)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day];return{...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}};}));
@@ -400,11 +463,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const costsWeekDates=getWeekDates(costsWeekOffset);
   const costsWKey=weekKey(costsWeekOffset);
   const costsSchedule=schedules[costsWKey]?.schedule||null;
-  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ if((ws[day]?.[b.id]||[]).some(a=>a.empId===empId)) h+=blockHours(b); })); return h; };
+  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId); if(a) h+=assignmentHours(a,b); })); return h; };
   const costData=employees.map(e=>{const hours=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
-  const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{if((ws[day]?.[b.id]||[]).some(a=>a.empId===e.id))h+=blockHours(b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
+  const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=assignmentHours(a,b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
@@ -694,23 +757,26 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const selectedEmp=selected?employees.find(e=>e.id===selected.empId):null;
   const selectedRoles=selectedEmp?(selectedEmp.roles||[]):(selected?[selected.role]:[]);
   const filterDays=effectiveDay?[effectiveDay]:DAYS;
+  // Each segment keeps its own blockId (and the block's own default hours)
+  // so a bar in the Gantt maps 1:1 to one real assignment — needed so
+  // dragging an edge knows exactly which (day, block, person) to update.
+  // Segments are deliberately NOT merged across blocks any more (they used
+  // to be, cosmetically, when touching) since that would make a dragged bar
+  // ambiguous about which underlying assignment it represents.
   const dayShiftsRaw=effectiveDay?blocks.flatMap(b=>{
-    const bs=toMin(b.start);let be=toMin(b.end);if(be<=bs)be+=1440;
-    return (schedule[effectiveDay]?.[b.id]||[]).map(a=>({empId:a.empId,name:a.name,role:a.role,blockName:b.name,startStr:b.start,endStr:b.end,start:bs,end:be}));
+    return (schedule[effectiveDay]?.[b.id]||[]).map(a=>{
+      const st=a.start||b.start,en=a.end||b.end;
+      const bs=toMin(st);let be=toMin(en);if(be<=bs)be+=1440;
+      return{empId:a.empId,name:a.name,role:a.role,blockId:b.id,blockName:b.name,blockStart:b.start,blockEnd:b.end,startStr:st,endStr:en,start:bs,end:be};
+    });
   }):[];
   const byEmp=new Map();
   dayShiftsRaw.forEach(s=>{
     if(!byEmp.has(s.empId))byEmp.set(s.empId,{empId:s.empId,name:s.name,role:s.role,segs:[]});
-    byEmp.get(s.empId).segs.push({start:s.start,end:s.end,startStr:s.startStr,endStr:s.endStr});
+    byEmp.get(s.empId).segs.push({blockId:s.blockId,role:s.role,blockStart:s.blockStart,blockEnd:s.blockEnd,start:s.start,end:s.end,startStr:s.startStr,endStr:s.endStr});
   });
   const dayRows=[...byEmp.values()].map(r=>{
-    const sorted=[...r.segs].sort((a,b)=>a.start-b.start);
-    const merged=[];
-    sorted.forEach(seg=>{
-      const last=merged[merged.length-1];
-      if(last&&seg.start<=last.end){ if(seg.end>last.end){last.end=seg.end;last.endStr=seg.endStr;} }
-      else merged.push({...seg});
-    });
+    const merged=[...r.segs].sort((a,b)=>a.start-b.start);
     return {...r,merged};
   }).sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
@@ -732,6 +798,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
           </div>
         </div>
+        <div style={{fontSize:11,color:T.text3,marginBottom:8,minWidth:isMobile?480:'auto'}}>{t('week.dragHint')}</div>
         <div style={{position:'relative',height:16,marginLeft:ganttSideW,marginBottom:10,minWidth:isMobile?480-ganttSideW:'auto'}}>
           {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
         </div>
@@ -743,12 +810,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayRows.map(row=>{
-                const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
                 return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6}}>
                   {row.merged.map((seg,si)=>{
-                    const leftPct=(seg.start-rangeStart)/totalMin*100,widthPct=(seg.end-seg.start)/totalMin*100;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:2,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                    const rs=roleStyles[seg.role]||DEFAULT_ROLE_STYLES.Other;
+                    const dragging=ganttPreview&&ganttPreview.day===effectiveDay&&ganttPreview.blockId===seg.blockId&&ganttPreview.empId===row.empId;
+                    const segStart=dragging?ganttPreview.start:seg.start,segEnd=dragging?ganttPreview.end:seg.end;
+                    const leftPct=(segStart-rangeStart)/totalMin*100,widthPct=(segEnd-segStart)/totalMin*100;
+                    const label=dragging?`${minToHHMM(segStart)}–${minToHHMM(segEnd)}`:`${seg.startStr}–${seg.endStr}`;
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none'}}>
+                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
+                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                     </div>);
                   })}
                 </div>);
@@ -805,7 +877,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
                           <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
-                          {effectiveDay&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{block.start}–{block.end}</div>}
+                          {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
                         </div>
                       );})}
                       {(()=>{
