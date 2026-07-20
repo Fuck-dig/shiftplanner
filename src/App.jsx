@@ -43,6 +43,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
   const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
   const ganttDragRef = useRef(null);
+  const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
+  const [shiftModalWeekOffset,setShiftModalWeekOffset] = useState(0);
+  const [shiftModalDay,setShiftModalDay]         = useState(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -385,6 +388,27 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
   };
 
+  // Lets a manager assign someone a shift straight from the Employees tab,
+  // without having to first go find the right cell in the Schedule grid.
+  // Uses its own independent week selector (like the Costs tab) so browsing
+  // weeks here doesn't affect whatever week the Schedule tab has open.
+  const openShiftModalFor=emp=>{
+    setShiftModalEmp(emp);setShiftModalWeekOffset(0);setShiftModalDay(null);
+    document.body.style.overflow='hidden';
+  };
+  const closeShiftModal=()=>{ document.body.style.overflow=''; setShiftModalEmp(null); setShiftModalDay(null); };
+  const shiftModalWeekDates=getWeekDates(shiftModalWeekOffset);
+  const shiftModalWKey=weekKey(shiftModalWeekOffset);
+  const shiftModalSchedule=schedules[shiftModalWKey]?.schedule||null;
+  const addShiftForEmployee=(day,blockId,role,emp)=>{
+    setSchedules(p=>{
+      const wd=p[shiftModalWKey];if(!wd||!wd.schedule)return p;
+      const ns=JSON.parse(JSON.stringify(wd.schedule));
+      ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
+      return{...p,[shiftModalWKey]:{...wd,schedule:ns,confirmed:false}};
+    });
+  };
+
   // Dragging a Gantt bar's edge sets a per-person start/end override on that
   // one assignment for that one day, so someone's actual worked time for a
   // shift can differ from the block's nominal window (e.g. covering half of
@@ -537,6 +561,51 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       )}
 
       <div style={{maxWidth:1100,margin:'0 auto',padding:isMobile?'20px 14px':'24px 20px'}}>
+
+{shiftModalEmp&&createPortal(
+  <div onClick={closeShiftModal} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'16px 18px 10px',flexShrink:0}}>
+        <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}}>{t('emp.addShiftFor',{name:shiftModalEmp.name})}</div>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+          <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+            <button onClick={()=>setShiftModalWeekOffset(o=>o-1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+            <span style={{fontSize:12,fontWeight:500,color:T.text,minWidth:120,textAlign:'center',padding:'0 2px'}}>{fmt(shiftModalWeekDates[0])} – {fmt(shiftModalWeekDates[6])}</span>
+            <button onClick={()=>setShiftModalWeekOffset(o=>o+1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+          </div>
+          {shiftModalWeekOffset!==0&&<button onClick={()=>setShiftModalWeekOffset(0)} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>}
+        </div>
+      </div>
+      <div style={{padding:'0 18px 10px',flexShrink:0}}>
+        {!shiftModalSchedule?<div style={{fontSize:12,color:T.text3,fontStyle:'italic',padding:'8px 0'}}>{t('emp.noScheduleForWeek')}</div>:(
+          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+            {DAYS.map((day,i)=><button key={day} onClick={()=>setShiftModalDay(day)} style={{padding:'5px 10px',borderRadius:8,fontSize:11,fontWeight:600,border:`1px solid ${shiftModalDay===day?T.accent:T.border}`,background:shiftModalDay===day?T.accentLight:'transparent',color:shiftModalDay===day?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{t('day.'+day)} <span style={{fontWeight:400,opacity:0.7}}>{fmt(shiftModalWeekDates[i])}</span></button>)}
+          </div>
+        )}
+      </div>
+      <div style={{overflowY:'auto',padding:'0 10px 6px',flex:1,minHeight:0}}>
+        {shiftModalSchedule&&shiftModalDay&&(()=>{
+          const empRoles=(shiftModalEmp.roles||[]).length?shiftModalEmp.roles:allRoles;
+          const rows=blocks.flatMap(b=>empRoles.map(r=>({block:b,role:r})));
+          if(rows.length===0)return <div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>;
+          return rows.map(({block,role})=>{
+            const already=(shiftModalSchedule[shiftModalDay]?.[block.id]||[]).some(a=>a.empId===shiftModalEmp.id);
+            const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
+            return(<div key={block.id+role} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
+                <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
+              </div>
+              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(shiftModalDay,block.id,role,shiftModalEmp)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+            </div>);
+          });
+        })()}
+        {shiftModalSchedule&&!shiftModalDay&&<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('emp.pickADay')}</div>}
+      </div>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0}}><Btn variant="ghost" onClick={closeShiftModal}>{t('common.done')}</Btn></div>
+    </div>
+  </div>
+,document.body)}
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
@@ -960,6 +1029,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     expandedEmp={expandedEmp} setExpandedEmp={setExpandedEmp}
     updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp}
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
+    onAddShift={openShiftModalFor}
     orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
   />
 )}

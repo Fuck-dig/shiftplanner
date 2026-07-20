@@ -8,6 +8,7 @@ export default function EmployeesView({
   expandedEmp, setExpandedEmp,
   updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
+  onAddShift,
   orgId, orgName, isOwner, s, t,
 }){
   return (<>
@@ -20,6 +21,7 @@ export default function EmployeesView({
           <div style={{fontSize:12,color:T.text2}}>{(emp.contractType||'hourly')==='hourly'?`${emp.wage||'—'} kr/h`:`${(emp.wage||0).toLocaleString('da-DK')} kr/mo`} · max {emp.maxHours}h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div>
         </div>
         <div style={{display:'flex',gap:6}}>
+          <Btn onClick={()=>onAddShift(emp)} variant="secondary" small>{'+ '+t('emp.addShift')}</Btn>
           <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
           <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
           <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
