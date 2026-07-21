@@ -21,6 +21,18 @@ export function getWeekDates(off=0){
   });
 }
 
+// Inverse-ish of getMondayDate — given any date, returns the weekOffset
+// (relative to the current real-world week) whose Monday-to-Sunday range
+// contains it. Used by the week-picker popover: the user clicks a day on a
+// calendar grid and we need to know which week that lands in.
+export function weekOffsetFromDate(date){
+  const dow=date.getDay();
+  const monday=new Date(date); monday.setDate(date.getDate()-(dow===0?6:dow-1));
+  monday.setHours(0,0,0,0);
+  const baseMonday=getMondayDate(0);
+  return Math.round((monday-baseMonday)/(7*24*3600*1000));
+}
+
 export function weekKey(off){
   const m=getMondayDate(off);
   return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`;

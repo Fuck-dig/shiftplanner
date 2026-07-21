@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants";
+import { dateToISO } from "../lib/dates";
 
 
 
@@ -100,5 +101,71 @@ export function TimePicker({value,onChange,small}){
       </div>
     ,document.body)}
   </>);
+}
+
+// A small calendar popover that opens under any trigger element (typically
+// the "20 Jul – 26 Jul" / month-name label in a schedule nav bar) and lets
+// the person jump straight to a week (or month) by clicking a day, instead
+// of stepping through with the ‹ › arrows one at a time.
+// - trigger: the element to render as the clickable label
+// - value: a reference Date used to pick which month the popover opens on
+// - onPick(date): called with the clicked Date; the caller decides what
+//   that means (jump to that date's week, or that date's month, etc.)
+// - highlightStart/highlightEnd: optional Dates (inclusive) shading the
+//   currently-active week/range so the popup shows context, not just a bare
+//   calendar
+export function WeekPicker({trigger,value,onPick,highlightStart,highlightEnd}){
+  const [open,setOpen]=useState(false);
+  const [viewY,setViewY]=useState(()=>value.getFullYear());
+  const [viewM,setViewM]=useState(()=>value.getMonth());
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(open){ setViewY(value.getFullYear()); setViewM(value.getMonth()); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[open]);
+  useEffect(()=>{
+    if(!open)return;
+    const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[open]);
+  const first=new Date(viewY,viewM,1);
+  const fd=first.getDay();
+  const gridStart=new Date(first); gridStart.setDate(1-(fd===0?6:fd-1));
+  const days=Array.from({length:42},(_,i)=>{ const d=new Date(gridStart); d.setDate(gridStart.getDate()+i); return d; });
+  const todayISOv=dateToISO(new Date());
+  const hStart=highlightStart?dateToISO(highlightStart):null;
+  const hEnd=highlightEnd?dateToISO(highlightEnd):null;
+  const inRange=d=>{ if(!hStart||!hEnd)return false; const iso=dateToISO(d); return iso>=hStart&&iso<=hEnd; };
+  const navBtn={padding:'4px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:12};
+  return (
+    <div ref={ref} style={{position:'relative',display:'inline-block'}}>
+      <div onClick={()=>setOpen(o=>!o)} style={{cursor:'pointer'}}>{trigger}</div>
+      {open && (
+        <div style={{position:'absolute',top:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',zIndex:500,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 50px -14px rgba(0,0,0,0.4)',padding:10,width:220}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+            <button onClick={()=>{ if(viewM===0){setViewY(y=>y-1);setViewM(11);} else setViewM(m=>m-1); }} style={navBtn}>‹</button>
+            <span style={{fontSize:12,fontWeight:600,color:T.text}}>{first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</span>
+            <button onClick={()=>{ if(viewM===11){setViewY(y=>y+1);setViewM(0);} else setViewM(m=>m+1); }} style={navBtn}>›</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}}>
+            {['M','T','W','T','F','S','S'].map((d,i)=><div key={i} style={{fontSize:9,color:T.text3,textAlign:'center',fontWeight:600,padding:'2px 0'}}>{d}</div>)}
+            {days.map((d,i)=>{
+              const otherMonth=d.getMonth()!==viewM;
+              const isToday=dateToISO(d)===todayISOv;
+              const active=inRange(d);
+              return (
+                <button key={i} onClick={()=>{ onPick(d); setOpen(false); }} style={{padding:'5px 0',fontSize:11,borderRadius:6,border:isToday?`1px solid ${T.accent}`:'1px solid transparent',background:active?T.accentLight:'transparent',color:otherMonth?T.text3:active?T.accent:T.text,fontWeight:active?600:400,cursor:'pointer',fontFamily:'inherit',opacity:otherMonth?0.4:1}}>
+                  {d.getDate()}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
