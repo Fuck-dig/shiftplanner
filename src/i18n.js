@@ -76,6 +76,7 @@ const STRINGS = {
     'nav.coverage':'Coverage',
     'nav.costs':'Costs',
     'nav.profile':'Profile',
+    'nav.admin':'Admin',
 
     'sched.week':'Week',
     'sched.month':'Month',
@@ -443,6 +444,7 @@ const STRINGS = {
     'nav.coverage':'Bemanding',
     'nav.costs':'Omkostninger',
     'nav.profile':'Profil',
+    'nav.admin':'Admin',
 
     'sched.week':'Uge',
     'sched.month':'Måned',
@@ -810,6 +812,7 @@ const STRINGS = {
     'nav.coverage':'Cobertura',
     'nav.costs':'Costes',
     'nav.profile':'Perfil',
+    'nav.admin':'Admin',
 
     'sched.week':'Semana',
     'sched.month':'Mes',

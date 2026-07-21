@@ -87,11 +87,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [lang,setLangRaw]            = useState(()=>load('sa2_lang',detectLang()));
   const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
   const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
+  const [adminMenuOpen,setAdminMenuOpen]=useState(false);
+  const adminMenuRef=useRef(null);
   useEffect(()=>{
     const onResize=()=>setIsMobile(window.innerWidth<860);
     window.addEventListener('resize',onResize);
     return ()=>window.removeEventListener('resize',onResize);
   },[]);
+  useEffect(()=>{
+    if(!adminMenuOpen)return;
+    const onDoc=e=>{ if(adminMenuRef.current && !adminMenuRef.current.contains(e.target)) setAdminMenuOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setAdminMenuOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[adminMenuOpen]);
 
   const setLang=v=>{setLangRaw(v);save('sa2_lang',v);};
   const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);save('sa2_rate',val);};
@@ -770,7 +780,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       return{ id:'sw-'+sw.id, label:`${from?.name||'?'} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
     }),
   ];
-  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'profile',l:t('nav.profile')}];
+  // Time Off / Coverage / Costs are grouped behind a single "Admin" dropdown
+  // in the desktop nav (see adminNavItems below) rather than each getting
+  // their own top-level tab — Schedule/Employees/Profile are the tabs
+  // someone reaches for constantly, the other three are periodic
+  // admin/reporting tasks. The mobile menu keeps them as a flat list (with a
+  // small section label) since everything there is already behind the
+  // hamburger, so a second layer of nesting would just add taps.
+  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'profile',l:t('nav.profile')}];
+  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const mobileNavItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},...adminNavItems,{k:'profile',l:t('nav.profile')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
   const s=styles;
@@ -787,7 +806,23 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         </div>
         {!isMobile&&(<>
         <div style={{display:'flex',alignItems:'center',flex:1}}>
-          {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
+          {[navItems[0],navItems[1]].map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
+          <div ref={adminMenuRef} style={{position:'relative',height:56,display:'flex',alignItems:'center'}}>
+            {(()=>{const adminActive=adminNavItems.some(i=>i.k===view);return(
+              <button onClick={()=>setAdminMenuOpen(p=>!p)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:adminActive?500:400,color:adminActive?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                {t('nav.admin')}<span style={{fontSize:9,transform:adminMenuOpen?'rotate(180deg)':'none',transition:'transform 0.15s'}}>▾</span>
+                {adminActive&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}
+              </button>
+            );})()}
+            {adminMenuOpen && (
+              <div style={{position:'absolute',top:'calc(100% - 6px)',left:8,zIndex:200,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 50px -14px rgba(0,0,0,0.4)',padding:6,minWidth:180}}>
+                {adminNavItems.map(({k,l})=>{const active=view===k;return(
+                  <button key={k} onClick={()=>{setView(k);setAdminMenuOpen(false);}} style={{display:'block',width:'100%',textAlign:'left',fontFamily:'inherit',padding:'9px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>
+                );})}
+              </div>
+            )}
+          </div>
+          {(()=>{const {k,l}=navItems[2];const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})()}
         </div>
         <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:MEMBERSHIP_ROLE_COLORS[role]?.bg||MEMBERSHIP_ROLE_COLORS.employee.bg,color:MEMBERSHIP_ROLE_COLORS[role]?.text||MEMBERSHIP_ROLE_COLORS.employee.text,border:`1px solid ${MEMBERSHIP_ROLE_COLORS[role]?.border||MEMBERSHIP_ROLE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
@@ -803,7 +838,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
       {isMobile&&mobileMenuOpen&&(
         <div style={{position:'fixed',top:56,left:0,right:0,background:T.surface,borderBottom:`1px solid ${T.border}`,boxShadow:'0 12px 30px -12px rgba(33,27,21,0.35)',zIndex:99,padding:'8px 16px 16px',display:'flex',flexDirection:'column',gap:4,maxHeight:'calc(100vh - 56px)',overflowY:'auto'}}>
-          {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
+          {mobileNavItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
           <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
             <NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setMobileMenuOpen(false);setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/>

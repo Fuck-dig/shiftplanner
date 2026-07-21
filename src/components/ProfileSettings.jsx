@@ -61,7 +61,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
   };
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:760,width:'100%',margin:'0 auto'}}>
+    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:860,width:'100%',margin:'0 auto'}}>
       <div style={s.card}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.title')}</div>
 
@@ -149,34 +149,38 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
         </div>
       )}
 
-      {/* weekHours/monthHours are only ever passed in from EmployeeView
+      {/* Hours worked and Change password are both compact cards, so they sit
+          side by side on wide screens instead of eating a full row each.
+          weekHours/monthHours are only ever passed in from EmployeeView
           (schedules is only loaded there in full) — the manager Dashboard's
-          own ProfileSettings usage omits them, so this card just doesn't
+          own ProfileSettings usage omits them, so that card just doesn't
           render there rather than showing a stat for someone who isn't
           scheduled the same way. */}
-      {myEmp && weekHours!=null && (
-        <div style={s.card}>
-          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.hoursWorked')}</div>
-          <div style={{display:'flex',gap:28,flexWrap:'wrap'}}>
-            <div>
-              <div style={{fontSize:22,fontWeight:600,color:T.text}}>{weekHours.toFixed(1)}h</div>
-              <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisWeek')}</div>
-            </div>
-            <div>
-              <div style={{fontSize:22,fontWeight:600,color:T.text}}>{monthHours.toFixed(1)}h</div>
-              <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisMonthToDate')}</div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',gap:12,alignItems:'start'}}>
+        {myEmp && weekHours!=null && (
+          <div style={s.card}>
+            <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.hoursWorked')}</div>
+            <div style={{display:'flex',gap:28,flexWrap:'wrap'}}>
+              <div>
+                <div style={{fontSize:22,fontWeight:600,color:T.text}}>{weekHours.toFixed(1)}h</div>
+                <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisWeek')}</div>
+              </div>
+              <div>
+                <div style={{fontSize:22,fontWeight:600,color:T.text}}>{monthHours.toFixed(1)}h</div>
+                <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisMonthToDate')}</div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div style={s.card}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.changePassword')}</div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          <input type="password" placeholder={t('profile.newPassword')} value={pw1} onChange={e=>setPw1(e.target.value)} style={s.input}/>
-          <input type="password" placeholder={t('profile.confirmPassword')} value={pw2} onChange={e=>setPw2(e.target.value)} style={s.input}/>
-          {pwMsg && <div style={{fontSize:12,color:pwMsg.ok?T.success:T.danger}}>{pwMsg.text}</div>}
-          <div><Btn small onClick={savePassword} disabled={pwBusy||!pw1||!pw2}>{pwBusy?t('save.saving'):t('profile.changePassword')}</Btn></div>
+        <div style={s.card}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.changePassword')}</div>
+          <div style={{display:'flex',flexDirection:'column',gap:8}}>
+            <input type="password" placeholder={t('profile.newPassword')} value={pw1} onChange={e=>setPw1(e.target.value)} style={s.input}/>
+            <input type="password" placeholder={t('profile.confirmPassword')} value={pw2} onChange={e=>setPw2(e.target.value)} style={s.input}/>
+            {pwMsg && <div style={{fontSize:12,color:pwMsg.ok?T.success:T.danger}}>{pwMsg.text}</div>}
+            <div><Btn small onClick={savePassword} disabled={pwBusy||!pw1||!pw2}>{pwBusy?t('save.saving'):t('profile.changePassword')}</Btn></div>
+          </div>
         </div>
       </div>
     </div>
