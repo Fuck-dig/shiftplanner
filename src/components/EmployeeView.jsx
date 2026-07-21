@@ -109,8 +109,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       .catch(err=>alert(err.message||'Failed to save'));
   };
   const saveMyColor = (palIdx) => {
+    if (me?.colorSet) return; // already locked — nothing to do
     updateEmployeeSelfProfile(myId, { palIdx })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx}:e)))
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx,colorSet:true}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
 

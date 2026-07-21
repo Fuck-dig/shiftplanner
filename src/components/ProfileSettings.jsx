@@ -22,6 +22,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
   const [pwBusy, setPwBusy] = useState(false);
   const [pwMsg, setPwMsg] = useState(null); // {ok:boolean, text:string} | null
   const rc = roleColors[role] || roleColors.employee;
+  const isEmployee = role === 'employee';
 
   const saveName = () => {
     if (!name.trim()) return;
@@ -58,18 +59,31 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
         {myEmp ? (<>
           <div style={{marginBottom:18}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.myDisplayName')}</div>
-            <div style={{display:'flex',gap:8}}>
-              <input value={name} onChange={e=>setName(e.target.value)} style={{...s.input,flex:1}}/>
-              <Btn small onClick={saveName} disabled={!name.trim()}>{nameSaved?t('profile.saved'):t('profile.save')}</Btn>
-            </div>
+            {isEmployee ? (<>
+              <div style={{fontSize:14,fontWeight:500}}>{myEmp.name}</div>
+              <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.nameLocked')}</div>
+            </>) : (
+              <div style={{display:'flex',gap:8}}>
+                <input value={name} onChange={e=>setName(e.target.value)} style={{...s.input,flex:1}}/>
+                <Btn small onClick={saveName} disabled={!name.trim()}>{nameSaved?t('profile.saved'):t('profile.save')}</Btn>
+              </div>
+            )}
           </div>
           <div style={{marginBottom:20}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:6}}>{t('profile.avatarColor')}</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {EMP_PALETTE.map((p,i)=>(
-                <button key={i} onClick={()=>onSaveColor(i)} title={t('profile.avatarColor')} style={{width:28,height:28,borderRadius:'50%',background:p.dot,border:(myEmp.palIdx||0)===i?`2px solid ${T.text}`:'2px solid transparent',boxShadow:(myEmp.palIdx||0)===i?`0 0 0 2px ${T.surface}`:'none',cursor:'pointer',padding:0}}/>
-              ))}
-            </div>
+            {myEmp.colorSet ? (
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <span style={{width:28,height:28,borderRadius:'50%',background:EMP_PALETTE[myEmp.palIdx||0].dot,display:'inline-block',border:`2px solid ${T.text}`}}/>
+                <span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('profile.colorLocked')}</span>
+              </div>
+            ) : (<>
+              <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginBottom:6}}>{t('profile.pickColorOnce')}</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {EMP_PALETTE.map((p,i)=>(
+                  <button key={i} onClick={()=>onSaveColor(i)} title={t('profile.avatarColor')} style={{width:28,height:28,borderRadius:'50%',background:p.dot,border:(myEmp.palIdx||0)===i?`2px solid ${T.text}`:'2px solid transparent',boxShadow:(myEmp.palIdx||0)===i?`0 0 0 2px ${T.surface}`:'none',cursor:'pointer',padding:0}}/>
+                ))}
+              </div>
+            </>)}
           </div>
         </>) : (
           <div style={{fontSize:12,color:T.text3,fontStyle:'italic',marginBottom:20,padding:'10px 12px',background:T.surfaceWarm,borderRadius:10,border:`1px solid ${T.border}`}}>{t('profile.noEmployeeRecord')}</div>

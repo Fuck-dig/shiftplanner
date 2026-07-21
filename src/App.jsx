@@ -195,7 +195,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const myId=employees.find(e=>myEmail&&e.email&&e.email.toLowerCase()===myEmail)?.id||null;
   const me=employees.find(e=>e.id===myId);
   const saveMyName=(newName)=>updateEmp(myId,'name',newName);
-  const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
+  const saveMyColor=(palIdx)=>{
+    if (me?.colorSet) return; // already locked — nothing to do
+    updateEmp(myId,'palIdx',palIdx);
+    updateEmp(myId,'colorSet',true);
+  };
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -611,7 +615,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const applyTemplate=(id,tpl)=>{const tmpl=AVAIL_TEMPLATES[tpl];if(tmpl)setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tmpl))}:e));};
   // Cloning an employee deliberately drops email — two roster rows sharing
   // one login email would make "which one am I" ambiguous in EmployeeView.
-  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length}]);
+  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length,colorSet:false}]);
   const removeEmp   =id=>{setEmployees(p=>p.filter(e=>e.id!==id));if(expandedEmp===id)setExpandedEmp(null);};
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
