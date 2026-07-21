@@ -111,6 +111,17 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const schedule   = schedules[wKey]?.schedule || null;
   const s          = styles;
   const monthOff   = getMonthOffsets(calMode==='month'?displayMonth:weekOffset);
+  // Steps the isolated-day Gantt (Week tab, dayFilter set) forward/back one
+  // day at a time — crossing a week boundary if needed — instead of the ‹ ›
+  // arrows always jumping a whole week regardless of what's isolated. Same
+  // behaviour as the manager's own nav arrows.
+  const shiftDay = (delta) => {
+    const cur = weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
+    const nd = new Date(cur); nd.setDate(cur.getDate()+delta);
+    setWeekOffset(weekOffsetFromDate(nd));
+    const dow = nd.getDay();
+    setDayFilter(DAYS[dow===0?6:dow-1]);
+  };
   // Coverage math (dayCoverage, inside MonthView) needs the universe of role
   // names blocks actually require staffing for — roleStyles itself isn't
   // synced to employees' sessions, so fall back to whatever's configured on
@@ -281,6 +292,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
                 <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
                 <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{assignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
+                {/* Which role this particular shift is — matters whenever
+                    someone with more than one role (or covering a one-off
+                    shift outside their usual role) works different roles on
+                    different days; the block name alone doesn't say that. */}
+                {shiftEntry?.role&&<div style={{marginTop:4}}><RoleBadge role={shiftEntry.role} rs={roleStyles[shiftEntry.role]||roleColorFor(shiftEntry.role)}/></div>}
                 {isMe&&(pendingSwap?(
                   <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{pendingSwap.status==='claimed'?t('swap.statusClaimed',{name:employees.find(e=>e.id===pendingSwap.claimedByEmpId)?.name||'?'}):t('swap.statusOpen')}</div>
                 ):(
@@ -324,18 +340,19 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {/* Week/Month nav */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-            <button onClick={()=>calMode==='month'?setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1}):setWeekOffset(w=>w-1)} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>‹</button>
+            <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>‹</button>
             <WeekPicker
               value={calMode==='month'?new Date(displayMonth.y,displayMonth.m,1):weekDates[0]}
-              highlightStart={calMode==='month'?null:weekDates[0]}
-              highlightEnd={calMode==='month'?null:weekDates[6]}
+              highlightStart={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[0])}
+              highlightEnd={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[6])}
               onPick={d=>{
                 if(calMode==='month'){ setDisplayMonth({y:d.getFullYear(),m:d.getMonth()}); return; }
                 setWeekOffset(weekOffsetFromDate(d));
+                if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
               }}
-              trigger={<span style={{fontSize:14,fontWeight:500,minWidth:isMobile?130:160,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
+              trigger={<span style={{fontSize:14,fontWeight:500,minWidth:isMobile?130:160,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
             />
-            <button onClick={()=>calMode==='month'?setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1}):setWeekOffset(w=>w+1)} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>›</button>
+            <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>›</button>
           </div>
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
@@ -407,10 +424,15 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         ) : (<>
           {/* Pinned copy of your own row, sticky just below the top nav —
               so it stays in view while scrolling through the full team
-              list below instead of having to scroll to find yourself. */}
+              list below instead of having to scroll to find yourself.
+              Same solid-color-over-gradient-background trick every other
+              sticky bar in the app uses (App.jsx's schedule nav, TeamView's
+              grid controls) — a plain flat T.bg here would cut a visible
+              flat rectangle out of the page's ambient radial-gradient
+              backdrop as it scrolls over content, instead of blending in. */}
           {me && (
-            <div style={{position:'sticky',top:isMobile?50:56,zIndex:15,background:T.bg,paddingBottom:10}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6,paddingTop:6}}>{t('emp.yourShifts')}</div>
+            <div style={{position:'sticky',top:isMobile?50:56,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:10}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
               <div style={{...s.cardFlush,overflowX:'auto',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
                 {renderTeamRow(me)}
               </div>
