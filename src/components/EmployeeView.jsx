@@ -11,7 +11,7 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker, Avatar, EmpChip } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, EmpChip } from './ui';
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -288,7 +288,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} empHoursMap={empHoursMap} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -497,7 +497,7 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
 // add/remove picker, no click-to-edit) and no staffing-coverage signal (no
 // "short by N" gaps or requirement counts — only ever shows who's actually
 // assigned, per the earlier decision to keep that manager-only information).
-function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, roleStyles, roleColorFor, empHoursMap, s, t }){
+function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, roleStyles, roleColorFor, s, t }){
   const [collapsedBlocks, setCollapsedBlocks] = useState({});
   const colorFor = (role) => roleStyles[role] || roleColorFor(role);
 
@@ -588,7 +588,7 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
           <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
             <thead><tr>
               <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-              {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=dayFilter===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+              {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=dayFilter===day,isToday=dateToISO(weekDates[i])===dateToISO(new Date());return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:isToday?700:500,color:isActive?T.accent:isToday?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`2px solid ${isActive?T.accent:isToday?T.accent:T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}{isToday&&!isActive&&<span style={{display:'inline-block',width:5,height:5,borderRadius:'50%',background:T.accent,marginLeft:5}}/>}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:isToday?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
             </tr></thead>
             <tbody>
               {allRoles.map(role=>{
@@ -599,7 +599,8 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                   <td style={{padding:'10px 20px',verticalAlign:'top',background:T.surface}}><RoleBadge role={role} rs={rs}/></td>
                   {filterDays.map(day=>{
                     const assigned=(schedule[day]?.[block.id]||[]).filter(a=>a.role===role);
-                    return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
+                    const isToday=dateToISO(weekDates[DAYS.indexOf(day)])===dateToISO(new Date());
+                    return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isToday?(isDark()?T.accent+'0d':T.accentLight+'80'):T.surface}}>
                       <div style={{display:'flex',flexDirection:dayFilter?'row':'column',flexWrap:dayFilter?'wrap':'nowrap',gap:dayFilter?14:3,alignItems:dayFilter?'flex-start':'stretch'}}>
                         {assigned.length===0 && <span style={{fontSize:12,color:T.text3,opacity:0.5}}>—</span>}
                         {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),isMe=a.empId===myId;return(
@@ -623,28 +624,5 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
       </div>
       );
     })}
-    {/* Only ever the viewer's own hours — colleagues' total scheduled hours
-        aren't something one employee should be able to see about another
-        (unlike who's working which shift, which the grid/Gantt above still
-        shows for coordination purposes). Manager's WeekView shows everyone's
-        because a manager needs that to balance the schedule; a staff member
-        doesn't. */}
-    {(()=>{
-      const me=employees.find(e=>e.id===myId);
-      if(!me) return null;
-      const h=empHoursMap[me.id]||0, maxH=me.maxHours||40, pct=Math.min(100,(h/maxH)*100), over=h>maxH;
-      const firstRole=(me.roles||[])[0];
-      return(
-        <div style={s.card}>
-          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('week.weeklyHours')}</div>
-          <div style={{maxWidth:200,padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={me} size={24}/><span style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me.name.split(' ')[0]}</span></div>
-            {firstRole&&<div style={{marginBottom:6}}><RoleBadge role={firstRole} rs={colorFor(firstRole)}/></div>}
-            <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {maxH}h</span></div>
-            <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success}}/></div>
-          </div>
-        </div>
-      );
-    })()}
   </div>);
 }
