@@ -31,6 +31,7 @@ export default function EmployeesView({
         <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
           <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
         <div style={{flex:'2 1 160px'}}><SectionLabel>{t('emp.email')}</SectionLabel><input type="email" value={emp.email||''} onChange={e=>updateEmp(emp.id,'email',e.target.value)} placeholder={t('team.emailPlaceholder')} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.emailHint')}</div></div>
+        <div style={{flex:'1 1 140px'}}><SectionLabel>{t('emp.phone')}</SectionLabel><input type="tel" value={emp.phone||''} onChange={e=>updateEmp(emp.id,'phone',e.target.value)} placeholder={t('emp.phonePlaceholder')} style={s.input}/></div>
         </div>
         <div style={{marginBottom:12}}>
           <SectionLabel>{t('emp.roles')}</SectionLabel>

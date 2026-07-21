@@ -6,6 +6,7 @@ const empToRow = (orgId, e) => ({
   org_id:          orgId,
   name:            e.name,
   email:           (e.email||'').trim().toLowerCase() || null,
+  phone:           (e.phone||'').trim() || null,
   roles:           e.roles || ['Other'],
   priority:        e.priority ?? 100,
   contract_type:   e.contractType || 'hourly',
@@ -21,6 +22,7 @@ const empFromRow = (r) => ({
   id:             r.id,
   name:           r.name,
   email:          r.email || '',
+  phone:          r.phone || '',
   roles:          r.roles || ['Other'],
   priority:       r.priority ?? 100,
   contractType:   r.contract_type || 'hourly',
@@ -300,10 +302,11 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
+export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone } = {}){
   const row = {};
   if (name != null)   row.name = name;
   if (palIdx != null)  row.pal_idx = palIdx;
+  if (phone != null)  row.phone = phone;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;

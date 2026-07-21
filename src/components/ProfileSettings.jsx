@@ -8,9 +8,11 @@ import { Btn } from './ui';
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, s, t }){
+export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, onSavePhone, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
+  const [phone, setPhone] = useState(myEmp?.phone || '');
+  const [phoneSaved, setPhoneSaved] = useState(false);
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
@@ -23,6 +25,12 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
     onSaveName(name.trim());
     setNameSaved(true);
     setTimeout(()=>setNameSaved(false), 1800);
+  };
+
+  const savePhone = () => {
+    onSavePhone(phone.trim());
+    setPhoneSaved(true);
+    setTimeout(()=>setPhoneSaved(false), 1800);
   };
 
   const savePassword = async () => {
@@ -62,6 +70,21 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
                 <Btn small onClick={saveName} disabled={!name.trim()}>{nameSaved?t('profile.saved'):t('profile.save')}</Btn>
               </div>
             )}
+          </div>
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.email')}</div>
+            <div style={{fontSize:14,fontWeight:500}}>{myEmp.email||'—'}</div>
+            {/* Email is what links this row to your login — editable only
+                from the manager's Employees admin page, never here, since
+                changing it on yourself would break that match. */}
+            <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.emailLocked')}</div>
+          </div>
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.phone')}</div>
+            <div style={{display:'flex',gap:8}}>
+              <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder={t('profile.phonePlaceholder')} style={{...s.input,flex:1}}/>
+              <Btn small onClick={savePhone}>{phoneSaved?t('profile.saved'):t('profile.save')}</Btn>
+            </div>
           </div>
           <div style={{marginBottom:6}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:6}}>{t('profile.avatarColor')}</div>

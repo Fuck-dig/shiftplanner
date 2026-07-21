@@ -205,6 +205,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
+  const saveMyPhone = (phone) => {
+    updateEmployeeSelfProfile(myId, { phone })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,phone}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
 
   const notify = (targetEmpId, messageKey, messageVars) =>
     createNotification(orgId, targetEmpId, { type: messageKey.replace('notif.',''), messageKey, messageVars })
@@ -429,7 +434,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
@@ -694,8 +699,13 @@ function RequestShiftModal({ modal, busy, onCancel, onSubmit, s, t }){
 // Time-off/vacation request form — type + date range + note, always
 // created 'Pending' for a manager to approve/reject from their existing
 // Time Off view (see createTimeOffRequest in lib/data.js).
+// 'Sick' is deliberately left off this list: it's the one TIMEOFF_TYPES
+// entry that doesn't fit an advance-request/approval flow (you don't ask
+// permission in advance to be sick) — a manager can still log it after the
+// fact from their own Time Off view, which keeps the full type list.
+const SELF_REQUEST_TIMEOFF_TYPES = TIMEOFF_TYPES.filter(tt=>tt!=='Sick');
 function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
-  const [type, setType] = useState(TIMEOFF_TYPES[0]);
+  const [type, setType] = useState(SELF_REQUEST_TIMEOFF_TYPES[0]);
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [note, setNote] = useState('');
@@ -704,16 +714,16 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(420px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,marginBottom:14}}>{t('to.newRequest')}</div>
-        <div style={{display:'flex',gap:10,marginBottom:12,flexWrap:'wrap'}}>
-          <div style={{flex:'1 1 100px'}}>
-            <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('to.type')}</div>
-            <select value={type} onChange={e=>setType(e.target.value)} style={s.select}>{TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
-          </div>
-          <div style={{flex:'1 1 120px'}}>
+        <div style={{marginBottom:12}}>
+          <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('to.type')}</div>
+          <select value={type} onChange={e=>setType(e.target.value)} style={s.select}>{SELF_REQUEST_TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
+        </div>
+        <div style={{display:'flex',gap:10,marginBottom:12}}>
+          <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.fromCap')}</div>
             <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={s.input}/>
           </div>
-          <div style={{flex:'1 1 120px'}}>
+          <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.toCap')}</div>
             <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={s.input}/>
           </div>
@@ -729,29 +739,66 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
 }
 
 // Simple roster — every employee and the role(s) they're configured for, no
-// schedule/shift data (that's the Team tab's job). Just "who works here and
-// what do they do", flat list sorted alphabetically so multi-role people
-// only appear once.
+// schedule/shift data (that's the Team tab's job). One card per person,
+// sorted alphabetically; clicking a card opens a small info popup with
+// their contact details.
 function Directory({ employees, myId, roleStyles, roleColorFor, s, t }){
+  const [selected, setSelected] = useState(null); // employee whose info popup is open, or null
   const sorted = [...employees].sort((a,b)=>a.name.localeCompare(b.name));
   return (
-    <div style={{...s.cardFlush,padding:0}}>
-      {sorted.map((emp,i)=>{
-        const isMe=emp.id===myId, p=pal(emp);
-        return (
-          <div key={emp.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 18px',borderBottom:i<sorted.length-1?`1px solid ${T.border}`:'none',background:isMe?(isDark()?T.accent+'18':T.accentLight):'transparent'}}>
-            <div style={{width:38,height:38,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
-              <div style={{display:'flex',gap:5,flexWrap:'wrap',marginTop:5}}>
+    <>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:12}}>
+        {sorted.map(emp=>{
+          const isMe=emp.id===myId, p=pal(emp);
+          return (
+            <div key={emp.id} onClick={()=>setSelected(emp)} style={{...s.card,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',gap:10,padding:'22px 14px',border:isMe?`1.5px solid ${T.accent}`:s.card.border,background:isMe?(isDark()?T.accent+'12':T.accentLight):s.card.background,transition:'transform 0.12s, box-shadow 0.12s'}}>
+              <div style={{width:56,height:56,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+              <div style={{fontSize:14,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center'}}>
                 {(emp.roles&&emp.roles.length?emp.roles:['Other']).map(role=>(
                   <RoleBadge key={role} role={role} rs={roleStyles[role]||roleColorFor(role)}/>
                 ))}
               </div>
             </div>
+          );
+        })}
+      </div>
+      {selected && createPortal(
+        <StaffInfoModal emp={selected} isMe={selected.id===myId} roleStyles={roleStyles} roleColorFor={roleColorFor} onClose={()=>setSelected(null)} s={s} t={t}/>,
+        document.body
+      )}
+    </>
+  );
+}
+
+// Small read-only popup with a coworker's contact info — name, roles,
+// phone, email. Opened by clicking their card in the Employees tab.
+function StaffInfoModal({ emp, isMe, roleStyles, roleColorFor, onClose, s, t }){
+  const p = pal(emp);
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(360px,100%)',padding:22,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',gap:10,marginBottom:18}}>
+          <div style={{width:64,height:64,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text}}>{emp.name}</div>
+          <div style={{display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center'}}>
+            {(emp.roles&&emp.roles.length?emp.roles:['Other']).map(role=>(
+              <RoleBadge key={role} role={role} rs={roleStyles[role]||roleColorFor(role)}/>
+            ))}
           </div>
-        );
-      })}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          <div>
+            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3}}>{t('profile.email')}</div>
+            <div style={{fontSize:13,color:T.text}}>{emp.email||t('dir.noContact')}</div>
+          </div>
+          <div>
+            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3}}>{t('profile.phone')}</div>
+            <div style={{fontSize:13,color:T.text}}>{emp.phone||t('dir.noContact')}</div>
+          </div>
+        </div>
+        <div style={{marginTop:18}}><Btn variant="ghost" onClick={onClose}>{t('common.close')}</Btn></div>
+      </div>
     </div>
   );
 }
