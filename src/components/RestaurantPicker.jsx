@@ -39,7 +39,7 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, tog
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'20px 32px'}}>
         <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
         <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}</select>
+          <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
           <button onClick={toggleTheme} style={{width:32,height:32,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{isDark()?'☀':'☾'}</button>
           <button onClick={()=>supabase.auth.signOut()} style={{padding:'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.logout')}</button>
         </div>

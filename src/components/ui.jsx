@@ -74,7 +74,7 @@ export function TimePicker({value,onChange,small}){
   return (<>
     <div style={{display:'inline-flex',alignItems:'center',gap:2,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,padding:small?'2px 3px 2px 8px':'3px 4px 3px 10px'}}>
       <input value={text} onChange={e=>setText(e.target.value)} onBlur={e=>commitText(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'){ commitText(e.target.value); e.target.blur(); } else if(e.key==='Escape'){ setText(`${hh}:${mm}`); e.target.blur(); } }} placeholder="00:00" style={{width:small?36:42,border:'none',background:'transparent',color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',outline:'none',textAlign:'center',padding:small?'2px 0':'3px 0'}}/>
-      <button type="button" onClick={()=>setOpen(true)} title="Pick time" style={{border:'none',background:'none',cursor:'pointer',fontSize:small?12:13,opacity:0.55,padding:small?'2px 4px':'3px 6px',color:T.text,lineHeight:1}}>🕐</button>
+      <button type="button" onClick={()=>setOpen(true)} title="Pick time" style={{border:'none',background:'none',cursor:'pointer',fontSize:small?10:11,opacity:0.55,padding:small?'2px 4px':'3px 6px',color:T.text,lineHeight:1}}>▾</button>
     </div>
     {open&&createPortal(
       <div onClick={()=>setOpen(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>

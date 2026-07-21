@@ -88,7 +88,6 @@ export default function TeamAccess({ orgId, orgName, isOwner=false, s, t }){
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {pending.map(inv=>(
             <div key={inv.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:8,background:T.warningLight,border:`1px solid ${T.warning}33`}}>
-              <span style={{fontSize:13}}>✉️</span>
               <span style={{fontSize:12,color:T.text,flex:1}}>{inv.email}</span>
               <span style={{fontSize:10,color:T.warning}}>{t('team.awaitingSignup')}</span>
               <button onClick={async()=>{

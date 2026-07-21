@@ -3,9 +3,9 @@
 // STRINGS. Keys map 1:1 across languages; missing keys fall back to English.
 
 export const LANGUAGES = [
-  { code: 'da', label: 'Dansk',   flag: '🇩🇰' },
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'es', label: 'Español', flag: '🇪🇸' },
+  { code: 'da', label: 'Dansk' },
+  { code: 'en', label: 'English' },
+  { code: 'es', label: 'Español' },
 ];
 
 export const LOCALES = { da: 'da-DK', en: 'en-GB', es: 'es-ES' };

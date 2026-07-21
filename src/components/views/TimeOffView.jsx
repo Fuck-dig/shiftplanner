@@ -11,7 +11,7 @@ export default function TimeOffView({
 }){
   return (<div style={{display:'flex',flexDirection:'column',gap:12}}>
     {offThisWeek.length>0&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'12px 16px'}}>
-      <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>🌴 {t('sched.onLeaveWeek')} ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
+      <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>{t('sched.onLeaveWeek')} ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>
     </div>)}
     <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
@@ -34,7 +34,7 @@ export default function TimeOffView({
     </div>)}
     {filteredTO.length===0?(<div style={{...s.card,textAlign:'center',padding:'44px 32px',position:'relative',overflow:'hidden'}}>
       <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.4,pointerEvents:'none'}}/>
-      <div style={{position:'relative'}}><div style={{fontSize:36,marginBottom:12,opacity:0.25}}>🌴</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>{toFilter!=='all'?t('to.noneFilter',{filter:t('to.'+(toFilter==='this-week'?'thisWeek':toFilter)).toLowerCase()}):t('to.noneYet')}</div>{toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>{t('to.addFirst')}</Btn>}</div>
+      <div style={{position:'relative'}}><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>{toFilter!=='all'?t('to.noneFilter',{filter:t('to.'+(toFilter==='this-week'?'thisWeek':toFilter)).toLowerCase()}):t('to.noneYet')}</div>{toFilter==='all'&&<Btn onClick={()=>setShowAddTO(true)}>{t('to.addFirst')}</Btn>}</div>
     </div>):filteredTO.map(to=>{
       const emp=employees.find(e=>e.id===to.empId),days=Math.round((new Date(to.endDate)-new Date(to.startDate))/(24*3600*1000))+1,borderColor={Approved:T.success,Pending:T.warning,Rejected:T.danger}[to.status]||T.border;
       return(<div key={to.id} style={{...s.card,borderLeft:`3px solid ${borderColor}`,padding:'14px 18px',display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>

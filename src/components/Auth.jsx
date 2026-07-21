@@ -42,7 +42,7 @@ export default function Auth(){
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,padding:20}}>
       <div style={{...styles.card,width:'min(380px,100%)'}}>
         <div style={{display:'flex',justifyContent:'center',marginBottom:14}}>
-          <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.flag} {L.label}</option>)}</select>
+          <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
         </div>
         <div style={{textAlign:'center',marginBottom:22}}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:30,fontWeight:600,color:T.text}}>Rorota</div>
