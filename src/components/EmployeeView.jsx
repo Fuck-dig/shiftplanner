@@ -39,8 +39,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [swapBusy, setSwapBusy]   = useState(false);
   const [timeOffModalOpen, setTimeOffModalOpen] = useState(false);
   const [toBusy, setToBusy]       = useState(false);
-  const [view, setView]           = useState('schedule'); // 'schedule' | 'profile'
-  const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' | 'directory' — which layout the schedule tab shows
+  const [view, setView]           = useState('schedule'); // 'schedule' | 'employees' | 'profile' — top-level nav tabs
+  const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
   const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
@@ -417,6 +417,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).bg,color:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).text,border:`1px solid ${(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
         <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginRight:isMobile?6:10,flexShrink:0}}>
           <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
+          <button onClick={()=>setView('employees')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='employees'?600:400,background:view==='employees'?T.surface:'transparent',color:view==='employees'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('sched.directory')}</button>
           <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>
         </div>
         <span style={{marginRight:isMobile?6:10}}><Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></span>
@@ -429,6 +430,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
         <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} s={s} t={t}/>
+      ) : view==='employees' ? (
+        <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
         {/* Week/Month nav */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap'}}>
@@ -450,7 +453,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginLeft:'auto'}}>
-            {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')],['directory',t('sched.directory')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
+            {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
           </div>
         </div>
 
@@ -458,8 +461,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
           <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
-        ) : calMode==='directory' ? (
-          <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
