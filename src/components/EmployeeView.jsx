@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark } from '../lib/constants';
-import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets } from '../lib/dates';
+import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile } from '../lib/data';
 import { supabase } from '../lib/supabase';
@@ -34,8 +34,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [swapModal, setSwapModal] = useState(null);      // {day,blockId,blockName,role} while the give-away modal is open
   const [swapBusy, setSwapBusy]   = useState(false);
   const [view, setView]           = useState('schedule'); // 'schedule' | 'profile'
-  const [calMode, setCalMode]     = useState('team');     // 'team' | 'month' — which layout the schedule tab shows
+  const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
+  const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -226,12 +227,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginLeft:'auto'}}>
-            {[['team',t('sched.team')],['month',t('sched.month')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
+            {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
           </div>
         </div>
 
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
+        ) : calMode==='week' ? (
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -405,4 +408,84 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
       </div>
     </div>
   );
+}
+
+// Read-only per-day timeline for the employee 'week' tab — same underlying
+// data shape as the manager's WeekView Gantt, but with every edit affordance
+// stripped out (no drag handles, no add/remove picker, no click-to-edit):
+// staff can look at who's working when on a given day, nothing more.
+function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, weekDates, myId, isMobile, s, t }){
+  const dayShiftsRaw = schedule ? blocks.flatMap(b=>{
+    return (schedule[dayFilter]?.[b.id]||[]).map(a=>{
+      const st=a.start||b.start, en=a.end||b.end;
+      const bs=toMin(st); let be=toMin(en); if(be<=bs) be+=1440;
+      return { empId:a.empId, name:a.name, start:bs, end:be, startStr:st, endStr:en };
+    });
+  }) : [];
+  const byEmp = new Map();
+  dayShiftsRaw.forEach(sg=>{
+    if(!byEmp.has(sg.empId)) byEmp.set(sg.empId,{empId:sg.empId,name:sg.name,segs:[]});
+    byEmp.get(sg.empId).segs.push(sg);
+  });
+  const rows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)})).sort((a,b)=>a.name.localeCompare(b.name));
+
+  let timeline=null;
+  if(rows.length){
+    const allStarts=rows.flatMap(r=>r.segs.map(m=>m.start)), allEnds=rows.flatMap(r=>r.segs.map(m=>m.end));
+    const rangeStart=Math.floor(Math.min(...allStarts)/60)*60;
+    const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
+    const totalMin=Math.max(60,rangeEnd-rangeStart);
+    const ticks=[]; for(let m=rangeStart;m<=rangeEnd;m+=60) ticks.push(m);
+    const sideW=isMobile?92:130, rowH=isMobile?26:30;
+    const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
+    timeline=(
+      <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+        <div style={{position:'relative',height:16,marginLeft:sideW,marginBottom:10,minWidth:isMobile?480-sideW:'auto'}}>
+          {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
+        </div>
+        <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
+          <div style={{width:sideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
+            {rows.map(row=>{const isMe=row.empId===myId;return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{row.name}{isMe&&<span style={{fontSize:9,marginLeft:4,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>);})}
+          </div>
+          <div style={{position:'relative',flex:1}}>
+            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
+            <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
+              {rows.map(row=>{
+                const emp=employees.find(e=>e.id===row.empId), p=pal(emp||{palIdx:0}), isMe=row.empId===myId;
+                return(<div key={row.empId} style={{position:'relative',height:rowH,background:T.surfaceWarm,borderRadius:6}}>
+                  {row.segs.map((seg,si)=>{
+                    const leftPct=(seg.start-rangeStart)/totalMin*100, widthPct=(seg.end-seg.start)/totalMin*100;
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?p.dot+'30':p.bg,border:`1.5px solid ${isMe?T.accent:p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isMe?T.accent:(isDark()?p.dot:p.text),whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                    </div>);
+                  })}
+                </div>);
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
+    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+      {DAYS.map((day,i)=>{const active=dayFilter===day,isToday=dateToISO(weekDates[i])===dateToISO(new Date());return(
+        <button key={day} onClick={()=>setDayFilter(day)} style={{padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:active?600:400,border:`1px solid ${active?T.accent:isToday?T.accent+'55':T.border}`,background:active?T.accentLight:'transparent',color:active?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>
+          <div>{t('day.'+day)}</div>
+          <div style={{fontSize:10,fontWeight:400,opacity:0.75}}>{fmt(weekDates[i])}</div>
+        </button>
+      );})}
+    </div>
+    {!schedule ? (
+      <div style={{...s.card,textAlign:'center',padding:'52px 32px'}}>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text,marginBottom:6}}>{t('emp.noScheduleTitle')}</div>
+        <div style={{fontSize:13,color:T.text2}}>{t('emp.noScheduleDesc')}</div>
+      </div>
+    ) : timeline || (
+      <div style={{...s.card,textAlign:'center',padding:'40px 24px'}}>
+        <div style={{fontSize:13,color:T.text2}}>{t('emp.noShiftsDay')}</div>
+      </div>
+    )}
+  </div>);
 }

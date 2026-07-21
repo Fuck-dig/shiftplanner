@@ -64,6 +64,7 @@ const STRINGS = {
     'picker.createFailed':'Could not create restaurant.',
 
     'emp.published':'Published',
+    'emp.noShiftsDay':'No one is scheduled to work this day.',
     'emp.noScheduleTitle':'No schedule yet',
     'emp.noScheduleDesc':'The manager hasn’t published a rota for this week yet. Check back soon.',
     'emp.youTag':'(you)',
@@ -405,6 +406,7 @@ const STRINGS = {
     'picker.createFailed':'Kunne ikke oprette restauranten.',
 
     'emp.published':'Udgivet',
+    'emp.noShiftsDay':'Ingen er sat på vagt denne dag.',
     'emp.noScheduleTitle':'Ingen vagtplan endnu',
     'emp.noScheduleDesc':'Din leder har endnu ikke udgivet en vagtplan for denne uge. Kig forbi igen snart.',
     'emp.youTag':'(dig)',
@@ -746,6 +748,7 @@ const STRINGS = {
     'picker.createFailed':'No se pudo crear el restaurante.',
 
     'emp.published':'Publicado',
+    'emp.noShiftsDay':'Nadie tiene turno asignado este día.',
     'emp.noScheduleTitle':'Aún no hay horario',
     'emp.noScheduleDesc':'El gerente todavía no ha publicado un horario para esta semana. Vuelve pronto.',
     'emp.youTag':'(tú)',
