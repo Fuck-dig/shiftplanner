@@ -433,12 +433,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           {me && (
             <div style={{position:'sticky',top:isMobile?50:56,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:10}}>
               <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
-              <div style={{...s.cardFlush,overflowX:'auto',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
+              <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
                 {renderTeamRow(me)}
               </div>
             </div>
           )}
-          <div style={{...s.cardFlush,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+          <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch'}}>
             {/* Header */}
             <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
               <div style={{padding:isMobile?'12px 12px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('sched.team')}</div>
