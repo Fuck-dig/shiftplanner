@@ -123,10 +123,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // Employees never see the manager's actual roleStyles (colors aren't
-  // synced), so derive a stand-in from the same shared palette, keyed by
-  // each role's position in allRoles — matches what the manager sees by
-  // default whenever they haven't hand-picked a custom colour for a role.
-  const roleColorFor = (role) => { const i=allRoles.indexOf(role); return ROLE_COLOR_PALETTE[((i%ROLE_COLOR_PALETTE.length)+ROLE_COLOR_PALETTE.length)%ROLE_COLOR_PALETTE.length]; };
+  // synced), so derive a stand-in from the same shared palette. Keyed by a
+  // hash of the role's own name — NOT its position in allRoles — so
+  // dragging roles into a new order doesn't shuffle everyone's colours
+  // around too; a given role name always lands on the same colour.
+  const hashRole = (role) => { let h=0; for(let i=0;i<role.length;i++) h=(h*31+role.charCodeAt(i))>>>0; return h; };
+  const roleColorFor = (role) => ROLE_COLOR_PALETTE[hashRole(role)%ROLE_COLOR_PALETTE.length];
   // Drag a role group to reorder it relative to the others — personal to
   // this browser (see roleOrder's init above), not shared with anyone else.
   const reorderRoles = (draggedRole, targetRole) => {
