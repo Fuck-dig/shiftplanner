@@ -1003,8 +1003,17 @@ export default function App(){
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{
       setSession(data.session);
-      // Accept any pending invitations when user logs in
-      if(data.session) acceptPendingInvitations().catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
+      // Accept any pending invitations when user logs in. The orgs list is
+      // fetched by a separate effect keyed on [session, orgTick] — setSession
+      // above fires that fetch immediately, racing ahead of this async call,
+      // so without bumping orgTick afterward here too (like the
+      // onAuthStateChange branch below already does), a newly-accepted
+      // invite would silently never show up: the org list is fetched once
+      // too early (before acceptance lands) and nothing ever triggers it to
+      // refetch. This is exactly the path taken on a normal page load with
+      // an already-established session (e.g. right after signing up/logging
+      // in), which is the common case for someone accepting an invite.
+      if(data.session) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
     });
     const{data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{
       setSession(s);
