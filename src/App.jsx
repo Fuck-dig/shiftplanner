@@ -365,6 +365,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     removeFromSlot(editingSlot.day,editingSlot.blockId,editingSlot.idx);
     closeEditSlot();
   };
+  const moveEditSlot=()=>{
+    if(!editingSlot||!schedule)return;
+    const{day,blockId,idx}=editingSlot;
+    const entry=schedule[day]?.[blockId]?.[idx];
+    if(!entry)return;
+    setSelected({...entry,day,blockId,idx});
+    closeEditSlot();
+  };
 
   // Pull one person off a shift outright — e.g. they've called in sick.
   // No confirmation: it's a single click to remove, a single click to re-add.
@@ -740,11 +748,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           <TimePicker small value={editTimes.end} onChange={v=>setEditTimes(p=>({...p,end:v}))}/>
           {customized&&<button onClick={()=>setEditTimes({start:block.start,end:block.end})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
         </div>
-        <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',gap:6}}>
-          <Btn onClick={saveEditSlot}>{t('common.save')}</Btn>
-          <Btn variant="danger" onClick={removeEditSlot}>{t('common.remove')}</Btn>
+        <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',flexWrap:'wrap',gap:6}}>
+          <Btn small onClick={saveEditSlot}>{t('common.save')}</Btn>
+          <Btn small variant="secondary" onClick={moveEditSlot}>{t('week.move')}</Btn>
+          <Btn small variant="danger" onClick={removeEditSlot}>{t('common.remove')}</Btn>
           <span style={{flex:1}}/>
-          <Btn variant="ghost" onClick={closeEditSlot}>{t('common.cancel')}</Btn>
+          <Btn small variant="ghost" onClick={closeEditSlot}>{t('common.cancel')}</Btn>
         </div>
       </div>
     </div>
@@ -1092,10 +1101,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
-                          <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
-                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
-                            <button onClick={e=>{e.stopPropagation();openEditSlot(day,block.id,realIdx);}} title={t('week.editShift')} style={{width:18,height:18,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`,borderRadius:5,background:T.surfaceWarm,cursor:'pointer',fontSize:10,color:T.text2,lineHeight:1,flexShrink:0,fontWeight:600}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.accent;e.currentTarget.style.color=T.accent;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.text2;}}>✎</button>
-                          </div>
+                          <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>{if(selected){handleSlotClick(day,block.id,a,realIdx);}else{openEditSlot(day,block.id,realIdx);}}}/>
                           {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
                         </div>
                       );})}
@@ -1146,11 +1152,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         ,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const noAvail=gap>0&&!isTarget&&candidatesForSlot(day,block.id,role).available.length===0;
-                        if(gap>0)return(<div style={{position:'relative'}}>
+                        if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay?'auto':0}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):(noAvail?`! ${t('week.shortCount',{n:gap})}`:t('week.shortCount',{n:gap}))}</button>
                           {picker}
                         </div>);
-                        return(<div style={{position:'relative'}}>
+                        return(<div style={{position:'relative',marginLeft:effectiveDay?'auto':0}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
                           {picker}
                         </div>);
