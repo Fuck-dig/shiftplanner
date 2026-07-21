@@ -7,6 +7,14 @@ import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants"
 
 export function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
 
+// Drag-handle affordance drawn from plain dots rather than a unicode glyph —
+// glyphs like ⠿ render inconsistently (or invisibly) across fonts/OSes.
+export function GripDots({title}){
+  return <span title={title} style={{display:'inline-grid',gridTemplateColumns:'repeat(2,3px)',gridAutoRows:'3px',gap:2,cursor:'grab',flexShrink:0}}>
+    {Array.from({length:6}).map((_,i)=><span key={i} style={{width:3,height:3,borderRadius:'50%',background:T.text3}}/>)}
+  </span>;
+}
+
 export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:isDark()?s.dot+'22':s.bg,color:isDark()?s.dot:s.text,border:`1px solid ${isDark()?s.dot+'55':s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
 
 export function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:(isDark()?p.dot+'22':p.bg),color:selected?'#fff':(isDark()?p.dot:p.text),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
-import { Avatar, RoleBadge, Btn } from '../ui';
+import { Avatar, RoleBadge, Btn, GripDots } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
 export default function TeamView({
@@ -89,7 +89,7 @@ export default function TeamView({
             onDrop={e=>{e.preventDefault();reorderRoles&&reorderRoles(dragRole,row.role);setDragRole(null);setDragOverRole(null);}}
             style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:reorderRoles?'grab':'pointer',userSelect:'none',opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
-              {reorderRoles&&<span style={{fontSize:11,color:T.text3,cursor:'grab',lineHeight:1}} title={t('grid.dragToReorder')}>⠿</span>}
+              {reorderRoles&&<GripDots title={t('grid.dragToReorder')}/>}
               <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>

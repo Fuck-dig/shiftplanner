@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleOrder } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge } from './ui';
+import { Btn, RoleBadge, GripDots } from './ui';
 
 const roleColors = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
 
@@ -38,8 +38,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
   const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
-  const [roleOrder, setRoleOrder] = useState([]); // persisted role display/group order, set by the manager in Coverage
+  // Personal, per-browser role display/group order — each person arranges
+  // their own Team tab; not shared with the manager or other employees.
+  const [roleOrder, setRoleOrder] = useState(()=>load('sa2_roleOrder_'+orgId, []));
   const [collapsedRoles, setCollapsedRoles] = useState(()=>new Set()); // role names currently collapsed in the Team tab's "By role" grouping
+  const [dragRole, setDragRole] = useState(null); // drag-and-drop reordering of role groups in the Team tab
+  const [dragOverRole, setDragOverRole] = useState(null);
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -66,14 +70,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         fetchBlocks(orgId),
         fetchTimeOff(orgId),
         fetchSchedules(orgId),
-        fetchRoleOrder(orgId).catch(err=>{console.error('Load role order failed:',err);return [];}),
-      ]).then(([emps, blks, to, scheds, roleOrd]) => {
+      ]).then(([emps, blks, to, scheds]) => {
         if (!alive) return;
         setEmployees(emps);
         setBlocks(blks);
         setTimeOff(to);
         setSchedules(scheds);
-        setRoleOrder(roleOrd);
         // Try to find the current user's employee record by email
         const me = emps.find(e => e.email && e.email.toLowerCase() === (email||'').toLowerCase());
         if (me) setMyId(me.id);
@@ -125,6 +127,17 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // each role's position in allRoles — matches what the manager sees by
   // default whenever they haven't hand-picked a custom colour for a role.
   const roleColorFor = (role) => { const i=allRoles.indexOf(role); return ROLE_COLOR_PALETTE[((i%ROLE_COLOR_PALETTE.length)+ROLE_COLOR_PALETTE.length)%ROLE_COLOR_PALETTE.length]; };
+  // Drag a role group to reorder it relative to the others — personal to
+  // this browser (see roleOrder's init above), not shared with anyone else.
+  const reorderRoles = (draggedRole, targetRole) => {
+    if (!draggedRole || draggedRole===targetRole) return;
+    const cur = allRoles.filter(r=>r!==draggedRole);
+    const idx = cur.indexOf(targetRole);
+    if (idx<0) return;
+    const next = [...cur.slice(0,idx), draggedRole, ...cur.slice(idx)];
+    setRoleOrder(next);
+    save('sa2_roleOrder_'+orgId, next);
+  };
 
   const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
@@ -334,7 +347,16 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
               return(
                 <div key={`${row.role||'all'}-${emp.id}`}>
-                {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{padding:'6px '+(isMobile?'12px':'20px'),background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none',cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:8}}>
+                {showDivider&&<div
+                  onClick={()=>toggleRoleCollapse(row.role)}
+                  draggable
+                  onDragStart={()=>setDragRole(row.role)}
+                  onDragEnd={()=>{setDragRole(null);setDragOverRole(null);}}
+                  onDragOver={e=>{if(dragRole&&dragRole!==row.role){e.preventDefault();if(dragOverRole!==row.role)setDragOverRole(row.role);}}}
+                  onDragLeave={()=>{if(dragOverRole===row.role)setDragOverRole(null);}}
+                  onDrop={e=>{e.preventDefault();reorderRoles(dragRole,row.role);setDragRole(null);setDragOverRole(null);}}
+                  style={{padding:'6px '+(isMobile?'12px':'20px'),background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:ri>0?`2px solid ${T.border}`:'none',cursor:'grab',userSelect:'none',display:'flex',alignItems:'center',gap:8,opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
+                  <GripDots title={t('grid.dragToReorder')}/>
                   <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
                   <RoleBadge role={row.role} rs={roleColorFor(row.role)}/>
                 </div>}

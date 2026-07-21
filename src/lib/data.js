@@ -295,18 +295,8 @@ export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
   if (error) throw error;
 }
 
-// ── Role order ───────────────────────────────────────────────────────────────
-// Just the display/group order of role names (not colors — those are still
-// local-only per-browser state, a pre-existing gap this doesn't fix). Shared
-// across the org so the manager's reordering in Coverage also reorders the
-// "group by role" views on employees' own sessions.
-export async function fetchRoleOrder(orgId){
-  const { data, error } = await supabase.from('organizations').select('role_order').eq('id', orgId).single();
-  if (error) throw error;
-  return Array.isArray(data?.role_order) ? data.role_order : [];
-}
-
-export async function saveRoleOrder(orgId, order){
-  const { error } = await supabase.from('organizations').update({ role_order: order }).eq('id', orgId);
-  if (error) throw error;
-}
+// Role display/group order used to live here as a Supabase-synced,
+// org-wide setting — reverted in favor of each person (manager or employee)
+// keeping their own local order (see 'sa2_roleOrder_'+orgId in App.jsx and
+// EmployeeView.jsx), since that's what was actually wanted: everyone gets
+// to arrange their own Team view, not one shared order for the whole org.
