@@ -66,7 +66,6 @@ const STRINGS = {
     'emp.published':'Published',
     'emp.noScheduleTitle':'No schedule yet',
     'emp.noScheduleDesc':'The manager hasn’t published a rota for this week yet. Check back soon.',
-    'emp.youTag':'(you)',
     'emp.hoursThisWeek':'{h}h this week',
 
     'nav.schedule':'Schedule',
@@ -408,7 +407,6 @@ const STRINGS = {
     'emp.published':'Udgivet',
     'emp.noScheduleTitle':'Ingen vagtplan endnu',
     'emp.noScheduleDesc':'Din leder har endnu ikke udgivet en vagtplan for denne uge. Kig forbi igen snart.',
-    'emp.youTag':'(dig)',
     'emp.hoursThisWeek':'{h}t denne uge',
 
     'nav.schedule':'Vagtplan',
@@ -750,7 +748,6 @@ const STRINGS = {
     'emp.published':'Publicado',
     'emp.noScheduleTitle':'Aún no hay horario',
     'emp.noScheduleDesc':'El gerente todavía no ha publicado un horario para esta semana. Vuelve pronto.',
-    'emp.youTag':'(tú)',
     'emp.hoursThisWeek':'{h}h esta semana',
 
     'nav.schedule':'Horario',

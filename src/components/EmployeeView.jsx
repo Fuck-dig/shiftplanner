@@ -288,7 +288,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} empHoursMap={empHoursMap} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} empHoursMap={empHoursMap} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -385,8 +385,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                     {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
                     <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
                     <div>
-                      <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}{isMe&&<span style={{fontSize:10,marginLeft:5,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>
-                      <div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('emp.hoursThisWeek',{h})}</div>
+                      <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
+                      {/* Only your own weekly-hours total — a colleague's row
+                          just shows their name/shifts, not their hour count. */}
+                      {isMe&&<div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('emp.hoursThisWeek',{h})}</div>}
                     </div>
                   </div>
                   {/* Days */}
@@ -495,7 +497,7 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
 // add/remove picker, no click-to-edit) and no staffing-coverage signal (no
 // "short by N" gaps or requirement counts — only ever shows who's actually
 // assigned, per the earlier decision to keep that manager-only information).
-function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, roleStyles, roleColorFor, empHoursMap, s, t }){
+function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, roleStyles, roleColorFor, empHoursMap, s, t }){
   const [collapsedBlocks, setCollapsedBlocks] = useState({});
   const colorFor = (role) => roleStyles[role] || roleColorFor(role);
 
@@ -545,7 +547,7 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:sideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const isMe=row.empId===myId,rs=colorFor(row.role);return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',gap:5,fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}{isMe&&<span style={{fontSize:9,marginLeft:4,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>);})}
+            {dayRows.map(row=>{const isMe=row.empId===myId,rs=colorFor(row.role);return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',gap:5,fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:isMe?T.accent:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:0,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -602,8 +604,12 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                         {assigned.length===0 && <span style={{fontSize:12,color:T.text3,opacity:0.5}}>—</span>}
                         {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),isMe=a.empId===myId;return(
                           <div key={idx}>
-                            <EmpChip emp={emp||{name:a.name,palIdx:0}}/>
-                            {(isMe||dayFilter)&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{isMe&&<span style={{color:T.accent,fontWeight:600}}>{t('emp.youTag')} </span>}{dayFilter&&`${a.start||block.start}–${a.end||block.end}`}</div>}
+                            {/* Own shifts get the filled/"selected" chip styling
+                                instead of a separate "(you)" label — a solid,
+                                unmissable pill reads as "that's me" without
+                                needing extra text. */}
+                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isMe}/>
+                            {dayFilter&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
                           </div>
                         );})}
                       </div>
@@ -617,25 +623,28 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
       </div>
       );
     })}
-    <div style={s.card}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{t('week.weeklyHours')}</div>
-        <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-          {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
-        </div>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
-        {[...employees].sort((a,b)=>gridGroupBy==='role'?(allRoles.indexOf((a.roles||[])[0]||'')-allRoles.indexOf((b.roles||[])[0]||''))||a.name.localeCompare(b.name):a.name.localeCompare(b.name)).map(emp=>{
-          const h=empHoursMap[emp.id]||0, maxH=emp.maxHours||40, pct=Math.min(100,(h/maxH)*100), over=h>maxH, isMe=emp.id===myId;
-          const firstRole=(emp.roles||[])[0];
-          return(<div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${isMe?T.accent+'55':over?T.danger+'55':T.border}`,background:isMe?T.accentLight:over?T.dangerLight:T.surfaceWarm}}>
-            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:isMe?700:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name.split(' ')[0]}</span>{isMe&&<span style={{fontSize:9,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>
-            {gridGroupBy==='role'&&firstRole&&<div style={{marginBottom:6}}><RoleBadge role={firstRole} rs={colorFor(firstRole)}/></div>}
+    {/* Only ever the viewer's own hours — colleagues' total scheduled hours
+        aren't something one employee should be able to see about another
+        (unlike who's working which shift, which the grid/Gantt above still
+        shows for coordination purposes). Manager's WeekView shows everyone's
+        because a manager needs that to balance the schedule; a staff member
+        doesn't. */}
+    {(()=>{
+      const me=employees.find(e=>e.id===myId);
+      if(!me) return null;
+      const h=empHoursMap[me.id]||0, maxH=me.maxHours||40, pct=Math.min(100,(h/maxH)*100), over=h>maxH;
+      const firstRole=(me.roles||[])[0];
+      return(
+        <div style={s.card}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('week.weeklyHours')}</div>
+          <div style={{maxWidth:200,padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={me} size={24}/><span style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{me.name.split(' ')[0]}</span></div>
+            {firstRole&&<div style={{marginBottom:6}}><RoleBadge role={firstRole} rs={colorFor(firstRole)}/></div>}
             <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {maxH}h</span></div>
             <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success}}/></div>
-          </div>);
-        })}
-      </div>
-    </div>
+          </div>
+        </div>
+      );
+    })()}
   </div>);
 }
