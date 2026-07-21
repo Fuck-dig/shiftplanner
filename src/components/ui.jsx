@@ -46,6 +46,8 @@ export function TimePicker({value,onChange,small}){
   const [open,setOpen]=useState(false);
   const hourRef=useRef(null),minRef=useRef(null);
   const [hh,mm]=(value||'00:00').split(':');
+  const [text,setText]=useState(`${hh}:${mm}`);
+  useEffect(()=>{ setText(`${hh}:${mm}`); },[hh,mm]);
   const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
   const minutes=['00','05','10','15','20','25','30','35','40','45','50','55'];
   useEffect(()=>{
@@ -60,10 +62,20 @@ export function TimePicker({value,onChange,small}){
   const col=(items,current,pick,ref)=><div ref={ref} style={{flex:1,overflowY:'auto',padding:'6px 4px'}}>
     {items.map(v=>(<div key={v} data-sel={v===current?'true':undefined} onClick={()=>pick(v)} style={{padding:'7px 0',textAlign:'center',fontSize:15,fontWeight:v===current?700:400,color:v===current?'#fff':T.text,background:v===current?T.accent:'transparent',cursor:'pointer',borderRadius:8,margin:'0 4px'}}>{v}</div>))}
   </div>;
+  const commitText=raw=>{
+    const m=raw.trim().match(/^(\d{1,2}):?(\d{0,2})$/);
+    if(!m){ setText(`${hh}:${mm}`); return; }
+    let h=parseInt(m[1],10), mi=m[2]===''?0:parseInt(m[2],10);
+    if(isNaN(h)||h<0||h>23||isNaN(mi)||mi<0||mi>59){ setText(`${hh}:${mm}`); return; }
+    const nv=`${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+    setText(nv);
+    if(nv!==`${hh}:${mm}`)onChange(nv);
+  };
   return (<>
-    <button type="button" onClick={()=>setOpen(true)} style={{display:'inline-flex',alignItems:'center',gap:6,padding:small?'4px 9px':'6px 11px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',cursor:'pointer'}}>
-      {hh}:{mm}<span style={{fontSize:11,opacity:0.55}}>🕐</span>
-    </button>
+    <div style={{display:'inline-flex',alignItems:'center',gap:2,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,padding:small?'2px 3px 2px 8px':'3px 4px 3px 10px'}}>
+      <input value={text} onChange={e=>setText(e.target.value)} onBlur={e=>commitText(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'){ commitText(e.target.value); e.target.blur(); } else if(e.key==='Escape'){ setText(`${hh}:${mm}`); e.target.blur(); } }} placeholder="00:00" style={{width:small?36:42,border:'none',background:'transparent',color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',outline:'none',textAlign:'center',padding:small?'2px 0':'3px 0'}}/>
+      <button type="button" onClick={()=>setOpen(true)} title="Pick time" style={{border:'none',background:'none',cursor:'pointer',fontSize:small?12:13,opacity:0.55,padding:small?'2px 4px':'3px 6px',color:T.text,lineHeight:1}}>🕐</button>
+    </div>
     {open&&createPortal(
       <div onClick={()=>setOpen(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
         <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:220,maxHeight:'min(60vh,360px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>

@@ -50,6 +50,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [shiftModalDaySel,setShiftModalDaySel]   = useState(null); // {date,dayName,weekOff} — a specific calendar day chosen from the month grid
   const [shiftModalRole,setShiftModalRole]       = useState(null); // which of the employee's roles to add — one row per block instead of one per block×role
   const [shiftModalTimes,setShiftModalTimes]     = useState({}); // per-blockId custom {start,end} override, defaults to the block's own hours
+  const [shiftModalCustomOpen,setShiftModalCustomOpen] = useState({}); // per-blockId: whether the custom-hours fields are expanded
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -424,6 +425,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     }
     setShiftModalRole((emp.roles||[])[0]||allRoles[0]||null);
     setShiftModalTimes({});
+    setShiftModalCustomOpen({});
     document.body.style.overflow='hidden';
   };
   const closeShiftModal=()=>{ document.body.style.overflow=''; setShiftModalEmp(null); setShiftModalDaySel(null); };
@@ -653,13 +655,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                 </div>
                 <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,times.start,times.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
               </div>
-              {!already&&<div style={{display:'flex',alignItems:'center',gap:6}}>
-                <span style={{fontSize:10,color:T.text3}}>{t('emp.customTime')}</span>
-                <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
-                <span style={{fontSize:11,color:T.text3}}>–</span>
-                <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
-                {customized&&<button onClick={()=>setShiftModalTimes(p=>{const n={...p};delete n[block.id];return n;})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
-              </div>}
+              {!already&&(()=>{
+                const isOpen=!!shiftModalCustomOpen[block.id]||customized;
+                if(!isOpen)return(
+                  <button onClick={()=>setShiftModalCustomOpen(p=>({...p,[block.id]:true}))} style={{alignSelf:'flex-start',fontSize:10,color:T.text3,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',display:'flex',alignItems:'center',gap:4,padding:0}}>+ {t('emp.customTime')}</button>
+                );
+                return(<div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:10,color:T.text3}}>{t('emp.customTime')}</span>
+                  <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
+                  <span style={{fontSize:11,color:T.text3}}>–</span>
+                  <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
+                  <button onClick={()=>{ setShiftModalTimes(p=>{const n={...p};delete n[block.id];return n;}); setShiftModalCustomOpen(p=>{const n={...p};delete n[block.id];return n;}); }} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{customized?t('common.reset'):t('common.cancel')}</button>
+                </div>);
+              })()}
             </div>);
           });
         })()}
