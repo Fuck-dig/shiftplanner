@@ -15,7 +15,6 @@ const empToRow = (orgId, e) => ({
   target_hours:    e.targetHours ?? null,
   availability:    e.availability || {},
   pal_idx:         e.palIdx ?? 0,
-  color_set:       e.colorSet ?? false,
 });
 
 const empFromRow = (r) => ({
@@ -31,7 +30,6 @@ const empFromRow = (r) => ({
   targetHours:    r.target_hours ?? null,
   availability:   r.availability || {},
   palIdx:         r.pal_idx ?? 0,
-  colorSet:       r.color_set ?? false,
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────
@@ -288,13 +286,10 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-// Avatar colour is a one-time pick — setting palIdx here always also locks
-// color_set=true, so the picker won't be offered again after this call.
-// (App-level enforcement only, same trust model as the rest of this file.)
 export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
   const row = {};
   if (name != null)   row.name = name;
-  if (palIdx != null){ row.pal_idx = palIdx; row.color_set = true; }
+  if (palIdx != null)  row.pal_idx = palIdx;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;

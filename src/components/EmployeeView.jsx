@@ -32,7 +32,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [swaps, setSwaps]         = useState([]);       // all shift_swaps for this org, any week/status
   const [swapModal, setSwapModal] = useState(null);      // {day,blockId,blockName,role} while the give-away modal is open
   const [swapBusy, setSwapBusy]   = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
+  const [view, setView]           = useState('schedule'); // 'schedule' | 'profile'
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -109,9 +109,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       .catch(err=>alert(err.message||'Failed to save'));
   };
   const saveMyColor = (palIdx) => {
-    if (me?.colorSet) return; // already locked — nothing to do
     updateEmployeeSelfProfile(myId, { palIdx })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx,colorSet:true}:e)))
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
 
@@ -190,14 +189,20 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
         </div>
         {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(roleColors[role]||roleColors.employee).bg,color:(roleColors[role]||roleColors.employee).text,border:`1px solid ${(roleColors[role]||roleColors.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
+        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginRight:isMobile?6:10,flexShrink:0}}>
+          <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
+          <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>
+        </div>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:isMobile?0:8,cursor:'pointer',outline:'none',flexShrink:0}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{isMobile?L.code.toUpperCase():L.label}</option>)}</select>
-        <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
-        <button onClick={()=>setShowProfile(true)} title={t('profile.myProfile')} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
+        <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <button onClick={()=>supabase.auth.signOut()} style={{padding:isMobile?'6px 10px':'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}>{t('common.logout')}</button>
       </div>
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
+      {view==='profile' ? (
+        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} s={s} t={t}/>
+      ) : (<>
         {/* Week nav */}
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
@@ -334,10 +339,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             </div>
           </div>
         )}
+      </>)}
       </div>
     </div>
     {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={employees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
-    {showProfile && <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onClose={()=>setShowProfile(false)} s={s} t={t}/>}
     </>
   );
 }

@@ -40,7 +40,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
   const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
   const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
-  const [showProfile,setShowProfile] = useState(false);
   const [weekOffset,setWeekOffset]   = useState(0);
   const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
   const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
@@ -195,11 +194,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const myId=employees.find(e=>myEmail&&e.email&&e.email.toLowerCase()===myEmail)?.id||null;
   const me=employees.find(e=>e.id===myId);
   const saveMyName=(newName)=>updateEmp(myId,'name',newName);
-  const saveMyColor=(palIdx)=>{
-    if (me?.colorSet) return; // already locked — nothing to do
-    updateEmp(myId,'palIdx',palIdx);
-    updateEmp(myId,'colorSet',true);
-  };
+  const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -615,7 +610,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const applyTemplate=(id,tpl)=>{const tmpl=AVAIL_TEMPLATES[tpl];if(tmpl)setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tmpl))}:e));};
   // Cloning an employee deliberately drops email — two roster rows sharing
   // one login email would make "which one am I" ambiguous in EmployeeView.
-  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length,colorSet:false}]);
+  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp   =id=>{setEmployees(p=>p.filter(e=>e.id!==id));if(expandedEmp===id)setExpandedEmp(null);};
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
@@ -692,7 +687,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const stats=totalStats();
   const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const attentionCount=pendingCount+pendingSwaps.length;
-  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'profile',l:t('nav.profile')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
   const s=styles;
@@ -713,7 +708,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         </div>
         <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:ROLE_BADGE_COLORS[role]?.bg||ROLE_BADGE_COLORS.employee.bg,color:ROLE_BADGE_COLORS[role]?.text||ROLE_BADGE_COLORS.employee.text,border:`1px solid ${ROLE_BADGE_COLORS[role]?.border||ROLE_BADGE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
-        <button onClick={()=>setShowProfile(true)} title={t('profile.myProfile')} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
         {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">Test: full month</Btn></span>}
@@ -728,7 +722,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
           <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
-            <button onClick={()=>{setMobileMenuOpen(false);setShowProfile(true);}} title={t('profile.myProfile')} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
@@ -985,9 +978,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   />
 )}
 
+{/* PROFILE */}
+{view==='profile'&&(
+  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} s={s} t={t}/>
+)}
+
       </div>
     </div>
-    {showProfile && <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onClose={()=>setShowProfile(false)} s={s} t={t}/>}
     </>
   );
 }
