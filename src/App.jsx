@@ -640,29 +640,32 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           const role=shiftModalRole||empRoles[0];
           if(!role)return <div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>;
           const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
-          return blocks.map(block=>{
+          const rows=blocks.map(block=>{
             const already=(shiftModalSchedule[dayName]?.[block.id]||[]).some(a=>a.empId===shiftModalEmp.id);
-            const times=shiftModalTimes[block.id]||{start:block.start,end:block.end};
-            const setTime=(field,val)=>setShiftModalTimes(p=>({...p,[block.id]:{...(p[block.id]||{start:block.start,end:block.end}),[field]:val}}));
-            return(<div key={block.id} style={{display:'flex',flexDirection:'column',gap:6,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
-                  <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
-                </div>
-                <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,block.start,block.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+            return(<div key={block.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
+                <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
               </div>
-              {!already&&<div style={{display:'flex',alignItems:'center',gap:10,paddingTop:6,marginTop:2,borderTop:`1px dashed ${T.border}`}}>
-                <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:11,fontWeight:500,color:T.text3}}>{t('emp.customTime')}</span>
-                  <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
-                  <span style={{fontSize:11,color:T.text3}}>–</span>
-                  <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
-                </div>
-                <Btn small variant="ghost" onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
-              </div>}
+              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,block.start,block.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
             </div>);
           });
+          const homeBlock=blocks[0];
+          if(homeBlock){
+            const already=(shiftModalSchedule[dayName]?.[homeBlock.id]||[]).some(a=>a.empId===shiftModalEmp.id);
+            const times=shiftModalTimes.custom||{start:homeBlock.start,end:homeBlock.end};
+            const setTime=(field,val)=>setShiftModalTimes(p=>({...p,custom:{...(p.custom||{start:homeBlock.start,end:homeBlock.end}),[field]:val}}));
+            rows.push(<div key="custom" style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:13,fontWeight:500,color:T.text}}>{t('emp.customTime')}</span>
+                <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
+                <span style={{fontSize:11,color:T.text3}}>–</span>
+                <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
+              </div>
+              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,homeBlock.id,role,shiftModalEmp,times.start,times.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+            </div>);
+          }
+          return rows;
         })()}
         {!shiftModalDaySel&&<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('emp.pickADay')}</div>}
       </div>
