@@ -61,7 +61,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
   };
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:760}}>
+    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:760,width:'100%',margin:'0 auto'}}>
       <div style={s.card}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.title')}</div>
 
