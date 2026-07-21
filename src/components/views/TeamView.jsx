@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
@@ -11,6 +12,8 @@ export default function TeamView({
   generate, generateMonth, offThisWeek, isMobile,
   s, t,
 }){
+  const [collapsedRoles,setCollapsedRoles]=useState(()=>new Set());
+  const toggleRoleCollapse=(role)=>setCollapsedRoles(prev=>{const next=new Set(prev);if(next.has(role))next.delete(role);else next.add(role);return next;});
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -22,7 +25,7 @@ export default function TeamView({
   </div>);
 
   // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
-  const allRoleOrder=Object.keys(roleStyles);
+  const allRoleOrder=allRoles;
   const gq=gridSearch.trim().toLowerCase();
   const gridEmployees=gq?employees.filter(e=>e.name.toLowerCase().includes(gq)):employees;
   const rows=gridGroupBy==='role'
@@ -68,15 +71,17 @@ export default function TeamView({
         const p=pal(emp);
         const prevRole=ri>0?rows[ri-1].role:undefined;
         const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
+        const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
         return(<div key={`${row.role||'all'}-${emp.id}`}>
-          {/* Role group divider */}
-          {showDivider&&<div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`}}>
+          {/* Role group divider — click to collapse/expand this role's rows */}
+          {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
+              <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>
             {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
-          <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
+          {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
             {/* Name cell */}
             <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?8:10,minHeight:rowH}}>
               {!gridTight&&<div style={{width:36,height:36,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>}
@@ -126,7 +131,7 @@ export default function TeamView({
                 )}
               </div>);
             })}
-          </div>
+          </div>}
         </div>);
       })}
       {/* Footer */}

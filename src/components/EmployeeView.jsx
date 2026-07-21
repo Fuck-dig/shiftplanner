@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleOrder } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
@@ -38,6 +38,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
   const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
+  const [roleOrder, setRoleOrder] = useState([]); // persisted role display/group order, set by the manager in Coverage
+  const [collapsedRoles, setCollapsedRoles] = useState(()=>new Set()); // role names currently collapsed in the Team tab's "By role" grouping
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -64,12 +66,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         fetchBlocks(orgId),
         fetchTimeOff(orgId),
         fetchSchedules(orgId),
-      ]).then(([emps, blks, to, scheds]) => {
+        fetchRoleOrder(orgId).catch(err=>{console.error('Load role order failed:',err);return [];}),
+      ]).then(([emps, blks, to, scheds, roleOrd]) => {
         if (!alive) return;
         setEmployees(emps);
         setBlocks(blks);
         setTimeOff(to);
         setSchedules(scheds);
+        setRoleOrder(roleOrd);
         // Try to find the current user's employee record by email
         const me = emps.find(e => e.email && e.email.toLowerCase() === (email||'').toLowerCase());
         if (me) setMyId(me.id);
@@ -100,10 +104,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // synced to employees' sessions, so fall back to whatever's configured on
   // blocks (plus any role an employee happens to be tagged with) rather than
   // a manager-only source of truth.
-  const allRoles   = [...new Set([
+  const discoveredRoles = [...new Set([
     ...blocks.flatMap(b=>[...Object.keys(b.roles||{}), ...Object.values(b.overrides||{}).flatMap(o=>Object.keys(o||{}))]),
     ...employees.flatMap(e=>e.roles||[]),
   ])];
+  // Display/group order: the manager's saved order (from Coverage), plus any
+  // role that shows up here but isn't in that saved order yet, appended at
+  // the end — same self-healing merge Dashboard uses for its own allRoles.
+  const allRoles = [...roleOrder.filter(r=>discoveredRoles.includes(r)), ...discoveredRoles.filter(r=>!roleOrder.includes(r))];
   // Team tab row order — mirrors the manager's TeamView grouping: sorted by
   // name, or bucketed by role (an employee with multiple roles appears once
   // per matching role, same as the manager side).
@@ -111,6 +119,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     ? allRoles.filter(role=>employees.some(e=>(e.roles||[]).includes(role)))
         .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
+  const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
 
   const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
@@ -242,7 +251,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -317,10 +326,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               const emp=row.emp,p=pal(emp),isMe=emp.id===myId,h=empHoursMap[emp.id]||0;
               const prevRole=ri>0?gridRows[ri-1].role:undefined;
               const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
+              const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
               return(
                 <div key={`${row.role||'all'}-${emp.id}`}>
-                {showDivider&&<div style={{padding:'6px '+(isMobile?'12px':'20px'),fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none'}}>{row.role}</div>}
-                <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
+                {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{padding:'6px '+(isMobile?'12px':'20px'),fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none',cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:9,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
+                  {row.role}
+                </div>}
+                {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
                   {/* Name */}
                   <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
                     {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
@@ -362,7 +375,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                       )}
                     </div>);
                   })}
-                </div>
+                </div>}
                 </div>
               );
             })}
@@ -433,7 +446,7 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
 // data shape as the manager's WeekView Gantt, but with every edit affordance
 // stripped out (no drag handles, no add/remove picker, no click-to-edit):
 // staff can look at who's working when on a given day, nothing more.
-function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, s, t }){
+function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, s, t }){
   const dayShiftsRaw = schedule ? blocks.flatMap(b=>{
     return (schedule[dayFilter]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start, en=a.end||b.end;
@@ -448,7 +461,7 @@ function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, wee
   });
   const rows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)}))
     .sort((a,b)=> gridGroupBy==='role'
-      ? ((a.segs[0]?.role||'').localeCompare(b.segs[0]?.role||'')) || a.name.localeCompare(b.name)
+      ? (allRoles.indexOf(a.segs[0]?.role)-allRoles.indexOf(b.segs[0]?.role)) || a.name.localeCompare(b.name)
       : a.name.localeCompare(b.name));
 
   let timeline=null;

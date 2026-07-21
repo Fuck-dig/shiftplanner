@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleOrder, saveRoleOrder } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
@@ -42,6 +42,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
   const [weekOffset,setWeekOffset]   = useState(0);
   const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
+  const [roleOrder,setRoleOrder]     = useState([]); // persisted display/group order of role names — colors (roleStyles) are still local-only
   const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [editingRole,setEditingRole] = useState(null);
   const [confirmDelete,setConfirmDelete]=useState(null);
@@ -89,7 +90,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const setLang=v=>{setLangRaw(v);savePref('sa2_lang',v);};
   const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);savePref('sa2_rate',val);};
   const t=makeT(lang);
-  const allRoles=Object.keys(roleStyles);
+  // Display/group order: whatever's been explicitly saved, plus any role
+  // that exists in roleStyles but hasn't been ordered yet (newly added, or
+  // roleOrder just hasn't loaded/been set up for this org) appended at the
+  // end — so a fresh org or a brand-new role always shows up without
+  // needing a manual reorder first.
+  const roleKeySet=Object.keys(roleStyles);
+  const allRoles=[...roleOrder.filter(r=>roleKeySet.includes(r)), ...roleKeySet.filter(r=>!roleOrder.includes(r))];
+  const moveRole=(role,dir)=>{
+    const cur=allRoles;
+    const i=cur.indexOf(role),j=i+dir;
+    if(i<0||j<0||j>=cur.length)return;
+    const next=[...cur];[next[i],next[j]]=[next[j],next[i]];
+    setRoleOrder(next);
+    saveRoleOrder(orgId,next).catch(err=>console.error('Save role order failed:',err));
+  };
 
   // debounce helper — tracks in-flight saves and surfaces failures (with a
   // retry closure) instead of failing silently to the console.
@@ -139,6 +154,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   useEffect(()=>{
     let alive=true;
     fetchTemplates(orgId).then(v=>{if(alive)setTemplates(v);}).catch(err=>console.error('Load templates failed:',err));
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // Role order is also only ever written from this Dashboard (reordering
+  // lives in Coverage), but employee sessions read the same column so their
+  // "group by role" views sort consistently with whatever the manager set.
+  useEffect(()=>{
+    let alive=true;
+    fetchRoleOrder(orgId).then(v=>{if(alive)setRoleOrder(v);}).catch(err=>console.error('Load role order failed:',err));
     return ()=>{alive=false;};
   },[orgId]);
 
@@ -959,7 +983,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 {/* COVERAGE */}
 {view==='coverage'&&(
   <CoverageView
-    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles}
+    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles} moveRole={moveRole}
     editingRole={editingRole} setEditingRole={setEditingRole} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
     setEmployees={setEmployees} blocks={blocks} setBlocks={setBlocks}
     templates={templates} saveCurrentAsTemplate={saveCurrentAsTemplate} applyTemplateBlocks={applyTemplateBlocks} deleteTemplateById={deleteTemplateById}

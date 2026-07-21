@@ -294,3 +294,19 @@ export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;
 }
+
+// ── Role order ───────────────────────────────────────────────────────────────
+// Just the display/group order of role names (not colors — those are still
+// local-only per-browser state, a pre-existing gap this doesn't fix). Shared
+// across the org so the manager's reordering in Coverage also reorders the
+// "group by role" views on employees' own sessions.
+export async function fetchRoleOrder(orgId){
+  const { data, error } = await supabase.from('organizations').select('role_order').eq('id', orgId).single();
+  if (error) throw error;
+  return Array.isArray(data?.role_order) ? data.role_order : [];
+}
+
+export async function saveRoleOrder(orgId, order){
+  const { error } = await supabase.from('organizations').update({ role_order: order }).eq('id', orgId);
+  if (error) throw error;
+}
