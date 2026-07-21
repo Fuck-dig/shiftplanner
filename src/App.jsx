@@ -412,10 +412,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   // The day picker inside the modal spans the whole month (not just one
   // week) so a manager can jump straight to any day without paging week by
   // week — each day still resolves back to its own week's schedule blob.
-  const openShiftModalFor=emp=>{
+  const openShiftModalFor=(emp,weekOff=null,day=null)=>{
     setShiftModalEmp(emp);
-    const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});
-    setShiftModalDaySel(null);
+    if(weekOff!=null&&day){
+      const date=getWeekDates(weekOff)[DAYS.indexOf(day)];
+      setShiftModalMonth({y:date.getFullYear(),m:date.getMonth()});
+      setShiftModalDaySel({date,dayName:day,weekOff});
+    }else{
+      const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});
+      setShiftModalDaySel(null);
+    }
     setShiftModalRole((emp.roles||[])[0]||allRoles[0]||null);
     setShiftModalTimes({});
     document.body.style.overflow='hidden';
@@ -837,9 +843,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     </div>
                   );
                 }):(
-                  <div style={{height:gridTight?32:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
-                    <span style={{fontSize:16,color:T.text3}}>—</span>
-                  </div>
+                  <button onClick={()=>openShiftModalFor(emp,weekOffset,day)} title={t('grid.addShiftTitle')} style={{height:gridTight?32:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.35,background:'transparent',cursor:'pointer',fontFamily:'inherit',width:'100%',transition:'opacity 0.15s,border-color 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.opacity=1;e.currentTarget.style.borderColor=T.accent;}} onMouseLeave={e=>{e.currentTarget.style.opacity=0.35;e.currentTarget.style.borderColor=T.border;}}>
+                    <span style={{fontSize:16,color:T.text3}}>+</span>
+                  </button>
                 )}
               </div>);
             })}
