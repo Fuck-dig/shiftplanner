@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO } from '../../lib/dates';
-import { isOnTimeOff } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -29,14 +29,20 @@ export default function TeamView({
     </div>
   </div>);
 
-  // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
+  // Sort/group employees — in "by role" mode, an employee with multiple roles
+  // appears once per matching role group. "Matching" means their configured
+  // roles OR whatever they're actually scheduled as this week (effectiveRolesFor)
+  // — otherwise someone covering a one-off shift outside their usual role
+  // wouldn't show up grouped under it, even though the day grid shows them
+  // working it.
   const allRoleOrder=allRoles;
   const gq=gridSearch.trim().toLowerCase();
   const gridEmployees=gq?employees.filter(e=>e.name.toLowerCase().includes(gq)):employees;
+  const effRoles=new Map(gridEmployees.map(e=>[e.id,effectiveRolesFor(e,schedule,blocks)]));
   const rows=gridGroupBy==='role'
     ?allRoleOrder
-        .filter(role=>gridEmployees.some(e=>(e.roles||[]).includes(role)))
-        .flatMap(role=>[...gridEmployees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+        .filter(role=>gridEmployees.some(e=>effRoles.get(e.id).has(role)))
+        .flatMap(role=>[...gridEmployees].filter(e=>effRoles.get(e.id).has(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     :[...gridEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);

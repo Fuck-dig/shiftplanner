@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
-import { assignmentHours, isOnTimeOff } from '../lib/schedule';
+import { assignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
@@ -126,12 +126,17 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // (mergeRoleOrder, shared via lib/roles.js).
   const allRoles = mergeRoleOrder(roleOrder, discoveredRoles);
   // Team tab row order — mirrors the manager's TeamView grouping: sorted by
-  // name, or bucketed by role (an employee with multiple roles appears once
-  // per matching role, same as the manager side).
+  // name, or bucketed by role (an employee with multiple roles — or who's
+  // covering a one-off shift outside their usual role this week,
+  // effectiveRolesFor — appears once per matching role, same as the manager
+  // side). Within any given list, "you" always sort first — small, cheap
+  // convenience so you don't have to hunt for your own row.
+  const effRoles = new Map(employees.map(e=>[e.id, effectiveRolesFor(e,schedule,blocks)]));
+  const byMeThenName = (a,b) => (a.id===myId?-1:b.id===myId?1:0) || a.name.localeCompare(b.name);
   const gridRows = gridGroupBy==='role'
-    ? allRoles.filter(role=>employees.some(e=>(e.roles||[]).includes(role)))
-        .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
-    : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
+    ? allRoles.filter(role=>employees.some(e=>effRoles.get(e.id).has(role)))
+        .flatMap(role=>[...employees].filter(e=>effRoles.get(e.id).has(role)).sort(byMeThenName).map(emp=>({emp,role})))
+    : [...employees].sort(byMeThenName).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // roleStyles (the manager's real, Supabase-synced colours) covers most
   // roles, but a role can exist here before it's ever been styled in

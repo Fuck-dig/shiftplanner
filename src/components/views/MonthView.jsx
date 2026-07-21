@@ -1,5 +1,5 @@
 import { T, DAYS, isDark } from '../../lib/constants';
-import { getWeekDates, weekKey } from '../../lib/dates';
+import { getWeekDates, weekKey, dateToISO } from '../../lib/dates';
 import { dayCoverage, isOnTimeOff } from '../../lib/schedule';
 import { Btn } from '../ui';
 
@@ -27,6 +27,7 @@ export default function MonthView({
         </div>
         {wd.map((d,di)=>{
           const dayName=DAYS[di],inMonth=d.getMonth()===displayMonth.m&&d.getFullYear()===displayMonth.y;
+          const isToday=dateToISO(d)===dateToISO(new Date());
           // Staffing-level colour/count is manager-only info (how well
           // covered a day is) — readOnly viewers only get a neutral
           // "schedule exists" signal, not the full/partial/low breakdown.
@@ -34,8 +35,8 @@ export default function MonthView({
           const dot=readOnly?(ws?{bg:T.surfaceWarm,text:T.text}:{bg:'transparent',text:T.text3}):cDot(status);
           const empCount=ws?[...new Set(Object.values(ws[dayName]||{}).flatMap(a=>a.map(x=>x.empId)))].length:0;
           const offCount=employees.filter(e=>isOnTimeOff(e.id,d,timeOff)).length;
-          return(<div key={di} onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{padding:'8px 6px',cursor:'pointer',borderRight:di<6?`1px solid ${T.border}`:'none',background:inMonth?dot.bg:'transparent',opacity:inMonth?1:0.35,minHeight:60}}>
-            <div style={{fontSize:13,fontWeight:500,color:inMonth?dot.text:T.text3,marginBottom:2}}>{d.getDate()}</div>
+          return(<div key={di} onClick={()=>{setWeekOffset(off);setCalMode('week');}} style={{padding:'8px 6px',cursor:'pointer',borderRight:di<6?`1px solid ${T.border}`:'none',background:inMonth?dot.bg:'transparent',opacity:inMonth?1:0.35,minHeight:60,boxShadow:isToday?`inset 0 0 0 2px ${T.accent}`:'none'}}>
+            <div style={{fontSize:13,fontWeight:isToday?700:500,color:isToday?T.accent:(inMonth?dot.text:T.text3),marginBottom:2}}>{d.getDate()}</div>
             {!readOnly&&ws&&inMonth&&<div style={{fontSize:10,color:dot.text}}>{t('common.staffN',{n:empCount})}</div>}
             {offCount>0&&inMonth&&<div style={{fontSize:10,color:T.warning}}>{offCount} {t('staff.leave')}</div>}
             {!ws&&inMonth&&<div style={{fontSize:10,color:T.text3}}>—</div>}

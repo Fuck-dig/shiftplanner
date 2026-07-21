@@ -36,6 +36,19 @@ export function targetHoursOf(e){
 }
 export function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
 export function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
+// An employee's "effective" roles for a given week — their configured
+// job roles, PLUS whatever role(s) they're actually scheduled under this
+// week. Without the second part, someone whose configured role is e.g.
+// Manager but who picked up a one-off Waiter shift (to cover a gap) would
+// only ever show up in the Manager group in the Team view, even though the
+// day/week grid clearly shows them working as a Waiter that day — confusing
+// since the same person's shift is visibly filed under a role they don't
+// appear grouped under.
+export function effectiveRolesFor(emp,schedule,blocks){
+  const roles=new Set(emp.roles||[]);
+  if(schedule) DAYS.forEach(day=>blocks.forEach(b=>(schedule[day]?.[b.id]||[]).forEach(a=>{ if(a.empId===emp.id) roles.add(a.role); })));
+  return roles;
+}
 export function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return list.some(t=>t.empId===empId&&t.status==='Approved'&&t.startDate<=iso&&t.endDate>=iso); }
 // Minimum rest between the end of one shift and the start of the next, in
 // minutes (11h — the EU Working Time Directive daily-rest minimum). Also
