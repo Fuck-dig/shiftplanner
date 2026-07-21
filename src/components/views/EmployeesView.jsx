@@ -1,6 +1,6 @@
 import { T, DAYS, AVAIL_TEMPLATES, DEFAULT_ROLE_STYLES, pal } from '../../lib/constants';
 import { toMin } from '../../lib/dates';
-import { Avatar, RoleBadge, Btn, SectionLabel } from '../ui';
+import { Avatar, RoleBadge, Btn, SectionLabel, TimePicker } from '../ui';
 import TeamAccess from '../TeamAccess';
 
 export default function EmployeesView({
@@ -54,7 +54,7 @@ export default function EmployeesView({
         <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:6}}>
           {DAYS.map(day=>{const avail=emp.availability[day],p=pal(emp);return(<div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{t('day.'+day)}</button>
-            {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><input type="time" value={avail.from} onChange={e=>updateAvail(emp.id,day,'from',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><input type="time" value={avail.to} onChange={e=>updateAvail(emp.id,day,'to',e.target.value)} style={{...s.input,width:'auto',padding:'4px 8px',fontSize:12}}/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
+            {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><TimePicker value={avail.from} onChange={v=>updateAvail(emp.id,day,'from',v)} small/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><TimePicker value={avail.to} onChange={v=>updateAvail(emp.id,day,'to',v)} small/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
           </div>);})}
         </div>
       </div>)}

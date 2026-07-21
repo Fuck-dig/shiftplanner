@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T, DAYS, ROLE_COLOR_PALETTE, DEFAULT_ROLE_STYLES, isDark } from '../../lib/constants';
 import { blockHours } from '../../lib/schedule';
-import { Btn, SectionLabel, AddRoleInline } from '../ui';
+import { Btn, SectionLabel, AddRoleInline, TimePicker } from '../ui';
 
 export default function CoverageView({
   allRoles, roleStyles, setRoleStyles,
@@ -72,8 +72,8 @@ export default function CoverageView({
       return(<div key={block.id} style={s.card}>
         <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'flex-end'}}>
           <div style={{flex:'2 1 100px'}}><SectionLabel>{t('cov.blockName')}</SectionLabel><input value={block.name} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,name:e.target.value}:b))} style={s.input}/></div>
-          <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.start')}</SectionLabel><input type="time" value={block.start} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:e.target.value}:b))} style={s.input}/></div>
-          <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.end')}</SectionLabel><input type="time" value={block.end} onChange={e=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:e.target.value}:b))} style={s.input}/></div>
+          <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.start')}</SectionLabel><TimePicker value={block.start} onChange={v=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,start:v}:b))}/></div>
+          <div style={{flex:'1 1 80px'}}><SectionLabel>{t('cov.end')}</SectionLabel><TimePicker value={block.end} onChange={v=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,end:v}:b))}/></div>
           <div style={{flex:'0 0 auto'}}><SectionLabel>{t('cov.duration')}</SectionLabel><div style={{fontSize:13,color:T.text2,padding:'7px 0'}}>{blockHours(block).toFixed(1)}h</div></div>
           <Btn onClick={()=>setBlocks(p=>p.filter(b=>b.id!==block.id))} variant="danger" small>{t('common.remove')}</Btn>
         </div>
