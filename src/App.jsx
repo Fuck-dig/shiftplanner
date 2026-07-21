@@ -177,9 +177,18 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     let alive=true;
     fetchRoleStyles(orgId).then(v=>{
       if(!alive) return;
-      if(Object.keys(v).length) setRoleStylesRaw(v);
+      if(Object.keys(v).length) {
+        setRoleStylesRaw(v);
+      } else {
+        // Nothing saved yet for this org (brand new, or pre-dates this
+        // feature) — push the current (default) colours up now so
+        // employee sessions have something real to read instead of
+        // silently falling back to an approximated colour forever.
+        saveRoleStyles(orgId, roleStyles).catch(err=>console.error('Initial role colour push failed:',err));
+      }
     }).catch(err=>console.error('Load role colours failed:',err));
     return ()=>{alive=false;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[orgId]);
 
   // A manager/owner might ALSO be on the schedule roster (e.g. a working
