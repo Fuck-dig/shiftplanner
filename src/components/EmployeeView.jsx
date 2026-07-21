@@ -448,14 +448,14 @@ function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, wee
             {rows.map(row=>{const isMe=row.empId===myId;return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{row.name}{isMe&&<span style={{fontSize:9,marginLeft:4,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
-            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
+            {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:0,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {rows.map(row=>{
                 const emp=employees.find(e=>e.id===row.empId), p=pal(emp||{palIdx:0}), isMe=row.empId===myId;
                 return(<div key={row.empId} style={{position:'relative',height:rowH,background:T.surfaceWarm,borderRadius:6}}>
                   {row.segs.map((seg,si)=>{
                     const leftPct=(seg.start-rangeStart)/totalMin*100, widthPct=(seg.end-seg.start)/totalMin*100;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?p.dot+'30':p.bg,border:`1.5px solid ${isMe?T.accent:p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?p.dot+'30':p.bg,border:`1.5px solid ${isMe?T.accent:p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
                       <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isMe?T.accent:(isDark()?p.dot:p.text),whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
                     </div>);
                   })}
