@@ -704,12 +704,26 @@ function RequestShiftModal({ modal, busy, onCancel, onSubmit, s, t }){
 // permission in advance to be sick) — a manager can still log it after the
 // fact from their own Time Off view, which keeps the full type list.
 const SELF_REQUEST_TIMEOFF_TYPES = TIMEOFF_TYPES.filter(tt=>tt!=='Sick');
+// Same local-time ISO parsing used everywhere else in this file (e.g.
+// weekKeyToMonday/fmtLong) — new Date(isoString) parses as UTC and can land
+// on the wrong calendar day depending on the viewer's timezone.
+const isoToLocalDate = (iso) => { const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d); };
 function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
   const [type, setType] = useState(SELF_REQUEST_TIMEOFF_TYPES[0]);
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [note, setNote] = useState('');
   const invalid = !startDate || !endDate || endDate < startDate;
+  // Matches the compact "21.07.2026" style people already know from this
+  // form, but rendered by our own themed calendar popover (WeekPicker)
+  // instead of the browser/OS's native date-input chrome.
+  const fmtShort = (iso) => { const d=isoToLocalDate(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; };
+  const dateTrigger = (iso) => (
+    <div style={{...s.input,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',userSelect:'none'}}>
+      <span>{fmtShort(iso)}</span>
+      <span style={{fontSize:11,opacity:0.55}}>▾</span>
+    </div>
+  );
   return (
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(420px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
@@ -721,11 +735,11 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
         <div style={{display:'flex',gap:10,marginBottom:12}}>
           <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.fromCap')}</div>
-            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={s.input}/>
+            <WeekPicker value={isoToLocalDate(startDate)} highlightStart={isoToLocalDate(startDate)} highlightEnd={isoToLocalDate(startDate)} onPick={d=>setStartDate(dateToISO(d))} trigger={dateTrigger(startDate)}/>
           </div>
           <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.toCap')}</div>
-            <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={s.input}/>
+            <WeekPicker value={isoToLocalDate(endDate)} highlightStart={isoToLocalDate(endDate)} highlightEnd={isoToLocalDate(endDate)} onPick={d=>setEndDate(dateToISO(d))} trigger={dateTrigger(endDate)}/>
           </div>
         </div>
         <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t('to.optional')} rows={2} style={{...s.input,resize:'vertical',marginBottom:14}}/>
