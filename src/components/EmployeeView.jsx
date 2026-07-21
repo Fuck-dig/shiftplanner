@@ -129,14 +129,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // name, or bucketed by role (an employee with multiple roles — or who's
   // covering a one-off shift outside their usual role this week,
   // effectiveRolesFor — appears once per matching role, same as the manager
-  // side). Within any given list, "you" always sort first — small, cheap
-  // convenience so you don't have to hunt for your own row.
+  // side). Your own row also gets pinned in a sticky "Your Shifts" strip
+  // above the list (see the Team tab JSX below) instead of being sorted to
+  // the top here — that way the full list stays in its normal order.
   const effRoles = new Map(employees.map(e=>[e.id, effectiveRolesFor(e,schedule,blocks)]));
-  const byMeThenName = (a,b) => (a.id===myId?-1:b.id===myId?1:0) || a.name.localeCompare(b.name);
   const gridRows = gridGroupBy==='role'
     ? allRoles.filter(role=>employees.some(e=>effRoles.get(e.id).has(role)))
-        .flatMap(role=>[...employees].filter(e=>effRoles.get(e.id).has(role)).sort(byMeThenName).map(emp=>({emp,role})))
-    : [...employees].sort(byMeThenName).map(emp=>({emp,role:null}));
+        .flatMap(role=>[...employees].filter(e=>effRoles.get(e.id).has(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // roleStyles (the manager's real, Supabase-synced colours) covers most
   // roles, but a role can exist here before it's ever been styled in
@@ -244,6 +244,60 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     return true;
   }) : [];
 
+  // One employee's row in the Team tab's day grid — name cell + day cells
+  // with shift chips / time-off / give-away button. Shared between the
+  // normal (sortable, role-grouped) list and the sticky "Your Shifts"
+  // strip pinned above it, so the pinned copy of your own row renders
+  // identically to how it looks in the full list.
+  const renderTeamRow = (emp, ri=0) => {
+    const p=pal(emp), isMe=emp.id===myId, h=empHoursMap[emp.id]||0;
+    return (
+      <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
+        {/* Name */}
+        <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
+          {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
+          <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+          <div>
+            <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
+            {isMe&&<div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('emp.hoursThisWeek',{h})}</div>}
+          </div>
+        </div>
+        {/* Days */}
+        {DAYS.map((day,di)=>{
+          const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff);
+          const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
+          return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72}}>
+            {onTO?(
+              <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
+                <div style={{fontSize:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
+              </div>
+            ):assignedBlocks.length>0?assignedBlocks.map(b=>{
+              const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+              const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
+              const pendingSwap=isMe&&swaps.find(sw=>sw.weekKey===wKey&&sw.day===day&&sw.blockId===b.id&&sw.fromEmpId===myId&&(sw.status==='open'||sw.status==='claimed'));
+              return(
+              <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${isMe?T.accent:p.dot}55`,position:'relative'}}>
+                <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:isMe?T.accent:p.dot}}/>
+                <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
+                <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
+                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{assignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
+                {isMe&&(pendingSwap?(
+                  <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{pendingSwap.status==='claimed'?t('swap.statusClaimed',{name:employees.find(e=>e.id===pendingSwap.claimedByEmpId)?.name||'?'}):t('swap.statusOpen')}</div>
+                ):(
+                  <button onClick={()=>openGiveAway(day,b.id,b.name,shiftEntry.role)} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:500,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accentText,cursor:'pointer',fontFamily:'inherit'}}>{t('swap.giveAway')}</button>
+                ))}
+              </div>
+            );}):(
+              <div style={{height:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
+                <span style={{fontSize:16,color:T.text3}}>—</span>
+              </div>
+            )}
+          </div>);
+        })}
+      </div>
+    );
+  };
+
   return (<>
     <div style={{minHeight:'100vh',width:'100%',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       {/* Nav */}
@@ -350,7 +404,18 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               <div style={{fontSize:13,color:T.text2}}>{t('emp.noScheduleDesc')}</div>
             </div>
           </div>
-        ) : (
+        ) : (<>
+          {/* Pinned copy of your own row, sticky just below the top nav —
+              so it stays in view while scrolling through the full team
+              list below instead of having to scroll to find yourself. */}
+          {me && (
+            <div style={{position:'sticky',top:isMobile?50:56,zIndex:15,background:T.bg,paddingBottom:10}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6,paddingTop:6}}>{t('emp.yourShifts')}</div>
+              <div style={{...s.cardFlush,overflowX:'auto',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
+                {renderTeamRow(me)}
+              </div>
+            </div>
+          )}
           <div style={{...s.cardFlush,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
             {/* Header */}
             <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
@@ -365,7 +430,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             </div>
             {/* Employee rows */}
             {gridRows.map((row,ri)=>{
-              const emp=row.emp,p=pal(emp),isMe=emp.id===myId,h=empHoursMap[emp.id]||0;
+              const emp=row.emp;
               const prevRole=ri>0?gridRows[ri-1].role:undefined;
               const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
               const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
@@ -384,51 +449,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                   <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
                   <RoleBadge role={row.role} rs={roleStyles[row.role] || roleColorFor(row.role)}/>
                 </div>}
-                {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
-                  {/* Name */}
-                  <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
-                    {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
-                    <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
-                      {/* Only your own weekly-hours total — a colleague's row
-                          just shows their name/shifts, not their hour count. */}
-                      {isMe&&<div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('emp.hoursThisWeek',{h})}</div>}
-                    </div>
-                  </div>
-                  {/* Days */}
-                  {DAYS.map((day,di)=>{
-                    const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff);
-                    const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
-                    return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72}}>
-                      {onTO?(
-                        <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
-                          <div style={{fontSize:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
-                        </div>
-                      ):assignedBlocks.length>0?assignedBlocks.map(b=>{
-                        const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
-                        const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
-                        const pendingSwap=isMe&&swaps.find(sw=>sw.weekKey===wKey&&sw.day===day&&sw.blockId===b.id&&sw.fromEmpId===myId&&(sw.status==='open'||sw.status==='claimed'));
-                        return(
-                        <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${isMe?T.accent:p.dot}55`,position:'relative'}}>
-                          <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:isMe?T.accent:p.dot}}/>
-                          <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
-                          <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
-                          <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{assignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
-                          {isMe&&(pendingSwap?(
-                            <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{pendingSwap.status==='claimed'?t('swap.statusClaimed',{name:employees.find(e=>e.id===pendingSwap.claimedByEmpId)?.name||'?'}):t('swap.statusOpen')}</div>
-                          ):(
-                            <button onClick={()=>openGiveAway(day,b.id,b.name,shiftEntry.role)} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:500,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accentText,cursor:'pointer',fontFamily:'inherit'}}>{t('swap.giveAway')}</button>
-                          ))}
-                        </div>
-                      );}):(
-                        <div style={{height:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
-                          <span style={{fontSize:16,color:T.text3}}>—</span>
-                        </div>
-                      )}
-                    </div>);
-                  })}
-                </div>}
+                {!roleCollapsed && renderTeamRow(emp, ri)}
                 </div>
               );
             })}
@@ -446,7 +467,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               })}
             </div>
           </div>
-        )}
+        </>)}
         </>)}
       </>)}
       </div>

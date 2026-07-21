@@ -67,6 +67,7 @@ const STRINGS = {
     'emp.noScheduleTitle':'No schedule yet',
     'emp.noScheduleDesc':'The manager hasn’t published a rota for this week yet. Check back soon.',
     'emp.hoursThisWeek':'{h}h this week',
+    'emp.yourShifts':'Your Shifts',
 
     'nav.schedule':'Schedule',
     'nav.employees':'Employees',
@@ -408,6 +409,7 @@ const STRINGS = {
     'emp.noScheduleTitle':'Ingen vagtplan endnu',
     'emp.noScheduleDesc':'Din leder har endnu ikke udgivet en vagtplan for denne uge. Kig forbi igen snart.',
     'emp.hoursThisWeek':'{h}t denne uge',
+    'emp.yourShifts':'Dine vagter',
 
     'nav.schedule':'Vagtplan',
     'nav.employees':'Medarbejdere',
@@ -749,6 +751,7 @@ const STRINGS = {
     'emp.noScheduleTitle':'Aún no hay horario',
     'emp.noScheduleDesc':'El gerente todavía no ha publicado un horario para esta semana. Vuelve pronto.',
     'emp.hoursThisWeek':'{h}h esta semana',
+    'emp.yourShifts':'Tus turnos',
 
     'nav.schedule':'Horario',
     'nav.employees':'Empleados',
