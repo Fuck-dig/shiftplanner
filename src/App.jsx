@@ -1152,11 +1152,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         ,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const noAvail=gap>0&&!isTarget&&candidatesForSlot(day,block.id,role).available.length===0;
-                        if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay?'auto':0}}>
+                        if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):(noAvail?`! ${t('week.shortCount',{n:gap})}`:t('week.shortCount',{n:gap}))}</button>
                           {picker}
                         </div>);
-                        return(<div style={{position:'relative',marginLeft:effectiveDay?'auto':0}}>
+                        return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
                           {picker}
                         </div>);
