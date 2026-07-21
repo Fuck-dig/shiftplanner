@@ -37,6 +37,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
+  const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -103,6 +104,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     ...blocks.flatMap(b=>[...Object.keys(b.roles||{}), ...Object.values(b.overrides||{}).flatMap(o=>Object.keys(o||{}))]),
     ...employees.flatMap(e=>e.roles||[]),
   ])];
+  // Team tab row order — mirrors the manager's TeamView grouping: sorted by
+  // name, or bucketed by role (an employee with multiple roles appears once
+  // per matching role, same as the manager side).
+  const gridRows = gridGroupBy==='role'
+    ? allRoles.filter(role=>employees.some(e=>(e.roles||[]).includes(role)))
+        .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
 
   const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
@@ -234,7 +242,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -277,6 +285,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           </div>
         )}
 
+        <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+          <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+            {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+          </div>
+        </div>
+
         {!schedule ? (
           <div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
             <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
@@ -299,10 +313,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               })}
             </div>
             {/* Employee rows */}
-            {employees.map((emp,ri)=>{
-              const p=pal(emp),isMe=emp.id===myId,h=empHoursMap[emp.id]||0;
+            {gridRows.map((row,ri)=>{
+              const emp=row.emp,p=pal(emp),isMe=emp.id===myId,h=empHoursMap[emp.id]||0;
+              const prevRole=ri>0?gridRows[ri-1].role:undefined;
+              const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
               return(
-                <div key={emp.id} style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
+                <div key={`${row.role||'all'}-${emp.id}`}>
+                {showDivider&&<div style={{padding:'6px '+(isMobile?'12px':'20px'),fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none'}}>{row.role}</div>}
+                <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
                   {/* Name */}
                   <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
                     {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
@@ -344,6 +362,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                       )}
                     </div>);
                   })}
+                </div>
                 </div>
               );
             })}
@@ -414,12 +433,12 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
 // data shape as the manager's WeekView Gantt, but with every edit affordance
 // stripped out (no drag handles, no add/remove picker, no click-to-edit):
 // staff can look at who's working when on a given day, nothing more.
-function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, weekDates, myId, isMobile, s, t }){
+function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, s, t }){
   const dayShiftsRaw = schedule ? blocks.flatMap(b=>{
     return (schedule[dayFilter]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start, en=a.end||b.end;
       const bs=toMin(st); let be=toMin(en); if(be<=bs) be+=1440;
-      return { empId:a.empId, name:a.name, start:bs, end:be, startStr:st, endStr:en };
+      return { empId:a.empId, name:a.name, role:a.role, start:bs, end:be, startStr:st, endStr:en };
     });
   }) : [];
   const byEmp = new Map();
@@ -427,7 +446,10 @@ function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, wee
     if(!byEmp.has(sg.empId)) byEmp.set(sg.empId,{empId:sg.empId,name:sg.name,segs:[]});
     byEmp.get(sg.empId).segs.push(sg);
   });
-  const rows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)})).sort((a,b)=>a.name.localeCompare(b.name));
+  const rows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)}))
+    .sort((a,b)=> gridGroupBy==='role'
+      ? ((a.segs[0]?.role||'').localeCompare(b.segs[0]?.role||'')) || a.name.localeCompare(b.name)
+      : a.name.localeCompare(b.name));
 
   let timeline=null;
   if(rows.length){
@@ -469,13 +491,18 @@ function DayTimeline({ schedule, blocks, employees, dayFilter, setDayFilter, wee
   }
 
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
-    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-      {DAYS.map((day,i)=>{const active=dayFilter===day,isToday=dateToISO(weekDates[i])===dateToISO(new Date());return(
-        <button key={day} onClick={()=>setDayFilter(day)} style={{padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:active?600:400,border:`1px solid ${active?T.accent:isToday?T.accent+'55':T.border}`,background:active?T.accentLight:'transparent',color:active?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>
-          <div>{t('day.'+day)}</div>
-          <div style={{fontSize:10,fontWeight:400,opacity:0.75}}>{fmt(weekDates[i])}</div>
-        </button>
-      );})}
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',justifyContent:'space-between'}}>
+      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+        {DAYS.map((day,i)=>{const active=dayFilter===day,isToday=dateToISO(weekDates[i])===dateToISO(new Date());return(
+          <button key={day} onClick={()=>setDayFilter(day)} style={{padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:active?600:400,border:`1px solid ${active?T.accent:isToday?T.accent+'55':T.border}`,background:active?T.accentLight:'transparent',color:active?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>
+            <div>{t('day.'+day)}</div>
+            <div style={{fontSize:10,fontWeight:400,opacity:0.75}}>{fmt(weekDates[i])}</div>
+          </button>
+        );})}
+      </div>
+      <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+        {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      </div>
     </div>
     {!schedule ? (
       <div style={{...s.card,textAlign:'center',padding:'52px 32px'}}>
