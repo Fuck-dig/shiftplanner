@@ -1016,7 +1016,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                           const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
                           const matchesFilter=emp=>pickerRoleFilter.length===0||(emp.roles||[]).some(r=>pickerRoleFilter.includes(r));
                           const filteredAvailable=available.filter(matchesFilter);
-                          const filteredUnavailable=[...unavailable.filter(matchesFilter)].sort((a,b)=>pickerSortBy==='avail'?((b._reasons?.length||0)-(a._reasons?.length||0))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
+                          const filteredUnavailable=[...unavailable.filter(matchesFilter)].sort((a,b)=>pickerSortBy==='avail'?((a._reasons?.length||0)-(b._reasons?.length||0))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
                           const toggleRoleFilter=r=>setPickerRoleFilter(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]);
                           return createPortal(
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
