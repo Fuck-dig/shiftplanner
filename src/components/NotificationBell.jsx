@@ -27,15 +27,23 @@ function relTime(iso, lang){
   return rtf.format(Math.round(diffH / 24), 'day');
 }
 
-// Notification bell — used by both employees and managers/owners. Only
-// rendered where we actually know the viewer's own employees.id (i.e. once
-// myId resolves by matching their login email to a roster row); managers
-// who aren't also on the roster still get their "needs my attention" signal
-// from the existing pending-count badges (time off, swap claims) instead.
-export default function NotificationBell({ empId, t, lang, onNavigate }){
+// Notification bell — used by both employees and managers/owners.
+//
+// Two independent sources feed it:
+// - Personal notifications (the `notifications` table, via empId) — schedule
+//   published, swap approved/declined, etc. Only available once empId
+//   resolves (i.e. the viewer is also matched to a roster row by email).
+// - `pendingItems` — an org-wide "needs your attention" list the caller
+//   builds itself (pending time-off requests, swap claims awaiting manager
+//   approval) and passes in already-formatted. This doesn't depend on the
+//   viewer being on the roster at all, so managers who aren't scheduled
+//   staff themselves still see it. Passing pendingItems (even []) is what
+//   makes the bell render for a manager with no empId match.
+export default function NotificationBell({ empId, t, lang, onNavigate, pendingItems }){
   const [items, setItems] = useState([]);
   const [open, setOpen]   = useState(false);
   const wrapRef = useRef(null);
+  const hasPending = Array.isArray(pendingItems);
 
   const load = useCallback(() => {
     if (!empId) return;
@@ -55,9 +63,10 @@ export default function NotificationBell({ empId, t, lang, onNavigate }){
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
 
-  if (!empId) return null;
+  if (!empId && !hasPending) return null;
 
-  const unread = items.filter(n => !n.read).length;
+  const personalUnread = empId ? items.filter(n => !n.read).length : 0;
+  const unread = personalUnread + (pendingItems?.length || 0);
 
   const clickItem = (n) => {
     if (!n.read) {
@@ -68,10 +77,17 @@ export default function NotificationBell({ empId, t, lang, onNavigate }){
     setOpen(false);
   };
 
+  const clickPending = (p) => {
+    if (p.onClick) p.onClick();
+    setOpen(false);
+  };
+
   const markAll = () => {
     markAllNotificationsRead(empId).catch(() => {});
     setItems(p => p.map(x => ({ ...x, read: true })));
   };
+
+  const nothingAtAll = (!hasPending || pendingItems.length === 0) && (!empId || items.length === 0);
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -83,19 +99,32 @@ export default function NotificationBell({ empId, t, lang, onNavigate }){
         <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 320, maxWidth: '90vw', maxHeight: 420, overflowY: 'auto', background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, boxShadow: '0 12px 30px -10px rgba(33,27,21,0.3)', zIndex: 250 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: `1px solid ${T.border}` }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{t('notif.title')}</span>
-            {unread > 0 && <button onClick={markAll} style={{ fontSize: 11, color: T.accent, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>{t('notif.markAllRead')}</button>}
+            {personalUnread > 0 && <button onClick={markAll} style={{ fontSize: 11, color: T.accent, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}>{t('notif.markAllRead')}</button>}
           </div>
-          {items.length === 0 ? (
+          {nothingAtAll && (
             <div style={{ padding: '24px 14px', textAlign: 'center', fontSize: 12, color: T.text3 }}>{t('notif.empty')}</div>
-          ) : items.map(n => (
-            <div key={n.id} onClick={() => clickItem(n)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: n.read ? 'transparent' : T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-              {!n.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: T.text, lineHeight: 1.4 }}>{t(n.messageKey, n.messageVars)}</div>
-                <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>{relTime(n.createdAt, lang)}</div>
+          )}
+          {hasPending && pendingItems.length > 0 && (<>
+            <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('notif.needsAttention')}</div>
+            {pendingItems.map(p => (
+              <div key={p.id} onClick={() => clickPending(p)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: T.text, lineHeight: 1.4, flex: 1, minWidth: 0 }}>{p.label}</div>
               </div>
-            </div>
-          ))}
+            ))}
+          </>)}
+          {empId && items.length > 0 && (<>
+            {hasPending && pendingItems.length > 0 && <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('notif.title')}</div>}
+            {items.map(n => (
+              <div key={n.id} onClick={() => clickItem(n)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: n.read ? 'transparent' : T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                {!n.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: T.text, lineHeight: 1.4 }}>{t(n.messageKey, n.messageVars)}</div>
+                  <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>{relTime(n.createdAt, lang)}</div>
+                </div>
+              </div>
+            ))}
+          </>)}
         </div>
       )}
     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
-import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO, weekOffsetFromDate } from './lib/dates';
+import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
 import { migrateEmployee } from './lib/storage';
@@ -738,6 +738,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const stats=totalStats();
   const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const attentionCount=pendingCount+pendingSwaps.length;
+  // Feeds the header notification bell's "needs your attention" section —
+  // same underlying data as the attentionCount badge above, just formatted
+  // into readable rows. Both resolve in the Time Off tab, so clicking either
+  // kind of row just jumps there rather than trying to deep-link to the
+  // exact request.
+  const pendingItems=[
+    ...timeOff.filter(to=>to.status==='Pending').map(to=>{
+      const emp=employees.find(e=>e.id===to.empId);
+      return{ id:'to-'+to.id, label:`${emp?.name||'?'} · ${to.type} · ${fmtLong(to.startDate)}${to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}`, onClick:()=>setView('timeoff') };
+    }),
+    ...pendingSwaps.map(sw=>{
+      const from=employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+      return{ id:'sw-'+sw.id, label:`${from?.name||'?'} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
+    }),
+  ];
   const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'profile',l:t('nav.profile')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
@@ -759,7 +774,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         </div>
         <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:ROLE_BADGE_COLORS[role]?.bg||ROLE_BADGE_COLORS.employee.bg,color:ROLE_BADGE_COLORS[role]?.text||ROLE_BADGE_COLORS.employee.text,border:`1px solid ${ROLE_BADGE_COLORS[role]?.border||ROLE_BADGE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
-        <span style={{marginRight:8}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
+        <span style={{marginRight:8}}><NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
         {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">Test: full month</Btn></span>}
@@ -774,7 +789,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
           <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
-            <NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setMobileMenuOpen(false);setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/>
+            <NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setMobileMenuOpen(false);setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/>
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
