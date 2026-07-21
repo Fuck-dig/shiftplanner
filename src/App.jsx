@@ -42,6 +42,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [openPicker,setOpenPicker]   = useState(null);
   const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
   const [pickerSortBy,setPickerSortBy] = useState('name'); // 'name' | 'avail' — sort for the "All staff" fallback list
+  const [pickerSearch,setPickerSearch] = useState('');
   const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
   const ganttDragRef = useRef(null);
   const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
@@ -57,6 +58,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [toFilter,setToFilter]       = useState('all');
   const [gridGroupBy,setGridGroupBy] = useState('name');  // 'name' | 'role'
   const [gridTight,setGridTight]     = useState(false);
+  const [gridSearch,setGridSearch]   = useState('');
   const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
   const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
   const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
@@ -352,8 +354,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     });
     setPickerRoleFilter([]);
     setPickerSortBy('name');
+    setPickerSearch('');
   };
-  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); setPickerSearch(''); };
 
   // Assignments can carry an optional per-person start/end override (set by
   // dragging their bar in the Gantt view) that takes precedence over the
@@ -663,7 +666,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
-  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',...(calMode!=='grid'?{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}:{})}}>
+  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
       <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
       <span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>
@@ -738,18 +741,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 </div>):(()=>{
   // Sort/group employees — in "by role" mode, an employee with multiple roles appears once per matching role group
   const allRoleOrder=Object.keys(roleStyles);
+  const gq=gridSearch.trim().toLowerCase();
+  const gridEmployees=gq?employees.filter(e=>e.name.toLowerCase().includes(gq)):employees;
   const rows=gridGroupBy==='role'
     ?allRoleOrder
-        .filter(role=>employees.some(e=>(e.roles||[]).includes(role)))
-        .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
-    :[...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
+        .filter(role=>gridEmployees.some(e=>(e.roles||[]).includes(role)))
+        .flatMap(role=>[...gridEmployees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    :[...gridEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
   const gridMinW=isMobile?nameW+7*54:700;
   return(
   <div>
-    {/* Grid controls + header — sticky so they stay visible while scrolling the employee list */}
-    <div style={{position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8}}>
+    {/* Grid controls + header — sticky so they stay visible while scrolling the employee list, stacked just below the sticky week/view-mode bar above */}
+    <div style={{position:'sticky',top:106,zIndex:19,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8}}>
       <div style={{display:'flex',gap:8,marginBottom:12,alignItems:'center',flexWrap:'wrap'}}>
         <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
           {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
@@ -757,6 +762,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
           {gridTight?t('grid.compact'):t('grid.comfortable')}
         </button>
+        <input value={gridSearch} onChange={e=>setGridSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:160,padding:'5px 10px',fontSize:12}}/>
         <span style={{fontSize:12,color:T.text3,marginLeft:4}}>{t('grid.scheduledOfTotal',{n:employees.filter(e=>Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length,total:employees.length})}</span>
       </div>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
@@ -1014,7 +1020,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         const picker=pickerOpen&&(()=>{
                           const{available,unavailable}=candidatesForSlot(day,block.id,role);
                           const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
-                          const matchesFilter=emp=>pickerRoleFilter.length===0||(emp.roles||[]).some(r=>pickerRoleFilter.includes(r));
+                          const q=pickerSearch.trim().toLowerCase();
+                          const matchesFilter=emp=>(pickerRoleFilter.length===0||(emp.roles||[]).some(r=>pickerRoleFilter.includes(r)))&&(!q||emp.name.toLowerCase().includes(q));
                           const filteredAvailable=available.filter(matchesFilter);
                           const filteredUnavailable=[...unavailable.filter(matchesFilter)].sort((a,b)=>pickerSortBy==='avail'?((a._reasons?.length||0)-(b._reasons?.length||0))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
                           const toggleRoleFilter=r=>setPickerRoleFilter(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]);
@@ -1022,6 +1029,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
                             <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(440px,100%)',maxHeight:'min(78vh,620px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
                               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'16px 18px 10px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                              <div style={{padding:'0 18px 10px',flexShrink:0}}>
+                                <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:'100%'}}/>
+                              </div>
                               {rolesPresent.length>1&&<div style={{display:'flex',gap:4,flexWrap:'wrap',padding:'0 18px 10px',flexShrink:0}}>
                                 <button onClick={()=>setPickerRoleFilter([])} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${pickerRoleFilter.length===0?T.accent:T.border}`,background:pickerRoleFilter.length===0?T.accent+'15':'transparent',color:pickerRoleFilter.length===0?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{t('week.allRoles')}</button>
                                 {rolesPresent.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=pickerRoleFilter.includes(r);return(<button key={r} onClick={()=>toggleRoleFilter(r)} style={{padding:'3px 9px',borderRadius:999,fontSize:10,fontWeight:600,border:`1px solid ${active?rs.dot:T.border}`,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>);})}
