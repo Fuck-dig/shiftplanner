@@ -649,7 +649,7 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
   return (
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,marginBottom:4}}>{t('swap.giveAway')}</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text,marginBottom:4}}>{t('swap.giveAway')}</div>
         <div style={{fontSize:12,color:T.text3,marginBottom:14}}>{modal.blockName} · {modal.role} · {t('day.'+modal.day)}</div>
         <div style={{display:'flex',gap:6,marginBottom:12}}>
           {[['anyone',t('swap.anyoneEligible')],['specific',t('swap.specificCoworker')]].map(([k,l])=>(
@@ -684,7 +684,7 @@ function RequestShiftModal({ modal, busy, onCancel, onSubmit, s, t }){
   return (
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,marginBottom:4}}>{t('swap.requestShift')}</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text,marginBottom:4}}>{t('swap.requestShift')}</div>
         <div style={{fontSize:12,color:T.text3,marginBottom:14}}>{modal.emp.name} · {modal.blockName} · {modal.role} · {t('day.'+modal.day)}</div>
         <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t('swap.notePlaceholder')} rows={2} style={{...s.input,resize:'vertical',marginBottom:14}}/>
         <div style={{display:'flex',gap:8}}>
@@ -732,10 +732,10 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
   return (
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(420px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,marginBottom:14}}>{t('to.newRequest')}</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text,marginBottom:14}}>{t('to.newRequest')}</div>
         <div style={{marginBottom:12}}>
           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('to.type')}</div>
-          <select value={type} onChange={e=>setType(e.target.value)} style={s.select}>{SELF_REQUEST_TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
+          <select value={type} onChange={e=>setType(e.target.value)} style={{...s.select,paddingRight:32}}>{SELF_REQUEST_TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
         </div>
         <div style={{display:'flex',gap:10,marginBottom:12}}>
           <div style={{flex:1}}>
