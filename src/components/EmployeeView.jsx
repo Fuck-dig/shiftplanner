@@ -735,7 +735,14 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text,marginBottom:14}}>{t('to.newRequest')}</div>
         <div style={{marginBottom:12}}>
           <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('to.type')}</div>
-          <select value={type} onChange={e=>setType(e.target.value)} style={{...s.select,paddingRight:32}}>{SELF_REQUEST_TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
+          {/* The browser's own native dropdown arrow ignores extra padding
+              in some engines (it stayed glued to the edge) — drop it
+              entirely and draw our own, positioned exactly like the ▾ on
+              the date pickers below. */}
+          <div style={{position:'relative'}}>
+            <select value={type} onChange={e=>setType(e.target.value)} style={{...s.select,appearance:'none',WebkitAppearance:'none',MozAppearance:'none',paddingRight:34}}>{SELF_REQUEST_TIMEOFF_TYPES.map(tt=><option key={tt} value={tt}>{tt}</option>)}</select>
+            <span style={{position:'absolute',right:14,top:'50%',transform:'translateY(-50%)',pointerEvents:'none',fontSize:12,color:T.text3}}>▾</span>
+          </div>
         </div>
         <div style={{display:'flex',gap:10,marginBottom:12}}>
           <div style={{flex:1}}>
