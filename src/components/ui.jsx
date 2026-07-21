@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants";
 
@@ -33,5 +34,51 @@ export function AddRoleInline({onAdd,t}){
       <button onClick={()=>{ setVal(''); setEditing(false); }} style={{padding:'4px 8px',borderRadius:6,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>✕</button>
     </div>
   );
+}
+
+// A themed replacement for <input type="time"> — the native control renders
+// its own browser/OS chrome that ignores page CSS (always shows up as a
+// plain white popup even in dark mode). This opens a centered, scroll-locked
+// modal (the same pattern used elsewhere in the app for pickers, since
+// anchored popovers kept getting stranded on scroll) with two scrollable
+// hour/minute columns instead.
+export function TimePicker({value,onChange,small}){
+  const [open,setOpen]=useState(false);
+  const hourRef=useRef(null),minRef=useRef(null);
+  const [hh,mm]=(value||'00:00').split(':');
+  const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
+  const minutes=['00','05','10','15','20','25','30','35','40','45','50','55'];
+  useEffect(()=>{
+    if(!open)return;
+    document.body.style.overflow='hidden';
+    const t=setTimeout(()=>{
+      hourRef.current?.querySelector('[data-sel="true"]')?.scrollIntoView({block:'center'});
+      minRef.current?.querySelector('[data-sel="true"]')?.scrollIntoView({block:'center'});
+    },0);
+    return ()=>{ clearTimeout(t); document.body.style.overflow=''; };
+  },[open]);
+  const col=(items,current,pick,ref)=><div ref={ref} style={{flex:1,overflowY:'auto',padding:'6px 4px'}}>
+    {items.map(v=>(<div key={v} data-sel={v===current?'true':undefined} onClick={()=>pick(v)} style={{padding:'7px 0',textAlign:'center',fontSize:15,fontWeight:v===current?700:400,color:v===current?'#fff':T.text,background:v===current?T.accent:'transparent',cursor:'pointer',borderRadius:8,margin:'0 4px'}}>{v}</div>))}
+  </div>;
+  return (<>
+    <button type="button" onClick={()=>setOpen(true)} style={{display:'inline-flex',alignItems:'center',gap:6,padding:small?'4px 9px':'6px 11px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',cursor:'pointer'}}>
+      {hh}:{mm}<span style={{fontSize:11,opacity:0.55}}>🕐</span>
+    </button>
+    {open&&createPortal(
+      <div onClick={()=>setOpen(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:220,maxHeight:'min(60vh,360px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 14px',borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+            <span style={{fontSize:14,fontWeight:600,color:T.text}}>{hh}:{mm}</span>
+            <button onClick={()=>setOpen(false)} style={{border:'none',background:'none',cursor:'pointer',color:T.accent,fontSize:13,fontWeight:500,fontFamily:'inherit'}}>Done</button>
+          </div>
+          <div style={{display:'flex',flex:1,minHeight:0,borderTop:`1px solid ${T.border}`}}>
+            {col(hours,hh,v=>onChange(`${v}:${mm}`),hourRef)}
+            <div style={{width:1,background:T.border}}/>
+            {col(minutes,mm,v=>onChange(`${hh}:${v}`),minRef)}
+          </div>
+        </div>
+      </div>
+    ,document.body)}
+  </>);
 }
 

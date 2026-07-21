@@ -7,7 +7,7 @@ import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, s
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
-import { Avatar, RoleBadge, EmpChip, Btn } from './components/ui';
+import { Avatar, RoleBadge, EmpChip, Btn, TimePicker } from './components/ui';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
 import EmployeeView from './components/EmployeeView';
@@ -655,9 +655,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
               </div>
               {!already&&<div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:10,color:T.text3}}>{t('emp.customTime')}</span>
-                <input type="time" value={times.start} onChange={e=>setTime('start',e.target.value)} style={{...s.input,width:'auto',padding:'3px 7px',fontSize:12}}/>
+                <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
                 <span style={{fontSize:11,color:T.text3}}>–</span>
-                <input type="time" value={times.end} onChange={e=>setTime('end',e.target.value)} style={{...s.input,width:'auto',padding:'3px 7px',fontSize:12}}/>
+                <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
                 {customized&&<button onClick={()=>setShiftModalTimes(p=>{const n={...p};delete n[block.id];return n;})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
               </div>}
             </div>);
