@@ -7,7 +7,7 @@ export function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<
 // unset). Was previously redefined identically in both App.jsx and
 // EmployeeView.jsx — consolidated here so there's one definition to change.
 export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,end:a.end||b.end}); }
-export const prio=e=>e.priority??e.salaryPct??100;
+const prio=e=>e.priority??e.salaryPct??100;
 
 // Average weeks per calendar month — used to normalize a monthly salary into
 // an hourly-equivalent rate so it can be compared against hourly wages.
@@ -30,7 +30,7 @@ export function effectiveHourlyRate(e){
 // An employee's preferred weekly hours — a softer target than maxHours. The
 // builder tries not to exceed it, but will if that's the only way to cover a
 // required slot. Falls back to maxHours (today's behavior) when unset.
-export function targetHoursOf(e){
+function targetHoursOf(e){
   const t=e?.targetHours;
   return (t!=null && t>0) ? t : (e?.maxHours ?? 40);
 }

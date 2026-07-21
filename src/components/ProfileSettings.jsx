@@ -100,7 +100,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
       </div>
 
       <div style={s.card}>
-        <div style={{fontSize:12,color:T.text3,marginBottom:8,fontWeight:500}}>{t('profile.changePassword')}</div>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.changePassword')}</div>
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
           <input type="password" placeholder={t('profile.newPassword')} value={pw1} onChange={e=>setPw1(e.target.value)} style={s.input}/>
           <input type="password" placeholder={t('profile.confirmPassword')} value={pw2} onChange={e=>setPw2(e.target.value)} style={s.input}/>

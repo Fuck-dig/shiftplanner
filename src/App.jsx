@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
@@ -8,7 +8,7 @@ import { migrateEmployee, load, save } from './lib/storage';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
-import { Avatar, RoleBadge, EmpChip, Btn, TimePicker, WeekPicker } from './components/ui';
+import { RoleBadge, EmpChip, Btn, TimePicker, WeekPicker } from './components/ui';
 import NotificationBell from './components/NotificationBell';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
