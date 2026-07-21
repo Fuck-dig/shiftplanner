@@ -98,6 +98,20 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     return () => { alive = false; };
   }, [orgId]);
 
+  // Employees (names, roles, colours) are edited by a manager in a
+  // completely separate session — like swaps and time off above, poll
+  // instead of loading once, otherwise a rename or role change made after
+  // this tab was opened just sits unseen until the page is manually
+  // reloaded (exactly what happened when a manager renamed the signed-in
+  // test account and this view kept showing the old name).
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{
+      fetchEmployees(orgId).then(emps=>{ if(alive) setEmployees(emps.map(migrateEmployee)); }).catch(err=>console.error('Poll employees failed:',err));
+    },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
   // Re-inject global styles when theme changes
   useEffect(()=>{
     const s = document.createElement('style');
@@ -405,6 +419,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
           <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>
         </div>
+        <span style={{marginRight:isMobile?6:10}}><Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:isMobile?0:8,cursor:'pointer',outline:'none',flexShrink:0}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{isMobile?L.code.toUpperCase():L.label}</option>)}</select>
         <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setView('schedule');setCalMode('team');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
@@ -434,7 +449,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           </div>
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
-          <Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn>
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginLeft:'auto'}}>
             {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')],['directory',t('sched.directory')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
           </div>
