@@ -35,10 +35,24 @@ select id as org_id from organizations
 where id not in (select org_id from keep_orgs);
 
 -- 1. Child data for organizations being fully deleted, in dependency order
---    (children before the tables/rows they reference).
-delete from shift_swaps        where org_id in (select org_id from drop_orgs);
-delete from notifications      where org_id in (select org_id from drop_orgs);
-delete from schedule_templates where org_id in (select org_id from drop_orgs);
+--    (children before the tables/rows they reference). shift_swaps,
+--    notifications, and schedule_templates only exist if that migration
+--    (20260721120000_swaps_notifications_templates.sql) has actually been
+--    run on this project — guard each with to_regclass so this script still
+--    works whether or not it has been.
+do $$
+begin
+  if to_regclass('public.shift_swaps') is not null then
+    delete from shift_swaps where org_id in (select org_id from drop_orgs);
+  end if;
+  if to_regclass('public.notifications') is not null then
+    delete from notifications where org_id in (select org_id from drop_orgs);
+  end if;
+  if to_regclass('public.schedule_templates') is not null then
+    delete from schedule_templates where org_id in (select org_id from drop_orgs);
+  end if;
+end $$;
+
 delete from time_off           where org_id in (select org_id from drop_orgs);
 delete from schedules          where org_id in (select org_id from drop_orgs);
 delete from blocks             where org_id in (select org_id from drop_orgs);

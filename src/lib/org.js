@@ -3,9 +3,21 @@ import { supabase } from './supabase';
 // All organizations (restaurants) the current user belongs to, oldest first.
 // Two plain queries (no relational embed) so it's robust to schema-cache state.
 export async function listOrgs(){
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  // Must filter to this user's own membership rows explicitly — RLS on
+  // `memberships` intentionally allows seeing OTHER members' rows too (e.g.
+  // so TeamAccess's member list works), so without this filter here, this
+  // query returns one row per member of every shared org, not one per org
+  // for you. That previously showed a duplicate "restaurant card" for any
+  // org with more than one member, and worse — if two rows shared the same
+  // org_id, App()'s `orgs.find(o => o.id === activeOrg)` could silently
+  // pick up a DIFFERENT member's role (e.g. an owner's) instead of your own.
   const { data: ms, error } = await supabase
     .from('memberships')
     .select('org_id, role, created_at')
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true });
   if (error) throw error;
   if (!ms || ms.length === 0) return [];
