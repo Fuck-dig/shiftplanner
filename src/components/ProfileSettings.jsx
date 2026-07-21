@@ -61,7 +61,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
   };
 
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:440}}>
+    <div style={{display:'flex',flexDirection:'column',gap:12,maxWidth:760}}>
       <div style={s.card}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.title')}</div>
 
@@ -71,31 +71,33 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
         </div>
 
         {myEmp ? (<>
-          <div style={{marginBottom:18}}>
-            <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.myDisplayName')}</div>
-            {isEmployee ? (<>
-              <div style={{fontSize:14,fontWeight:500}}>{myEmp.name}</div>
-              <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.nameLocked')}</div>
-            </>) : (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:18,marginBottom:18}}>
+            <div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.myDisplayName')}</div>
+              {isEmployee ? (<>
+                <div style={{fontSize:14,fontWeight:500}}>{myEmp.name}</div>
+                <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.nameLocked')}</div>
+              </>) : (
+                <div style={{display:'flex',gap:8}}>
+                  <input value={name} onChange={e=>setName(e.target.value)} style={{...s.input,flex:1}}/>
+                  <Btn small onClick={saveName} disabled={!name.trim()}>{nameSaved?t('profile.saved'):t('profile.save')}</Btn>
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.email')}</div>
+              <div style={{fontSize:14,fontWeight:500}}>{myEmp.email||'—'}</div>
+              {/* Email is what links this row to your login — editable only
+                  from the manager's Employees admin page, never here, since
+                  changing it on yourself would break that match. */}
+              <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.emailLocked')}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.phone')}</div>
               <div style={{display:'flex',gap:8}}>
-                <input value={name} onChange={e=>setName(e.target.value)} style={{...s.input,flex:1}}/>
-                <Btn small onClick={saveName} disabled={!name.trim()}>{nameSaved?t('profile.saved'):t('profile.save')}</Btn>
+                <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder={t('profile.phonePlaceholder')} style={{...s.input,flex:1}}/>
+                <Btn small onClick={savePhone}>{phoneSaved?t('profile.saved'):t('profile.save')}</Btn>
               </div>
-            )}
-          </div>
-          <div style={{marginBottom:18}}>
-            <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.email')}</div>
-            <div style={{fontSize:14,fontWeight:500}}>{myEmp.email||'—'}</div>
-            {/* Email is what links this row to your login — editable only
-                from the manager's Employees admin page, never here, since
-                changing it on yourself would break that match. */}
-            <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:4}}>{t('profile.emailLocked')}</div>
-          </div>
-          <div style={{marginBottom:18}}>
-            <div style={{fontSize:11,color:T.text3,marginBottom:5}}>{t('profile.phone')}</div>
-            <div style={{display:'flex',gap:8}}>
-              <input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder={t('profile.phonePlaceholder')} style={{...s.input,flex:1}}/>
-              <Btn small onClick={savePhone}>{phoneSaved?t('profile.saved'):t('profile.save')}</Btn>
             </div>
           </div>
           <div style={{marginBottom:6}}>
@@ -125,18 +127,22 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
               {Object.keys(AVAIL_TEMPLATES).map(tpl=><button key={tpl} onClick={()=>setAvailability(AVAIL_TEMPLATES[tpl])} style={{padding:'4px 10px',borderRadius:6,fontSize:11,cursor:'pointer',background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text2,fontFamily:'inherit'}}>{t('tpl.'+tpl)}</button>)}
             </div>
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))',gap:10}}>
             {DAYS.map(day=>{
               const avail=availability[day];
-              return (<div key={day} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                <button onClick={()=>toggleAvailDay(day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?T.accentLight:'transparent',color:avail?T.accentText:T.text3,border:`1px solid ${avail?T.accent+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{t('day.'+day)}</button>
-                {avail?(<>
-                  <span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span>
-                  <TimePicker value={avail.from} onChange={v=>updateAvailField(day,'from',v)} small/>
-                  <span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span>
-                  <TimePicker value={avail.to} onChange={v=>updateAvailField(day,'to',v)} small/>
-                </>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
-              </div>);
+              return (
+                <div key={day} style={{display:'flex',flexDirection:'column',gap:8,padding:'12px',borderRadius:10,background:avail?T.accentLight:T.surfaceWarm,border:`1px solid ${avail?T.accent+'55':T.border}`}}>
+                  <button onClick={()=>toggleAvailDay(day)} style={{alignSelf:'flex-start',padding:'4px 12px',borderRadius:6,fontSize:12,fontWeight:600,cursor:'pointer',background:avail?T.accent:'transparent',color:avail?'#fff':T.text3,border:`1px solid ${avail?T.accent:T.border}`,fontFamily:'inherit'}}>{t('day.'+day)}</button>
+                  {avail?(
+                    <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                      <span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span>
+                      <TimePicker value={avail.from} onChange={v=>updateAvailField(day,'from',v)} small/>
+                      <span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span>
+                      <TimePicker value={avail.to} onChange={v=>updateAvailField(day,'to',v)} small/>
+                    </div>
+                  ):<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('emp.notAvailable')}</span>}
+                </div>
+              );
             })}
           </div>
           <div style={{marginTop:14}}><Btn small onClick={saveAvailability}>{availSaved?t('profile.saved'):t('profile.save')}</Btn></div>
