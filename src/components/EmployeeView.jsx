@@ -11,7 +11,7 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, Avatar, EmpChip } from './ui';
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -288,7 +288,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
         ) : calMode==='week' ? (
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} empHoursMap={empHoursMap} s={s} t={t}/>
         ) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0) && (
@@ -488,12 +488,28 @@ function GiveAwayModal({ modal, employees, myId, busy, onCancel, onSubmit, s, t 
   );
 }
 
-// Read-only per-day timeline for the employee 'week' tab — same underlying
-// data shape as the manager's WeekView Gantt, but with every edit affordance
-// stripped out (no drag handles, no add/remove picker, no click-to-edit):
-// staff can look at who's working when on a given day, nothing more.
-function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, s, t }){
-  const dayShiftsRaw = schedule ? blocks.flatMap(b=>{
+// Read-only week view for the employee 'week' tab — structurally mirrors the
+// manager's WeekView.jsx (full week role×day grid, click a day header to
+// isolate it into a Gantt timeline above, weekly-hours summary at the
+// bottom) but with every edit affordance stripped out (no drag handles, no
+// add/remove picker, no click-to-edit) and no staffing-coverage signal (no
+// "short by N" gaps or requirement counts — only ever shows who's actually
+// assigned, per the earlier decision to keep that manager-only information).
+function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, setGridGroupBy, roleStyles, roleColorFor, empHoursMap, s, t }){
+  const [collapsedBlocks, setCollapsedBlocks] = useState({});
+  const colorFor = (role) => roleStyles[role] || roleColorFor(role);
+
+  if (!schedule) return (
+    <div style={{...s.card,textAlign:'center',padding:'52px 32px'}}>
+      <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text,marginBottom:6}}>{t('emp.noScheduleTitle')}</div>
+      <div style={{fontSize:13,color:T.text2}}>{t('emp.noScheduleDesc')}</div>
+    </div>
+  );
+
+  const filterDays = dayFilter ? [dayFilter] : DAYS;
+
+  // ---- Single-day Gantt (only rendered once a day header is clicked) ----
+  const dayShiftsRaw = dayFilter ? blocks.flatMap(b=>{
     return (schedule[dayFilter]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start, en=a.end||b.end;
       const bs=toMin(st); let be=toMin(en); if(be<=bs) be+=1440;
@@ -502,42 +518,45 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
   }) : [];
   const byEmp = new Map();
   dayShiftsRaw.forEach(sg=>{
-    if(!byEmp.has(sg.empId)) byEmp.set(sg.empId,{empId:sg.empId,name:sg.name,segs:[]});
+    if(!byEmp.has(sg.empId)) byEmp.set(sg.empId,{empId:sg.empId,name:sg.name,role:sg.role,segs:[]});
     byEmp.get(sg.empId).segs.push(sg);
   });
-  const rows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)}))
+  const dayRows = [...byEmp.values()].map(r=>({...r,segs:[...r.segs].sort((a,b)=>a.start-b.start)}))
     .sort((a,b)=> gridGroupBy==='role'
-      ? (allRoles.indexOf(a.segs[0]?.role)-allRoles.indexOf(b.segs[0]?.role)) || a.name.localeCompare(b.name)
+      ? (allRoles.indexOf(a.role)-allRoles.indexOf(b.role)) || a.name.localeCompare(b.name)
       : a.name.localeCompare(b.name));
 
   let timeline=null;
-  if(rows.length){
-    const allStarts=rows.flatMap(r=>r.segs.map(m=>m.start)), allEnds=rows.flatMap(r=>r.segs.map(m=>m.end));
+  if(dayFilter && dayRows.length){
+    const allStarts=dayRows.flatMap(r=>r.segs.map(m=>m.start)), allEnds=dayRows.flatMap(r=>r.segs.map(m=>m.end));
     const rangeStart=Math.floor(Math.min(...allStarts)/60)*60;
     const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[]; for(let m=rangeStart;m<=rangeEnd;m+=60) ticks.push(m);
-    const sideW=isMobile?92:130, rowH=isMobile?26:30;
+    const sideW=isMobile?76:112, rowH=isMobile?20:24;
     const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+        <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:10,minWidth:isMobile?480:'auto'}}>
+          {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=colorFor(role);return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
+        </div>
         <div style={{position:'relative',height:16,marginLeft:sideW,marginBottom:10,minWidth:isMobile?480-sideW:'auto'}}>
           {ticks.map(m=>(<span key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,transform:'translateX(-50%)',fontSize:10,color:T.text3,whiteSpace:'nowrap'}}>{fmtTick(m)}</span>))}
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:sideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {rows.map(row=>{const isMe=row.empId===myId;return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{row.name}{isMe&&<span style={{fontSize:9,marginLeft:4,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>);})}
+            {dayRows.map(row=>{const isMe=row.empId===myId,rs=colorFor(row.role);return(<div key={row.empId} style={{height:rowH,display:'flex',alignItems:'center',gap:5,fontSize:isMobile?11:12,fontWeight:isMe?700:500,color:isMe?T.accent:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}{isMe&&<span style={{fontSize:9,marginLeft:4,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:0,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
-              {rows.map(row=>{
-                const emp=employees.find(e=>e.id===row.empId), p=pal(emp||{palIdx:0}), isMe=row.empId===myId;
+              {dayRows.map(row=>{
+                const isMe=row.empId===myId, rs=colorFor(row.role);
                 return(<div key={row.empId} style={{position:'relative',height:rowH,background:T.surfaceWarm,borderRadius:6}}>
                   {row.segs.map((seg,si)=>{
                     const leftPct=(seg.start-rangeStart)/totalMin*100, widthPct=(seg.end-seg.start)/totalMin*100;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?p.dot+'30':p.bg,border:`1.5px solid ${isMe?T.accent:p.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isMe?T.accent:(isDark()?p.dot:p.text),whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
+                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isMe?T.accent:rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isMe?T.accent:(isDark()?rs.dot:rs.text),whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
                     </div>);
                   })}
                 </div>);
@@ -550,28 +569,73 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
   }
 
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
-    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',justifyContent:'space-between'}}>
-      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-        {DAYS.map((day,i)=>{const active=dayFilter===day,isToday=dateToISO(weekDates[i])===dateToISO(new Date());return(
-          <button key={day} onClick={()=>setDayFilter(day)} style={{padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:active?600:400,border:`1px solid ${active?T.accent:isToday?T.accent+'55':T.border}`,background:active?T.accentLight:'transparent',color:active?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit'}}>
-            <div>{t('day.'+day)}</div>
-            <div style={{fontSize:10,fontWeight:400,opacity:0.75}}>{fmt(weekDates[i])}</div>
-          </button>
-        );})}
+    {dayFilter && (
+      <button onClick={()=>setDayFilter(null)} style={{alignSelf:'flex-start',display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>
+    )}
+    {timeline}
+    {blocks.map(block=>{
+      const isCollapsed=!!collapsedBlocks[block.id];
+      return (
+      <div key={block.id} style={s.cardFlush}>
+        <div onClick={()=>setCollapsedBlocks(p=>({...p,[block.id]:!p[block.id]}))} style={{padding:'12px 20px',borderBottom:isCollapsed?'none':`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12,cursor:'pointer',userSelect:'none'}}>
+          <span style={{fontSize:11,color:T.text3,transform:isCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
+          <div style={{flex:1}}><span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{block.name}</span><span style={{fontSize:12,color:T.text3,marginLeft:10}}>{block.start} – {block.end}</span></div>
+        </div>
+        {!isCollapsed && (
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
+            <thead><tr>
+              <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
+              {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=dayFilter===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            </tr></thead>
+            <tbody>
+              {allRoles.map(role=>{
+                const anyDay=filterDays.some(day=>(schedule[day]?.[block.id]||[]).some(a=>a.role===role));
+                if(!anyDay) return null;
+                const rs=colorFor(role);
+                return(<tr key={role} style={{borderBottom:`1px solid ${T.border}`}}>
+                  <td style={{padding:'10px 20px',verticalAlign:'top',background:T.surface}}><RoleBadge role={role} rs={rs}/></td>
+                  {filterDays.map(day=>{
+                    const assigned=(schedule[day]?.[block.id]||[]).filter(a=>a.role===role);
+                    return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
+                      <div style={{display:'flex',flexDirection:dayFilter?'row':'column',flexWrap:dayFilter?'wrap':'nowrap',gap:dayFilter?14:3,alignItems:dayFilter?'flex-start':'stretch'}}>
+                        {assigned.length===0 && <span style={{fontSize:12,color:T.text3,opacity:0.5}}>—</span>}
+                        {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),isMe=a.empId===myId;return(
+                          <div key={idx}>
+                            <EmpChip emp={emp||{name:a.name,palIdx:0}}/>
+                            {(isMe||dayFilter)&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{isMe&&<span style={{color:T.accent,fontWeight:600}}>{t('emp.youTag')} </span>}{dayFilter&&`${a.start||block.start}–${a.end||block.end}`}</div>}
+                          </div>
+                        );})}
+                      </div>
+                    </td>);
+                  })}
+                </tr>);
+              })}
+            </tbody>
+          </table>
+        </div>)}
       </div>
-      <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-        {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      );
+    })}
+    <div style={s.card}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:8}}>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{t('week.weeklyHours')}</div>
+        <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+          {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
+        {[...employees].sort((a,b)=>gridGroupBy==='role'?(allRoles.indexOf((a.roles||[])[0]||'')-allRoles.indexOf((b.roles||[])[0]||''))||a.name.localeCompare(b.name):a.name.localeCompare(b.name)).map(emp=>{
+          const h=empHoursMap[emp.id]||0, maxH=emp.maxHours||40, pct=Math.min(100,(h/maxH)*100), over=h>maxH, isMe=emp.id===myId;
+          const firstRole=(emp.roles||[])[0];
+          return(<div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${isMe?T.accent+'55':over?T.danger+'55':T.border}`,background:isMe?T.accentLight:over?T.dangerLight:T.surfaceWarm}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:isMe?700:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name.split(' ')[0]}</span>{isMe&&<span style={{fontSize:9,color:T.accent,fontWeight:400}}>{t('emp.youTag')}</span>}</div>
+            {gridGroupBy==='role'&&firstRole&&<div style={{marginBottom:6}}><RoleBadge role={firstRole} rs={colorFor(firstRole)}/></div>}
+            <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {maxH}h</span></div>
+            <div style={{height:3,borderRadius:999,background:T.border,overflow:'hidden'}}><div style={{height:'100%',width:`${pct}%`,borderRadius:999,background:over?T.danger:pct>80?T.warning:T.success}}/></div>
+          </div>);
+        })}
       </div>
     </div>
-    {!schedule ? (
-      <div style={{...s.card,textAlign:'center',padding:'52px 32px'}}>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text,marginBottom:6}}>{t('emp.noScheduleTitle')}</div>
-        <div style={{fontSize:13,color:T.text2}}>{t('emp.noScheduleDesc')}</div>
-      </div>
-    ) : timeline || (
-      <div style={{...s.card,textAlign:'center',padding:'40px 24px'}}>
-        <div style={{fontSize:13,color:T.text2}}>{t('emp.noShiftsDay')}</div>
-      </div>
-    )}
   </div>);
 }
