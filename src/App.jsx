@@ -50,6 +50,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [shiftModalDaySel,setShiftModalDaySel]   = useState(null); // {date,dayName,weekOff} — a specific calendar day chosen from the month grid
   const [shiftModalRole,setShiftModalRole]       = useState(null); // which of the employee's roles to add — one row per block instead of one per block×role
   const [shiftModalTimes,setShiftModalTimes]     = useState({}); // per-blockId custom {start,end} override, defaults to the block's own hours
+  const [editingSlot,setEditingSlot]             = useState(null); // {day,blockId,idx} — an existing assignment being edited from Week/Day view
+  const [editTimes,setEditTimes]                 = useState({start:'',end:''});
+  const [editRole,setEditRole]                   = useState(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -331,9 +334,40 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
   };
 
+  // Editing an existing assignment in place — separate from the move/swap
+  // click on the chip itself, so opening the editor never triggers a swap.
+  const openEditSlot=(day,blockId,idx)=>{
+    const entry=schedule?.[day]?.[blockId]?.[idx];
+    const block=blocks.find(b=>b.id===blockId);
+    if(!entry||!block)return;
+    setEditingSlot({day,blockId,idx});
+    setEditTimes({start:entry.start||block.start,end:entry.end||block.end});
+    setEditRole(entry.role);
+    document.body.style.overflow='hidden';
+  };
+  const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
+  const saveEditSlot=()=>{
+    if(!editingSlot||!schedule)return;
+    const{day,blockId,idx}=editingSlot;
+    const block=blocks.find(b=>b.id===blockId);
+    if(!block)return;
+    const ns=JSON.parse(JSON.stringify(schedule));
+    const entry=ns[day]?.[blockId]?.[idx];if(!entry)return;
+    entry.role=editRole;
+    if(editTimes.start===block.start&&editTimes.end===block.end){delete entry.start;delete entry.end;}
+    else{entry.start=editTimes.start;entry.end=editTimes.end;}
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    closeEditSlot();
+  };
+  const removeEditSlot=()=>{
+    if(!editingSlot)return;
+    removeFromSlot(editingSlot.day,editingSlot.blockId,editingSlot.idx);
+    closeEditSlot();
+  };
+
   // Pull one person off a shift outright — e.g. they've called in sick.
   // No confirmation: it's a single click to remove, a single click to re-add.
-  const removeFromSlot=(day,blockId,idx)=>{
+  function removeFromSlot(day,blockId,idx){
     if(!schedule)return;
     const ns=JSON.parse(JSON.stringify(schedule));
     ns[day][blockId].splice(idx,1);
@@ -674,6 +708,43 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   </div>
 ,document.body)}
 
+{editingSlot&&schedule&&(()=>{
+  const{day,blockId,idx}=editingSlot;
+  const entry=schedule[day]?.[blockId]?.[idx];
+  const block=blocks.find(b=>b.id===blockId);
+  if(!entry||!block)return null;
+  const emp=employees.find(e=>e.id===entry.empId);
+  const empRoles=(emp?.roles||[]).length?emp.roles:allRoles;
+  const customized=editTimes.start!==block.start||editTimes.end!==block.end;
+  return createPortal(
+    <div onClick={closeEditSlot} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(380px,100%)',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+        <div style={{padding:'16px 18px 12px'}}>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>{t('week.editShift')}</div>
+          <div style={{fontSize:15,fontWeight:600,color:T.text}}>{emp?.name||entry.name}</div>
+          <div style={{fontSize:12,color:T.text3,marginTop:2}}>{block.name} · {t('day.'+day)}</div>
+        </div>
+        {empRoles.length>1&&<div style={{padding:'0 18px 12px',display:'flex',gap:4,flexWrap:'wrap'}}>
+          {empRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=editRole===r;return(<button key={r} onClick={()=>setEditRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
+        </div>}
+        <div style={{padding:'0 18px 16px',display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:11,color:T.text3}}>{t('emp.customTime')}</span>
+          <TimePicker small value={editTimes.start} onChange={v=>setEditTimes(p=>({...p,start:v}))}/>
+          <span style={{fontSize:11,color:T.text3}}>–</span>
+          <TimePicker small value={editTimes.end} onChange={v=>setEditTimes(p=>({...p,end:v}))}/>
+          {customized&&<button onClick={()=>setEditTimes({start:block.start,end:block.end})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
+        </div>
+        <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',gap:6}}>
+          <Btn onClick={saveEditSlot}>{t('common.save')}</Btn>
+          <Btn variant="danger" onClick={removeEditSlot}>{t('common.remove')}</Btn>
+          <span style={{flex:1}}/>
+          <Btn variant="ghost" onClick={closeEditSlot}>{t('common.cancel')}</Btn>
+        </div>
+      </div>
+    </div>
+  ,document.body);
+})()}
+
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
   <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
@@ -1013,7 +1084,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
-                          <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
+                          <div style={{display:'inline-flex',alignItems:'center',gap:2}}>
+                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
+                            <button onClick={e=>{e.stopPropagation();openEditSlot(day,block.id,realIdx);}} title={t('week.editShift')} style={{border:'none',background:'none',cursor:'pointer',fontSize:11,opacity:0.4,padding:'2px 3px',color:T.text3,lineHeight:1,flexShrink:0}}>✎</button>
+                          </div>
                           {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
                         </div>
                       );})}
