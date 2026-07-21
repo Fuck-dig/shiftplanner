@@ -45,7 +45,14 @@ export default function WeekView({
     return (schedule[effectiveDay]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start,en=a.end||b.end;
       const bs=toMin(st);let be=toMin(en);if(be<=bs)be+=1440;
-      return{empId:a.empId,name:a.name,role:a.role,blockId:b.id,blockName:b.name,blockStart:b.start,blockEnd:b.end,startStr:st,endStr:en,start:bs,end:be};
+      // Assignments carry their own embedded name (a.name), frozen at the
+      // moment the shift was created — a rename afterward never touches
+      // existing schedule data. Prefer the CURRENT roster name, only
+      // falling back to the embedded one for an assignment whose employee
+      // has since been deleted entirely (same fallback EmpChip already
+      // uses elsewhere in this file).
+      const liveName=employees.find(e=>e.id===a.empId)?.name||a.name;
+      return{empId:a.empId,name:liveName,role:a.role,blockId:b.id,blockName:b.name,blockStart:b.start,blockEnd:b.end,startStr:st,endStr:en,start:bs,end:be};
     });
   }):[];
   const byEmp=new Map();

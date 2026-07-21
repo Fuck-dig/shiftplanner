@@ -780,7 +780,13 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
     return (schedule[dayFilter]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start, en=a.end||b.end;
       const bs=toMin(st); let be=toMin(en); if(be<=bs) be+=1440;
-      return { empId:a.empId, name:a.name, role:a.role, start:bs, end:be, startStr:st, endStr:en };
+      // Same fix as the manager's WeekView.jsx: a.name is a snapshot frozen
+      // at the time this shift was assigned, so it goes stale the moment
+      // someone is renamed. Look the current name up live from the roster,
+      // only falling back to the embedded one if the employee record is
+      // gone entirely.
+      const liveName = employees.find(e=>e.id===a.empId)?.name || a.name;
+      return { empId:a.empId, name:liveName, role:a.role, start:bs, end:be, startStr:st, endStr:en };
     });
   }) : [];
   const byEmp = new Map();
