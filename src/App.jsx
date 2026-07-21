@@ -45,6 +45,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [pickerSearch,setPickerSearch] = useState('');
   const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
   const ganttDragRef = useRef(null);
+  const ganttJustDraggedRef = useRef(false); // true right after a real (moved) drag, so the trailing click doesn't also open the edit modal
   const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
   const [shiftModalMonth,setShiftModalMonth]     = useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [shiftModalDaySel,setShiftModalDaySel]   = useState(null); // {date,dayName,weekOff} — a specific calendar day chosen from the month grid
@@ -499,7 +500,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     e.preventDefault();e.stopPropagation();
     const SNAP=15;
     const rect=railEl.getBoundingClientRect();
-    const state={day,blockId,empId,edge,rect,rangeStart,totalMin,live:{start:origStart,end:origEnd}};
+    const state={day,blockId,empId,edge,rect,rangeStart,totalMin,live:{start:origStart,end:origEnd},moved:false};
     ganttDragRef.current=state;
     setGanttPreview({day,blockId,empId,start:origStart,end:origEnd});
     const clientXOf=ev=>ev.touches?ev.touches[0].clientX:ev.clientX;
@@ -513,6 +514,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       let{start,end}=st.live;
       if(st.edge==='start') start=Math.min(mins,end-SNAP);
       else end=Math.max(mins,start+SNAP);
+      if(start!==st.live.start||end!==st.live.end)st.moved=true;
       st.live={start,end};
       setGanttPreview({day:st.day,blockId:st.blockId,empId:st.empId,start,end});
     };
@@ -524,7 +526,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       const st=ganttDragRef.current;
       ganttDragRef.current=null;
       setGanttPreview(null);
-      if(st) applyGanttResize(st.day,st.blockId,st.empId,st.live.start,st.live.end);
+      if(st&&st.moved){
+        applyGanttResize(st.day,st.blockId,st.empId,st.live.start,st.live.end);
+        ganttJustDraggedRef.current=true;
+        setTimeout(()=>{ganttJustDraggedRef.current=false;},0);
+      }
     };
     window.addEventListener('mousemove',onMove);
     window.addEventListener('mouseup',onUp);
@@ -906,8 +912,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                   const bh=assignmentHours(shiftEntry||{},b);
                   const shiftRole=shiftEntry?.role;
                   const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
+                  const realIdx=(schedule[day]?.[b.id]||[]).findIndex(a=>a.empId===emp.id);
                   return(
-                    <div key={b.id} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
+                    <div key={b.id} onClick={()=>openEditSlot(day,b.id,realIdx)} title={t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
                       <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
                       {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>}
@@ -1025,10 +1032,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     const segStart=dragging?ganttPreview.start:seg.start,segEnd=dragging?ganttPreview.end:seg.end;
                     const leftPct=(segStart-rangeStart)/totalMin*100,widthPct=(segEnd-segStart)/totalMin*100;
                     const label=dragging?`${minToHHMM(segStart)}–${minToHHMM(segEnd)}`:`${seg.startStr}–${seg.endStr}`;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none'}}>
+                    const segIdx=(schedule[effectiveDay]?.[seg.blockId]||[]).findIndex(a=>a.empId===row.empId);
+                    return(<div key={si} onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
                       <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
-                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
-                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
+                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
+                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                     </div>);
                   })}
                 </div>);
@@ -1084,9 +1092,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
-                          <div style={{display:'inline-flex',alignItems:'center',gap:2}}>
+                          <div style={{display:'inline-flex',alignItems:'center',gap:4}}>
                             <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>handleSlotClick(day,block.id,a,realIdx)}/>
-                            <button onClick={e=>{e.stopPropagation();openEditSlot(day,block.id,realIdx);}} title={t('week.editShift')} style={{border:'none',background:'none',cursor:'pointer',fontSize:11,opacity:0.4,padding:'2px 3px',color:T.text3,lineHeight:1,flexShrink:0}}>✎</button>
+                            <button onClick={e=>{e.stopPropagation();openEditSlot(day,block.id,realIdx);}} title={t('week.editShift')} style={{width:18,height:18,display:'flex',alignItems:'center',justifyContent:'center',border:`1px solid ${T.border}`,borderRadius:5,background:T.surfaceWarm,cursor:'pointer',fontSize:10,color:T.text2,lineHeight:1,flexShrink:0,fontWeight:600}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.accent;e.currentTarget.style.color=T.accent;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.text2;}}>✎</button>
                           </div>
                           {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
                         </div>
