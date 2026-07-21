@@ -719,11 +719,16 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
   // instead of the browser/OS's native date-input chrome.
   const fmtShort = (iso) => { const d=isoToLocalDate(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; };
   const dateTrigger = (iso) => (
-    <div style={{...s.input,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',userSelect:'none'}}>
+    <div style={{...s.input,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'space-between',userSelect:'none',fontSize:14,padding:'9px 12px'}}>
       <span>{fmtShort(iso)}</span>
-      <span style={{fontSize:11,opacity:0.55}}>▾</span>
+      <span style={{fontSize:12,opacity:0.55,marginLeft:8}}>▾</span>
     </div>
   );
+  // Picking either end auto-keeps the other in a valid order, instead of
+  // silently disabling Save with no explanation the moment To ends up
+  // before From (e.g. picking To first, before ever touching From).
+  const pickStart = (d) => { const iso=dateToISO(d); setStartDate(iso); if(endDate<iso) setEndDate(iso); };
+  const pickEnd   = (d) => { const iso=dateToISO(d); setEndDate(iso); if(iso<startDate) setStartDate(iso); };
   return (
     <div onClick={onCancel} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(420px,100%)',padding:20,boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
@@ -735,11 +740,11 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
         <div style={{display:'flex',gap:10,marginBottom:12}}>
           <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.fromCap')}</div>
-            <WeekPicker value={isoToLocalDate(startDate)} highlightStart={isoToLocalDate(startDate)} highlightEnd={isoToLocalDate(startDate)} onPick={d=>setStartDate(dateToISO(d))} trigger={dateTrigger(startDate)}/>
+            <WeekPicker value={isoToLocalDate(startDate)} highlightStart={isoToLocalDate(startDate)} highlightEnd={isoToLocalDate(startDate)} onPick={pickStart} trigger={dateTrigger(startDate)}/>
           </div>
           <div style={{flex:1}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('common.toCap')}</div>
-            <WeekPicker value={isoToLocalDate(endDate)} highlightStart={isoToLocalDate(endDate)} highlightEnd={isoToLocalDate(endDate)} onPick={d=>setEndDate(dateToISO(d))} trigger={dateTrigger(endDate)}/>
+            <WeekPicker value={isoToLocalDate(endDate)} highlightStart={isoToLocalDate(endDate)} highlightEnd={isoToLocalDate(endDate)} onPick={pickEnd} trigger={dateTrigger(endDate)}/>
           </div>
         </div>
         <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t('to.optional')} rows={2} style={{...s.input,resize:'vertical',marginBottom:14}}/>
