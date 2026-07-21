@@ -378,9 +378,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     const bh=blockHours(block),date=weekDates[DAYS.indexOf(day)];
     const alreadyHere=new Set((schedule[day]?.[blockId]||[]).map(a=>a.empId));
     const working=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
-    const recommended=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!working.has(e.id)&&empHours(e.id)+bh<=e.maxHours&&coversBlock(e.availability[day],block)).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    // Same checks as the recommended filter, but itemized — so the "All
+    // staff" fallback list can tell a manager exactly why each person isn't
+    // in the recommended group, instead of just dumping everyone unlabeled.
+    const reasonsFor=e=>{
+      const r=[];
+      if(!(e.roles||[]).includes(role))r.push('role');
+      if(isOnTimeOff(e.id,date,timeOff))r.push('leave');
+      if(working.has(e.id))r.push('working');
+      if(empHours(e.id)+bh>e.maxHours)r.push('hours');
+      if(!coversBlock(e.availability[day],block))r.push('avail');
+      return r;
+    };
+    const recommended=employees.filter(e=>reasonsFor(e).length===0).sort((a,b)=>(a.priority||100)-(b.priority||100));
     const recommendedIds=new Set(recommended.map(e=>e.id));
-    const everyoneElse=employees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name));
+    const everyoneElse=employees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>({...e,_reasons:reasonsFor(e)}));
     return{available:recommended,unavailable:everyoneElse};
   };
 
@@ -995,7 +1007,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                         // failing because the page could still scroll behind/away from it,
                         // leaving it stranded over unrelated content. A modal with a
                         // scroll-locked backdrop can't drift like that.
-                        const personRow=(emp,dim)=>{const p=pal(emp),rate=effectiveHourlyRate(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);closePicker();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'8px 10px',borderRadius:8,background:'transparent',border:'none',cursor:'pointer',fontFamily:"'Hanken Grotesk',sans-serif",textAlign:'left',opacity:dim?0.7:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:32,height:32,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div style={{minWidth:0,flex:1}}><div style={{display:'flex',alignItems:'baseline',gap:6}}><div style={{fontSize:13,fontWeight:500,color:T.text}}>{emp.name}</div>{rate!=null&&<div style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:'nowrap'}}>kr {Math.round(rate).toLocaleString('da-DK')}/h</div>}</div><div style={{fontSize:11,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div>{(emp.roles||[]).length>0&&<div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:3}}>{(emp.roles||[]).map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}</div></button>);};
+                        const reasonLabels={role:t('week.reasonRole',{role}),leave:t('week.reasonLeave'),working:t('week.reasonWorking'),hours:t('week.reasonHours'),avail:t('week.reasonAvail')};
+                        const personRow=(emp,dim)=>{const p=pal(emp),rate=effectiveHourlyRate(emp);return(<button key={emp.id} onClick={()=>{addToSlot(day,block.id,role,emp);closePicker();}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'8px 10px',borderRadius:8,background:'transparent',border:'none',cursor:'pointer',fontFamily:"'Hanken Grotesk',sans-serif",textAlign:'left',opacity:dim?0.7:1}} onMouseEnter={e=>e.currentTarget.style.background=T.surfaceWarm} onMouseLeave={e=>e.currentTarget.style.background='transparent'}><div style={{width:32,height:32,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</div><div style={{minWidth:0,flex:1}}><div style={{display:'flex',alignItems:'baseline',gap:6}}><div style={{fontSize:13,fontWeight:500,color:T.text}}>{emp.name}</div>{rate!=null&&<div style={{fontSize:11,fontWeight:600,color:T.accent,whiteSpace:'nowrap'}}>kr {Math.round(rate).toLocaleString('da-DK')}/h</div>}</div><div style={{fontSize:11,color:T.text3}}>{empHours(emp.id)}h / {emp.maxHours}h</div>{(emp.roles||[]).length>0&&<div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:3}}>{(emp.roles||[]).map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<span key={r} style={{fontSize:9,fontWeight:600,color:isDark()?rs.dot:rs.text,background:isDark()?rs.dot+'22':rs.bg,border:`1px solid ${isDark()?rs.dot+'55':rs.border}`,padding:'1px 5px',borderRadius:999}}>{r}</span>;})}</div>}{emp._reasons?.length>0&&<div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:3}}>{emp._reasons.map(rc=><span key={rc} style={{fontSize:9,fontWeight:500,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,padding:'1px 5px',borderRadius:999}}>{reasonLabels[rc]}</span>)}</div>}</div></button>);};
                         const picker=pickerOpen&&(()=>{
                           const{available,unavailable}=candidatesForSlot(day,block.id,role);
                           const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
