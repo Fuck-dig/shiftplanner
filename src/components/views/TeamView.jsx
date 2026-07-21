@@ -9,11 +9,16 @@ export default function TeamView({
   schedule, employees, blocks, roleStyles, weekDates, weekOffset, timeOff, allRoles,
   gridGroupBy, setGridGroupBy, gridTight, setGridTight, gridSearch, setGridSearch,
   empHours, assignmentHours, openEditSlot, openShiftModalFor,
-  generate, generateMonth, offThisWeek, isMobile,
+  generate, generateMonth, offThisWeek, isMobile, reorderRoles,
   s, t,
 }){
   const [collapsedRoles,setCollapsedRoles]=useState(()=>new Set());
   const toggleRoleCollapse=(role)=>setCollapsedRoles(prev=>{const next=new Set(prev);if(next.has(role))next.delete(role);else next.add(role);return next;});
+  // Drag-and-drop role-group reordering — dragRole is what's being picked
+  // up, dragOverRole is whichever divider it's currently hovering (just for
+  // the highlight), both cleared on drop/dragend regardless of outcome.
+  const [dragRole,setDragRole]=useState(null);
+  const [dragOverRole,setDragOverRole]=useState(null);
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -73,9 +78,18 @@ export default function TeamView({
         const showDivider=gridGroupBy==='role'&&row.role!==prevRole;
         const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
         return(<div key={`${row.role||'all'}-${emp.id}`}>
-          {/* Role group divider — click to collapse/expand this role's rows */}
-          {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}}>
+          {/* Role group divider — click to collapse/expand, drag to reorder */}
+          {showDivider&&<div
+            onClick={()=>toggleRoleCollapse(row.role)}
+            draggable={gridGroupBy==='role'}
+            onDragStart={e=>{setDragRole(row.role);e.dataTransfer.effectAllowed='move';}}
+            onDragEnd={()=>{setDragRole(null);setDragOverRole(null);}}
+            onDragOver={e=>{if(dragRole&&dragRole!==row.role){e.preventDefault();if(dragOverRole!==row.role)setDragOverRole(row.role);}}}
+            onDragLeave={()=>{if(dragOverRole===row.role)setDragOverRole(null);}}
+            onDrop={e=>{e.preventDefault();reorderRoles&&reorderRoles(dragRole,row.role);setDragRole(null);setDragOverRole(null);}}
+            style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:reorderRoles?'grab':'pointer',userSelect:'none',opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
+              {reorderRoles&&<span style={{fontSize:11,color:T.text3,cursor:'grab',lineHeight:1}} title={t('grid.dragToReorder')}>⠿</span>}
               <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
               <RoleBadge role={row.role} rs={roleStyles[row.role]}/>
             </div>

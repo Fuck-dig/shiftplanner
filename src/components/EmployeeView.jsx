@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, DAYS, pal, initials, isDark } from '../lib/constants';
+import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleOrder } from '../lib/data';
@@ -10,7 +10,7 @@ import { load, save } from '../lib/storage';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn } from './ui';
+import { Btn, RoleBadge } from './ui';
 
 const roleColors = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
 
@@ -120,6 +120,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
+  // Employees never see the manager's actual roleStyles (colors aren't
+  // synced), so derive a stand-in from the same shared palette, keyed by
+  // each role's position in allRoles — matches what the manager sees by
+  // default whenever they haven't hand-picked a custom colour for a role.
+  const roleColorFor = (role) => { const i=allRoles.indexOf(role); return ROLE_COLOR_PALETTE[((i%ROLE_COLOR_PALETTE.length)+ROLE_COLOR_PALETTE.length)%ROLE_COLOR_PALETTE.length]; };
 
   const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
@@ -329,9 +334,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               const roleCollapsed=gridGroupBy==='role'&&row.role&&collapsedRoles.has(row.role);
               return(
                 <div key={`${row.role||'all'}-${emp.id}`}>
-                {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{padding:'6px '+(isMobile?'12px':'20px'),fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none',cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:6}}>
-                  <span style={{fontSize:9,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
-                  {row.role}
+                {showDivider&&<div onClick={()=>toggleRoleCollapse(row.role)} style={{padding:'6px '+(isMobile?'12px':'20px'),background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:ri>0?`2px solid ${T.border}`:'none',cursor:'pointer',userSelect:'none',display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
+                  <RoleBadge role={row.role} rs={roleColorFor(row.role)}/>
                 </div>}
                 {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
                   {/* Name */}

@@ -97,11 +97,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // needing a manual reorder first.
   const roleKeySet=Object.keys(roleStyles);
   const allRoles=[...roleOrder.filter(r=>roleKeySet.includes(r)), ...roleKeySet.filter(r=>!roleOrder.includes(r))];
-  const moveRole=(role,dir)=>{
-    const cur=allRoles;
-    const i=cur.indexOf(role),j=i+dir;
-    if(i<0||j<0||j>=cur.length)return;
-    const next=[...cur];[next[i],next[j]]=[next[j],next[i]];
+  // Drag-and-drop reorder (Team view, grouped "By role") — moves
+  // draggedRole to just before targetRole in the display order. Deliberately
+  // NOT exposed in Coverage's role list — reordering only happens by
+  // dragging role groups around in Team.
+  const reorderRoles=(draggedRole,targetRole)=>{
+    if(!draggedRole||draggedRole===targetRole)return;
+    const cur=allRoles.filter(r=>r!==draggedRole);
+    const idx=cur.indexOf(targetRole);
+    if(idx<0)return;
+    const next=[...cur.slice(0,idx),draggedRole,...cur.slice(idx)];
     setRoleOrder(next);
     saveRoleOrder(orgId,next).catch(err=>console.error('Save role order failed:',err));
   };
@@ -935,7 +940,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     schedule={schedule} employees={employees} blocks={blocks} roleStyles={roleStyles} weekDates={weekDates} weekOffset={weekOffset} timeOff={timeOff} allRoles={allRoles}
     gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} gridSearch={gridSearch} setGridSearch={setGridSearch}
     empHours={empHours} assignmentHours={assignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
-    generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile}
+    generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     s={s} t={t}
   />
 )}
@@ -983,7 +988,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 {/* COVERAGE */}
 {view==='coverage'&&(
   <CoverageView
-    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles} moveRole={moveRole}
+    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles}
     editingRole={editingRole} setEditingRole={setEditingRole} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
     setEmployees={setEmployees} blocks={blocks} setBlocks={setBlocks}
     templates={templates} saveCurrentAsTemplate={saveCurrentAsTemplate} applyTemplateBlocks={applyTemplateBlocks} deleteTemplateById={deleteTemplateById}

@@ -11,7 +11,7 @@ function CollapseToggle({ collapsed, onClick }){
 }
 
 export default function CoverageView({
-  allRoles, roleStyles, setRoleStyles, moveRole,
+  allRoles, roleStyles, setRoleStyles,
   editingRole, setEditingRole, confirmDelete, setConfirmDelete,
   setEmployees, blocks, setBlocks,
   templates, saveCurrentAsTemplate, applyTemplateBlocks, deleteTemplateById,
@@ -54,7 +54,7 @@ export default function CoverageView({
       {!rolesCollapsed && (<>
       <div style={{fontSize:12,color:T.text2,marginBottom:14,marginTop:10}}>{t('cov.rolesDesc')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {allRoles.map((role,ri)=>{
+        {allRoles.map(role=>{
           const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isProtected=role==='Manager',isEditing=editingRole?.name===role,isDeleting=confirmDelete===role;
           if(isEditing)return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'10px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
             <input autoFocus value={editingRole.newName} onChange={e=>setEditingRole(p=>({...p,newName:e.target.value}))} style={{...s.input,width:130,flex:'0 0 auto'}}/>
@@ -70,10 +70,6 @@ export default function CoverageView({
             <Btn small variant="ghost" onClick={()=>setConfirmDelete(null)}>{t('common.cancel')}</Btn>
           </div>);
           return(<div key={role} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-            {moveRole&&<div style={{display:'flex',flexDirection:'column',gap:0,marginRight:2}}>
-              <button onClick={()=>moveRole(role,-1)} disabled={ri===0} title={t('cov.moveUp')} style={{border:'none',background:'none',cursor:ri===0?'default':'pointer',opacity:ri===0?0.25:1,color:T.text3,fontSize:10,lineHeight:1,padding:'1px 3px',fontFamily:'inherit'}}>▲</button>
-              <button onClick={()=>moveRole(role,1)} disabled={ri===allRoles.length-1} title={t('cov.moveDown')} style={{border:'none',background:'none',cursor:ri===allRoles.length-1?'default':'pointer',opacity:ri===allRoles.length-1?0.25:1,color:T.text3,fontSize:10,lineHeight:1,padding:'1px 3px',fontFamily:'inherit'}}>▼</button>
-            </div>}
             <div style={{width:10,height:10,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
             <span style={{fontSize:13,fontWeight:500,color:T.text,flex:1}}>{role}</span>
             {isProtected&&<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('cov.protected')}</span>}
