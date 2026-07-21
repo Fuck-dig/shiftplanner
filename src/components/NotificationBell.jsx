@@ -2,6 +2,18 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { T } from '../lib/constants';
 import { fetchNotifications, markNotificationRead, markAllNotificationsRead } from '../lib/data';
 
+// A plain drawn bell (no emoji — emoji rendering varies by OS/font and reads
+// as a mismatched foreign glyph next to the rest of the icon-free, CSS-drawn
+// UI, same reasoning as GripDots in ui.jsx).
+function BellIcon(){
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 1.5c-2.2 0-3.6 1.6-3.6 3.9v1.7c0 .5-.2 1.2-.5 1.7l-.7 1.1c-.5.8 0 1.9 1 2.1 2.5.5 5.1.5 7.6 0 .9-.2 1.4-1.3.9-2.1l-.7-1.1c-.3-.5-.5-1.2-.5-1.7V5.4c0-2.2-1.5-3.9-3.5-3.9Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      <path d="M9.7 13.6a1.8 1.8 0 0 1-3.4 0" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 // Intl.RelativeTimeFormat covers en/da/es natively, so notification
 // timestamps don't need their own set of i18n keys.
 function relTime(iso, lang){
@@ -15,10 +27,11 @@ function relTime(iso, lang){
   return rtf.format(Math.round(diffH / 24), 'day');
 }
 
-// Employee-facing notification bell. Only rendered where we actually know
-// the viewer's own employees.id (EmployeeView, once myId resolves) —
-// managers get their "needs my attention" signal from the existing
-// pending-count badges (time off, swap claims) instead of this table.
+// Notification bell — used by both employees and managers/owners. Only
+// rendered where we actually know the viewer's own employees.id (i.e. once
+// myId resolves by matching their login email to a roster row); managers
+// who aren't also on the roster still get their "needs my attention" signal
+// from the existing pending-count badges (time off, swap claims) instead.
 export default function NotificationBell({ empId, t, lang, onNavigate }){
   const [items, setItems] = useState([]);
   const [open, setOpen]   = useState(false);
@@ -63,7 +76,7 @@ export default function NotificationBell({ empId, t, lang, onNavigate }){
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
       <button onClick={() => setOpen(o => !o)} title={t('notif.title')} style={{ width: 34, height: 34, borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, color: T.text2, cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-        <span>🔔</span>
+        <BellIcon/>
         {unread > 0 && <span style={{ position: 'absolute', top: -3, right: -3, minWidth: 15, height: 15, borderRadius: 999, background: T.danger, color: '#fff', fontSize: 9, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 3px', border: `1.5px solid ${T.surface}` }}>{unread > 9 ? '9+' : unread}</span>}
       </button>
       {open && (
