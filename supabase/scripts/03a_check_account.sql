@@ -1,3 +1,3 @@
-select id as user_id, email, created_at
-from auth.users
-where email = 'rorotatest@gmail.com';
+-- One-off diagnostic script used to debug the rorotatest@gmail.com invite
+-- issue, already resolved. Kept only because it can't be deleted from this
+-- environment; nothing to run here anymore.

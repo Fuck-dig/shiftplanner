@@ -15,6 +15,9 @@
 -- specific additional way to pass.
 -- ============================================================================
 
+-- Uses auth.email() rather than joining auth.users directly — regular
+-- authenticated users aren't granted SELECT on that table, only on the
+-- built-in auth.uid()/auth.email() helper functions.
 create policy "users can accept their own pending invitation" on memberships
   for insert
   with check (
@@ -22,9 +25,8 @@ create policy "users can accept their own pending invitation" on memberships
     and exists (
       select 1
       from invitations i
-      join auth.users u on u.id = auth.uid()
       where i.org_id = memberships.org_id
-        and i.email = lower(u.email)
+        and i.email = lower(auth.email())
         and i.used_at is null
     )
   );
