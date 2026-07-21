@@ -41,6 +41,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [selected,setSelected]       = useState(null);
   const [openPicker,setOpenPicker]   = useState(null);
   const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
+  const [pickerSortBy,setPickerSortBy] = useState('name'); // 'name' | 'avail' — sort for the "All staff" fallback list
   const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
   const ganttDragRef = useRef(null);
   const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
@@ -350,8 +351,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
       return{day,blockId,role};
     });
     setPickerRoleFilter([]);
+    setPickerSortBy('name');
   };
-  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); };
 
   // Assignments can carry an optional per-person start/end override (set by
   // dragging their bar in the Gantt view) that takes precedence over the
@@ -1013,7 +1015,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                           const{available,unavailable}=candidatesForSlot(day,block.id,role);
                           const rolesPresent=allRoles.filter(r=>available.some(e=>(e.roles||[]).includes(r))||unavailable.some(e=>(e.roles||[]).includes(r)));
                           const matchesFilter=emp=>pickerRoleFilter.length===0||(emp.roles||[]).some(r=>pickerRoleFilter.includes(r));
-                          const filteredAvailable=available.filter(matchesFilter),filteredUnavailable=unavailable.filter(matchesFilter);
+                          const filteredAvailable=available.filter(matchesFilter);
+                          const filteredUnavailable=[...unavailable.filter(matchesFilter)].sort((a,b)=>pickerSortBy==='avail'?((b._reasons?.length||0)-(a._reasons?.length||0))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
                           const toggleRoleFilter=r=>setPickerRoleFilter(p=>p.includes(r)?p.filter(x=>x!==r):[...p,r]);
                           return createPortal(
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
@@ -1027,7 +1030,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                                 {filteredAvailable.length===0&&filteredUnavailable.length===0?<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>:<>
                                   {filteredAvailable.length===0?<div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:T.danger,padding:'10px 8px',fontStyle:'italic'}}>⚠ {t('week.noOneAvailableForRole')}</div>:filteredAvailable.map(emp=>personRow(emp,false))}
                                   {filteredUnavailable.length>0&&<>
-                                    <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',padding:'10px 8px 6px',borderTop:filteredAvailable.length>0?`1px solid ${T.border}`:'none',marginTop:filteredAvailable.length>0?6:0}}>{t('week.allStaff')}</div>
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,flexWrap:'wrap',padding:'10px 8px 6px',borderTop:filteredAvailable.length>0?`1px solid ${T.border}`:'none',marginTop:filteredAvailable.length>0?6:0}}>
+                                      <span style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em'}}>{t('week.allStaff')}</span>
+                                      <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:7,padding:2,gap:1}}>
+                                        {[['name',t('week.sortByName')],['avail',t('week.sortByAvail')]].map(([k,l])=><button key={k} onClick={()=>setPickerSortBy(k)} style={{padding:'3px 8px',borderRadius:5,fontSize:10,fontWeight:pickerSortBy===k?600:400,background:pickerSortBy===k?T.bg:'transparent',border:pickerSortBy===k?`1px solid ${T.border}`:'1px solid transparent',color:pickerSortBy===k?T.text:T.text3,cursor:'pointer',fontFamily:'inherit'}}>{l}</button>)}
+                                      </div>
+                                    </div>
                                     {filteredUnavailable.map(emp=>personRow(emp,true))}
                                   </>}
                                 </>}
