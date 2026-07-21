@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
-import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate } from './lib/dates';
-import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
+import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
+import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
-import { migrateEmployee } from './lib/storage';
+import { migrateEmployee, load, save } from './lib/storage';
+import { mergeRoleOrder, reorderRoleList } from './lib/roles';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
 import { Avatar, RoleBadge, EmpChip, Btn, TimePicker, WeekPicker } from './components/ui';
@@ -20,11 +21,11 @@ import MonthView from './components/views/MonthView';
 import TeamView from './components/views/TeamView';
 import WeekView from './components/views/WeekView';
 import ProfileSettings from './components/ProfileSettings';
-import { LANGUAGES, makeT, detectLang } from './i18n';
+import { LANGUAGES, makeT, detectLang, LOCALES } from './i18n';
 
-const loadPref = (k, fb) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):fb; } catch { return fb; } };
-const savePref = (k, v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} };
-const ROLE_BADGE_COLORS = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
+// loadPref/savePref used to be redefined here, doing exactly what
+// lib/storage.js's load/save already do (and which EmployeeView.jsx, Auth.jsx
+// and RestaurantPicker.jsx already use) — now shared instead of duplicated.
 
 function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -47,7 +48,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // synced across users: each person (manager or employee) drags their own
   // Team view into whatever order makes sense to them, scoped per org since
   // different orgs have different role sets.
-  const [roleOrder,setRoleOrder]     = useState(()=>loadPref('sa2_roleOrder_'+orgId,[]));
+  const [roleOrder,setRoleOrder]     = useState(()=>load('sa2_roleOrder_'+orgId,[]));
   const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [editingRole,setEditingRole] = useState(null);
   const [confirmDelete,setConfirmDelete]=useState(null);
@@ -82,8 +83,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
   const [costsMode,setCostsMode]     = useState('week');
   const [costsWeekOffset,setCostsWeekOffset]=useState(0); // independent of the Schedule tab's own week
-  const [hourlyRate,setHourlyRateRaw]= useState(()=>loadPref('sa2_rate',{amount:150,currency:'kr'}));
-  const [lang,setLangRaw]            = useState(()=>loadPref('sa2_lang',detectLang()));
+  const [hourlyRate,setHourlyRateRaw]= useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
+  const [lang,setLangRaw]            = useState(()=>load('sa2_lang',detectLang()));
   const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
   const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
   useEffect(()=>{
@@ -92,29 +93,32 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return ()=>window.removeEventListener('resize',onResize);
   },[]);
 
-  const setLang=v=>{setLangRaw(v);savePref('sa2_lang',v);};
-  const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);savePref('sa2_rate',val);};
+  const setLang=v=>{setLangRaw(v);save('sa2_lang',v);};
+  const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);save('sa2_rate',val);};
   const t=makeT(lang);
+  // Date formatting (fmt/fmtLong in lib/dates.js) reads a module-level
+  // locale that defaults to en-GB — without this it never actually followed
+  // the selected language, so "23 Jul" would show even with Dansk/Español
+  // selected. setLocale is a plain module-level assignment (not React
+  // state), so this just needs to run whenever lang changes.
+  useEffect(()=>{ setLocale(LOCALES[lang]||'en-GB'); },[lang]);
   // Display/group order: whatever's been explicitly saved, plus any role
   // that exists in roleStyles but hasn't been ordered yet (newly added, or
   // roleOrder just hasn't loaded/been set up for this org) appended at the
   // end — so a fresh org or a brand-new role always shows up without
-  // needing a manual reorder first.
-  const roleKeySet=Object.keys(roleStyles);
-  const allRoles=[...roleOrder.filter(r=>roleKeySet.includes(r)), ...roleKeySet.filter(r=>!roleOrder.includes(r))];
+  // needing a manual reorder first. (mergeRoleOrder/reorderRoleList are
+  // shared with EmployeeView.jsx's identical merge — see lib/roles.js.)
+  const allRoles=mergeRoleOrder(roleOrder,Object.keys(roleStyles));
   // Drag-and-drop reorder (Team view, grouped "By role") — moves
   // draggedRole to just before targetRole in the display order. Deliberately
   // NOT exposed in Coverage's role list — reordering only happens by
   // dragging role groups around in Team. Saved to this browser only (see
   // roleOrder's init above) — not shared with other users.
   const reorderRoles=(draggedRole,targetRole)=>{
-    if(!draggedRole||draggedRole===targetRole)return;
-    const cur=allRoles.filter(r=>r!==draggedRole);
-    const idx=cur.indexOf(targetRole);
-    if(idx<0)return;
-    const next=[...cur.slice(0,idx),draggedRole,...cur.slice(idx)];
+    const next=reorderRoleList(allRoles,draggedRole,targetRole);
+    if(next===allRoles)return;
     setRoleOrder(next);
-    savePref('sa2_roleOrder_'+orgId,next);
+    save('sa2_roleOrder_'+orgId,next);
   };
 
   // debounce helper — tracks in-flight saves and surfaces failures (with a
@@ -154,9 +158,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // manual refresh.
   useEffect(()=>{
     let alive=true;
-    const load=()=>fetchShiftSwaps(orgId).then(v=>{if(alive)setSwaps(v);}).catch(err=>console.error('Load swaps failed:',err));
-    load();
-    const iv=setInterval(load,45000);
+    const loadSwaps=()=>fetchShiftSwaps(orgId).then(v=>{if(alive)setSwaps(v);}).catch(err=>console.error('Load swaps failed:',err));
+    loadSwaps();
+    const iv=setInterval(loadSwaps,45000);
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
@@ -510,11 +514,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   };
   const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); setPickerSearch(''); };
 
-  // Assignments can carry an optional per-person start/end override (set by
-  // dragging their bar in the Gantt view) that takes precedence over the
-  // block's default hours — this is what lets someone's actual worked time
-  // for a shift differ from the block's nominal window.
-  const assignmentHours=(a,b)=>blockHours({start:a.start||b.start,end:a.end||b.end});
+  // assignmentHours (assignments can carry an optional per-person start/end
+  // override, set by dragging their bar in the Gantt view) now lives in
+  // lib/schedule.js, shared with EmployeeView.jsx instead of being redefined
+  // identically in both places.
 
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
@@ -772,7 +775,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         <div style={{display:'flex',alignItems:'center',flex:1}}>
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
         </div>
-        <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:ROLE_BADGE_COLORS[role]?.bg||ROLE_BADGE_COLORS.employee.bg,color:ROLE_BADGE_COLORS[role]?.text||ROLE_BADGE_COLORS.employee.text,border:`1px solid ${ROLE_BADGE_COLORS[role]?.border||ROLE_BADGE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
+        <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:MEMBERSHIP_ROLE_COLORS[role]?.bg||MEMBERSHIP_ROLE_COLORS.employee.bg,color:MEMBERSHIP_ROLE_COLORS[role]?.text||MEMBERSHIP_ROLE_COLORS.employee.text,border:`1px solid ${MEMBERSHIP_ROLE_COLORS[role]?.border||MEMBERSHIP_ROLE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
         <span style={{marginRight:8}}><NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
@@ -1069,10 +1072,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 // ─── Outer App — auth gate ────────────────────────────────────────────────────
 export default function App(){
-  const [theme,setThemeRaw]=useState(()=>loadPref('sa2_theme','light'));
+  const [theme,setThemeRaw]=useState(()=>load('sa2_theme','light'));
   Object.assign(T,THEMES[theme]||THEMES.light);
   Object.assign(styles,computeStyles());
-  const toggleTheme=()=>{const next=theme==='dark'?'light':'dark';setThemeRaw(next);savePref('sa2_theme',next);};
+  const toggleTheme=()=>{const next=theme==='dark'?'light':'dark';setThemeRaw(next);save('sa2_theme',next);};
 
   const [session,setSession]    =useState(undefined);
   const [orgs,setOrgs]          =useState(undefined);

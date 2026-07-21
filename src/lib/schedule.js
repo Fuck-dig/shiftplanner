@@ -2,7 +2,11 @@ import { DAYS } from './constants';
 import { toMin, dateToISO } from './dates';
 
 export function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<=s) e+=1440; return (e-s)/60; }
-export function assignHours(b,a){ const s=toMin((a&&a.start)||b.start); let e=toMin((a&&a.end)||b.end); if(e<=s) e+=1440; return (e-s)/60; }
+// An assignment's actual hours, which may have its own custom start/end that
+// differ from the block's nominal window (falls back to the block's when
+// unset). Was previously redefined identically in both App.jsx and
+// EmployeeView.jsx — consolidated here so there's one definition to change.
+export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,end:a.end||b.end}); }
 export const prio=e=>e.priority??e.salaryPct??100;
 
 // Average weeks per calendar month — used to normalize a monthly salary into

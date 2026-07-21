@@ -1,13 +1,7 @@
 import { useState } from 'react';
-import { T, EMP_PALETTE } from '../lib/constants';
+import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Btn } from './ui';
-
-const roleColors = {
-  owner:    { bg: '#F5E2E2', text: '#963030', border: '#E8BABA' },
-  manager:  { bg: '#F5EAE2', text: '#7A3318', border: '#E8C0A0' },
-  employee: { bg: '#E5F0E9', text: '#236040', border: '#9FD8B8' },
-};
 
 // Account-settings tab (its own view, not a modal), used from both Dashboard
 // and EmployeeView. myEmp is the employees row matched to the logged-in
@@ -21,7 +15,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
   const [pw2, setPw2] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
   const [pwMsg, setPwMsg] = useState(null); // {ok:boolean, text:string} | null
-  const rc = roleColors[role] || roleColors.employee;
+  const rc = MEMBERSHIP_ROLE_COLORS[role] || MEMBERSHIP_ROLE_COLORS.employee;
   const isEmployee = role === 'employee';
 
   const saveName = () => {

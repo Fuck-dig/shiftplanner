@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
-import { Avatar, RoleBadge, Btn, GripDots } from '../ui';
+import { RoleBadge, Btn, GripDots } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
 export default function TeamView({

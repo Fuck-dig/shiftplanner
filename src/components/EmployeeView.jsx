@@ -1,18 +1,17 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE } from '../lib/constants';
-import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate } from '../lib/dates';
-import { blockHours, isOnTimeOff } from '../lib/schedule';
+import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
+import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
+import { assignmentHours, isOnTimeOff } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
 import { supabase } from '../lib/supabase';
-import { LANGUAGES, makeT, detectLang } from '../i18n';
-import { load, save } from '../lib/storage';
+import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
+import { load, save, migrateEmployee } from '../lib/storage';
+import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
 import { Btn, RoleBadge, GripDots, WeekPicker } from './ui';
-
-const roleColors = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -29,6 +28,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [lang, setLangRaw]        = useState(()=>load('sa2_lang', detectLang()));
   const setLang = v => { setLangRaw(v); save('sa2_lang', v); };
   const t = makeT(lang);
+  // Keep date formatting (fmt/fmtLong) following the selected language —
+  // was defaulting to en-GB regardless (see App.jsx for the manager-side
+  // equivalent of this fix).
+  useEffect(()=>{ setLocale(LOCALES[lang]||'en-GB'); },[lang]);
   const [isMobile,setIsMobile]    = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
   const [swaps, setSwaps]         = useState([]);       // all shift_swaps for this org, any week/status
   const [swapModal, setSwapModal] = useState(null);      // {day,blockId,blockName,role} while the give-away modal is open
@@ -74,7 +77,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         fetchRoleStyles(orgId).catch(err => { console.error('Load role colours failed:', err); return {}; }),
       ]).then(([emps, blks, to, scheds, rStyles]) => {
         if (!alive) return;
-        setEmployees(emps);
+        // Same defaulting App.jsx applies to its own fetch — without it, an
+        // employee record missing newer fields (targetHours, contractType,
+        // etc.) would show as undefined here even though the manager's own
+        // session already sees it defaulted.
+        setEmployees(emps.map(migrateEmployee));
         setBlocks(blks);
         setTimeOff(to);
         setSchedules(scheds);
@@ -115,8 +122,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   ])];
   // Display/group order: the manager's saved order (from Coverage), plus any
   // role that shows up here but isn't in that saved order yet, appended at
-  // the end — same self-healing merge Dashboard uses for its own allRoles.
-  const allRoles = [...roleOrder.filter(r=>discoveredRoles.includes(r)), ...discoveredRoles.filter(r=>!roleOrder.includes(r))];
+  // the end — same self-healing merge Dashboard uses for its own allRoles
+  // (mergeRoleOrder, shared via lib/roles.js).
+  const allRoles = mergeRoleOrder(roleOrder, discoveredRoles);
   // Team tab row order — mirrors the manager's TeamView grouping: sorted by
   // name, or bucketed by role (an employee with multiple roles appears once
   // per matching role, same as the manager side).
@@ -125,26 +133,23 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         .flatMap(role=>[...employees].filter(e=>(e.roles||[]).includes(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
-  // Employees never see the manager's actual roleStyles (colors aren't
-  // synced), so derive a stand-in from the same shared palette. Keyed by a
-  // hash of the role's own name — NOT its position in allRoles — so
-  // dragging roles into a new order doesn't shuffle everyone's colours
-  // around too; a given role name always lands on the same colour.
+  // roleStyles (the manager's real, Supabase-synced colours) covers most
+  // roles, but a role can exist here before it's ever been styled in
+  // Coverage (or the fetch simply hasn't resolved yet) — this hash-based
+  // stand-in is the fallback for that gap only. Keyed by a hash of the
+  // role's own name — NOT its position in allRoles — so dragging roles into
+  // a new order doesn't shuffle an unstyled role's stand-in colour too.
   const hashRole = (role) => { let h=0; for(let i=0;i<role.length;i++) h=(h*31+role.charCodeAt(i))>>>0; return h; };
   const roleColorFor = (role) => ROLE_COLOR_PALETTE[hashRole(role)%ROLE_COLOR_PALETTE.length];
   // Drag a role group to reorder it relative to the others — personal to
   // this browser (see roleOrder's init above), not shared with anyone else.
   const reorderRoles = (draggedRole, targetRole) => {
-    if (!draggedRole || draggedRole===targetRole) return;
-    const cur = allRoles.filter(r=>r!==draggedRole);
-    const idx = cur.indexOf(targetRole);
-    if (idx<0) return;
-    const next = [...cur.slice(0,idx), draggedRole, ...cur.slice(idx)];
+    const next = reorderRoleList(allRoles, draggedRole, targetRole);
+    if (next===allRoles) return;
     setRoleOrder(next);
     save('sa2_roleOrder_'+orgId, next);
   };
 
-  const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
     if (!schedule) { acc[e.id] = 0; return acc; }
     let h = 0;
@@ -242,7 +247,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:isMobile?18:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0}}>Rorota</span>
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
         </div>
-        {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(roleColors[role]||roleColors.employee).bg,color:(roleColors[role]||roleColors.employee).text,border:`1px solid ${(roleColors[role]||roleColors.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
+        {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).bg,color:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).text,border:`1px solid ${(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
         <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginRight:isMobile?6:10,flexShrink:0}}>
           <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
           <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>

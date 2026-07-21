@@ -1,15 +1,9 @@
 import { useState } from 'react';
-import { T, isDark } from '../lib/constants';
+import { T, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { createOrg } from '../lib/org';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
-
-const roleColors = {
-  owner:    { bg: '#F5E2E2', text: '#963030', border: '#E8BABA' },
-  manager:  { bg: '#F5EAE2', text: '#7A3318', border: '#E8C0A0' },
-  employee: { bg: '#E5F0E9', text: '#236040', border: '#9FD8B8' },
-};
 
 export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, toggleTheme }) {
   const [showCreate, setShowCreate] = useState(false);
@@ -58,7 +52,7 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, tog
           {/* Restaurant cards */}
           <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:16}}>
             {orgs.map(org => {
-              const rc = roleColors[org.role] || roleColors.employee;
+              const rc = MEMBERSHIP_ROLE_COLORS[org.role] || MEMBERSHIP_ROLE_COLORS.employee;
               return (
                 <button key={org.id} onClick={() => onSelect(org.id)}
                   style={{display:'flex',alignItems:'center',gap:16,padding:'16px 20px',borderRadius:14,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit',textAlign:'left',transition:'all 0.15s',boxShadow:'0 1px 2px rgba(33,27,21,0.04), 0 8px 20px -12px rgba(33,27,21,0.12)'}}

@@ -60,6 +60,17 @@ export const DEFAULT_ROLE_STYLES = {
   Other:     { dot:'#5C5A58', bg:'#F2F1EF', text:'#4A4844', border:'#C8C4BE' },
 };
 
+// Colours for the org-membership role badge (owner/manager/employee — as
+// opposed to DEFAULT_ROLE_STYLES above, which is for staffing roles like
+// Bartender/Kitchen). Was copy-pasted identically under different local
+// names in App.jsx, EmployeeView.jsx, RestaurantPicker.jsx and
+// ProfileSettings.jsx — one definition here instead.
+export const MEMBERSHIP_ROLE_COLORS = {
+  owner:    { bg:'#F5E2E2', text:'#963030', border:'#E8BABA' },
+  manager:  { bg:'#F5EAE2', text:'#7A3318', border:'#E8C0A0' },
+  employee: { bg:'#E5F0E9', text:'#236040', border:'#9FD8B8' },
+};
+
 export const EMP_PALETTE = [
   { bg:'#EAF3FB', text:'#165C8C', dot:'#1A6FA8' },
   { bg:'#E8F5EE', text:'#236040', dot:'#2D7A4F' },
