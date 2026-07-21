@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
 import { assignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
@@ -193,6 +193,36 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     acc[e.id] = h; return acc;
   }, {});
 
+  // Hours across an arbitrary [startISO,endISO] range (inclusive) — unlike
+  // empHoursMap above, which only ever looks at the single week currently
+  // loaded into `schedule`. `schedules` already holds every week's data for
+  // the org (fetched once on load), so a longer lookback like
+  // "month-to-date" needs no extra fetch — just walk every week key we
+  // already have and pick out the days that fall in range.
+  const hoursInRange = (empId, startISO, endISO) => {
+    let total = 0;
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day,i) => {
+        const d = new Date(monday); d.setDate(monday.getDate()+i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id]||[]).find(x=>x.empId===empId);
+          if (a) total += assignmentHours(a,b);
+        });
+      });
+    });
+    return total;
+  };
+  const myMonthHours = myId ? (() => {
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    return hoursInRange(myId, startISO, todayISO());
+  })() : 0;
+
   const me = employees.find(e=>e.id===myId);
 
   const saveMyName = (newName) => {
@@ -208,6 +238,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const saveMyPhone = (phone) => {
     updateEmployeeSelfProfile(myId, { phone })
       .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,phone}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
+  const saveMyAvailability = (availability) => {
+    updateEmployeeSelfProfile(myId, { availability })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,availability}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
 
@@ -310,6 +345,65 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       setTimeOffModalOpen(false);
     }catch(err){ alert(err.message||'Failed to submit request'); }
     finally{ setToBusy(false); }
+  };
+
+  // Withdraw one of my own still-Pending requests — the UI only ever calls
+  // this while status is 'Pending' (see myTimeOff render below), so there's
+  // no risk of retracting something a manager already acted on.
+  const cancelMyTimeOff = async (id) => {
+    setToBusy(true);
+    try{
+      await deleteTimeOffRequest(id);
+      setTimeOff(p=>p.filter(to=>to.id!==id));
+    }catch(err){ alert(err.message||'Failed to cancel request'); }
+    finally{ setToBusy(false); }
+  };
+
+  // Download an .ics file of my own upcoming shifts (this week onward,
+  // across every week already loaded into `schedules`) so it can be
+  // imported into Google/Apple/Outlook calendar. A live auto-syncing feed
+  // would need a public server endpoint (a Supabase Edge Function serving
+  // ICS over an unauthenticated URL) — a bigger lift than a one-off
+  // download, so this covers the common case for now.
+  const exportMyScheduleICS = () => {
+    if (!myId) return;
+    const fmtDT = (d) => `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}00`;
+    const escapeText = (str) => String(str).replace(/[\\,;]/g, m=>'\\'+m);
+    const todayIso = todayISO();
+    const events = [];
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day,i) => {
+        const d = new Date(monday); d.setDate(monday.getDate()+i);
+        if (dateToISO(d) < todayIso) return; // upcoming only, not history
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id]||[]).find(x=>x.empId===myId);
+          if (!a) return;
+          const st = a.start||b.start, en = a.end||b.end;
+          const [sh,sm] = st.split(':').map(Number);
+          const [eh,em] = en.split(':').map(Number);
+          const start = new Date(d.getFullYear(),d.getMonth(),d.getDate(),sh,sm);
+          const end = new Date(d.getFullYear(),d.getMonth(),d.getDate(),eh,em);
+          if (end<=start) end.setDate(end.getDate()+1); // shift rolls past midnight
+          events.push({ uid:`${wk}-${day}-${b.id}-${myId}@rorota.net`, start, end, summary: b.name+(a.role?' · '+a.role:'') });
+        });
+      });
+    });
+    events.sort((x,y)=>x.start-y.start);
+    const nowStamp = fmtDT(new Date())+'Z';
+    const lines = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rorota//Schedule//EN','CALSCALE:GREGORIAN'];
+    events.forEach(ev=>{
+      lines.push('BEGIN:VEVENT',`UID:${ev.uid}`,`DTSTAMP:${nowStamp}`,`DTSTART:${fmtDT(ev.start)}`,`DTEND:${fmtDT(ev.end)}`,`SUMMARY:${escapeText(ev.summary)}`,'END:VEVENT');
+    });
+    lines.push('END:VCALENDAR');
+    const blob = new Blob([lines.join('\r\n')], { type:'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = 'my-shifts.ics';
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // A swap references a week by its key, not the currently-viewed offset —
@@ -434,7 +528,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
@@ -457,6 +551,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           </div>
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
+          {myId && <Btn small variant="ghost" onClick={exportMyScheduleICS}>{t('emp.exportSchedule')}</Btn>}
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginLeft:'auto'}}>
             {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
           </div>
@@ -535,6 +630,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                   <div key={to.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
                     <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{to.type} · {fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
                     <span style={{fontSize:11,color:to.status==='Approved'?T.success:to.status==='Rejected'?T.danger:T.text3}}>{t('to.'+to.status.toLowerCase())}</span>
+                    {to.status==='Pending' && <Btn small variant="danger" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
                   </div>
                 ))}
               </div>

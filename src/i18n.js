@@ -64,6 +64,7 @@ const STRINGS = {
     'picker.createFailed':'Could not create restaurant.',
 
     'emp.published':'Published',
+    'emp.exportSchedule':'Export my shifts',
     'emp.noScheduleTitle':'No schedule yet',
     'emp.noScheduleDesc':'The manager hasn’t published a rota for this week yet. Check back soon.',
     'emp.hoursThisWeek':'{h}h this week',
@@ -222,6 +223,7 @@ const STRINGS = {
     'to.approve':'Approve',
     'to.reject':'Reject',
     'to.reset':'Reset',
+    'to.cancel':'Cancel request',
 
     'cov.roles':'Roles',
     'cov.rolesDesc':'Define the roles at your workplace. Manager cannot be removed.',
@@ -303,6 +305,9 @@ const STRINGS = {
     'profile.role':'Role',
     'profile.myDisplayName':'My display name',
     'profile.avatarColor':'Avatar colour',
+    'profile.hoursWorked':'Hours worked',
+    'profile.thisWeek':'This week',
+    'profile.thisMonthToDate':'This month to date',
     'profile.save':'Save',
     'profile.saved':'Saved ✓',
     'profile.noEmployeeRecord':'No roster entry is linked to your login email yet — ask a manager to add your email under Employees to unlock your display name and avatar colour.',
@@ -426,6 +431,7 @@ const STRINGS = {
     'picker.createFailed':'Kunne ikke oprette restauranten.',
 
     'emp.published':'Udgivet',
+    'emp.exportSchedule':'Eksporter mine vagter',
     'emp.noScheduleTitle':'Ingen vagtplan endnu',
     'emp.noScheduleDesc':'Din leder har endnu ikke udgivet en vagtplan for denne uge. Kig forbi igen snart.',
     'emp.hoursThisWeek':'{h}t denne uge',
@@ -584,6 +590,7 @@ const STRINGS = {
     'to.approve':'Godkend',
     'to.reject':'Afvis',
     'to.reset':'Nulstil',
+    'to.cancel':'Annuller anmodning',
 
     'cov.roles':'Roller',
     'cov.rolesDesc':'Definér rollerne på din arbejdsplads. Leder kan ikke fjernes.',
@@ -665,6 +672,9 @@ const STRINGS = {
     'profile.role':'Rolle',
     'profile.myDisplayName':'Mit visningsnavn',
     'profile.avatarColor':'Avatarfarve',
+    'profile.hoursWorked':'Arbejdstimer',
+    'profile.thisWeek':'Denne uge',
+    'profile.thisMonthToDate':'Denne måned indtil nu',
     'profile.save':'Gem',
     'profile.saved':'Gemt ✓',
     'profile.noEmployeeRecord':'Der er endnu ingen medarbejder i systemet knyttet til din login-e-mail — bed en leder om at tilføje din e-mail under Medarbejdere for at låse op for dit visningsnavn og din avatarfarve.',
@@ -788,6 +798,7 @@ const STRINGS = {
     'picker.createFailed':'No se pudo crear el restaurante.',
 
     'emp.published':'Publicado',
+    'emp.exportSchedule':'Exportar mis turnos',
     'emp.noScheduleTitle':'Aún no hay horario',
     'emp.noScheduleDesc':'El gerente todavía no ha publicado un horario para esta semana. Vuelve pronto.',
     'emp.hoursThisWeek':'{h}h esta semana',
@@ -946,6 +957,7 @@ const STRINGS = {
     'to.approve':'Aprobar',
     'to.reject':'Rechazar',
     'to.reset':'Restablecer',
+    'to.cancel':'Cancelar solicitud',
 
     'cov.roles':'Roles',
     'cov.rolesDesc':'Define los roles de tu lugar de trabajo. Encargado no se puede eliminar.',
@@ -1027,6 +1039,9 @@ const STRINGS = {
     'profile.role':'Rol',
     'profile.myDisplayName':'Mi nombre visible',
     'profile.avatarColor':'Color de avatar',
+    'profile.hoursWorked':'Horas trabajadas',
+    'profile.thisWeek':'Esta semana',
+    'profile.thisMonthToDate':'Este mes hasta la fecha',
     'profile.save':'Guardar',
     'profile.saved':'Guardado ✓',
     'profile.noEmployeeRecord':'Aún no hay ningún empleado vinculado a tu correo de inicio de sesión — pide a un encargado que añada tu correo en Empleados para desbloquear tu nombre visible y color de avatar.',

@@ -263,6 +263,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const saveMyName=(newName)=>updateEmp(myId,'name',newName);
   const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
   const saveMyPhone=(phone)=>updateEmp(myId,'phone',phone);
+  const saveMyAvailability=(availability)=>updateEmp(myId,'availability',availability);
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -1074,7 +1075,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} s={s} t={t}/>
 )}
 
       </div>

@@ -133,6 +133,15 @@ export async function createTimeOffRequest(orgId, { empId, type, startDate, endD
   return toFromRow(data);
 }
 
+// Withdraw a request that's still awaiting a decision — same incremental,
+// single-row shape as createTimeOffRequest above. The employee-side caller
+// only offers this while status is still 'Pending' (once a manager has
+// approved/rejected it, that decision should stick).
+export async function deleteTimeOffRequest(id){
+  const { error } = await supabase.from('time_off').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function syncTimeOff(orgId, timeOff){
   const rows = timeOff.map(x => toToRow(orgId, x));
   if (rows.length){
@@ -302,11 +311,12 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone } = {}){
+export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability } = {}){
   const row = {};
   if (name != null)   row.name = name;
   if (palIdx != null)  row.pal_idx = palIdx;
   if (phone != null)  row.phone = phone;
+  if (availability != null) row.availability = availability;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;
