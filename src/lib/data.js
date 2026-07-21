@@ -117,6 +117,20 @@ export async function fetchTimeOff(orgId){
   return (data || []).map(toFromRow);
 }
 
+// Employee-initiated time-off/vacation request — incremental single-row
+// insert, unlike syncTimeOff below (which diffs/deletes the whole array and
+// is the manager Dashboard's territory). An employee session only ever
+// holds a read snapshot of the org's time_off, not something safe to
+// resync wholesale on submit. Always created as 'Pending' — a manager
+// approves/rejects it from their existing Time Off view.
+export async function createTimeOffRequest(orgId, { empId, type, startDate, endDate, note }){
+  const row = toToRow(orgId, { empId, type, startDate, endDate, status: 'Pending', note });
+  delete row.id; // let the DB default assign it
+  const { data, error } = await supabase.from('time_off').insert(row).select().single();
+  if (error) throw error;
+  return toFromRow(data);
+}
+
 export async function syncTimeOff(orgId, timeOff){
   const rows = timeOff.map(x => toToRow(orgId, x));
   if (rows.length){

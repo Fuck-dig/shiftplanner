@@ -164,6 +164,18 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
+  // Time off can now also be filed directly by an employee (their own
+  // time-off/vacation request form), not just entered here — so, like
+  // shift swaps above, poll it instead of loading once, so a newly
+  // submitted 'Pending' request reaches this attention bell without a
+  // manual refresh. Uses setTORaw directly (not setTimeOff) so polling
+  // never re-triggers the debounced whole-array sync back to Supabase.
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{ fetchTimeOff(orgId).then(v=>{if(alive)setTORaw(v);}).catch(err=>console.error('Poll time off failed:',err)); },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
   // Templates are only ever written from this same Dashboard, so a single
   // load on mount/org-change is enough — no polling needed.
   useEffect(()=>{
