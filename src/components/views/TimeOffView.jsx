@@ -7,9 +7,23 @@ export default function TimeOffView({
   toFilter, setToFilter,
   showAddTO, setShowAddTO, newTO, setNewTO, addTO,
   employees, filteredTO, updateTOStatus, removeTO,
+  pendingSwaps, blocks, approveSwap, declineSwapManager,
   s, t,
 }){
   return (<div style={{display:'flex',flexDirection:'column',gap:12}}>
+    {pendingSwaps.length>0&&(<div style={s.card}>
+      <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:12}}>{t('swap.pendingApprovals')}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {pendingSwaps.map(sw=>{
+          const from=employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId),block=blocks.find(b=>b.id===sw.blockId);
+          return(<div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',borderRadius:10,border:`1px solid ${T.border}`,background:T.surfaceWarm}}>
+            <span style={{fontSize:12,color:T.text,flex:1,minWidth:200}}><b>{from?.name||'?'}</b> {t('swap.to',{name:claimant?.name||'?'})} · {block?.name||''} · {sw.role} · {t('day.'+sw.day)}</span>
+            <Btn small variant="success" onClick={()=>approveSwap(sw)}>{t('swap.approve')}</Btn>
+            <Btn small variant="danger" onClick={()=>declineSwapManager(sw)}>{t('to.reject')}</Btn>
+          </div>);
+        })}
+      </div>
+    </div>)}
     {offThisWeek.length>0&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'12px 16px'}}>
       <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>{t('sched.onLeaveWeek')} ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>

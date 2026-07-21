@@ -30,6 +30,7 @@ export default function EmployeesView({
       {expandedEmp===emp.id&&(<div style={{marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
         <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
           <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
+        <div style={{flex:'2 1 160px'}}><SectionLabel>{t('emp.email')}</SectionLabel><input type="email" value={emp.email||''} onChange={e=>updateEmp(emp.id,'email',e.target.value)} placeholder={t('team.emailPlaceholder')} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.emailHint')}</div></div>
         </div>
         <div style={{marginBottom:12}}>
           <SectionLabel>{t('emp.roles')}</SectionLabel>
@@ -62,6 +63,7 @@ export default function EmployeesView({
       <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.newEmployee')}</div>
       <div style={{display:'flex',gap:8,marginBottom:10,flexWrap:'wrap'}}>
         <input placeholder={t('emp.fullName')} value={newEmp.name} onChange={e=>setNewEmp(p=>({...p,name:e.target.value}))} style={{...s.input,flex:'2 1 130px'}} autoFocus/>
+        <input type="email" placeholder={t('team.emailPlaceholder')} value={newEmp.email||''} onChange={e=>setNewEmp(p=>({...p,email:e.target.value}))} style={{...s.input,flex:'2 1 160px'}}/>
         <div style={{flex:'2 1 200px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:4}}>{t('emp.roles')}</div><div style={{display:'flex',gap:4,flexWrap:'wrap'}}>{allRoles.map(r=>{const active=(newEmp.roles||[]).includes(r),rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other;return<button key={r} onClick={()=>{const cur=newEmp.roles||[];const next=active?cur.filter(x=>x!==r):[...cur,r];if(next.length>0)setNewEmp(p=>({...p,roles:next}));}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 9px',borderRadius:999,fontSize:11,fontWeight:500,background:active?rs.bg:'transparent',color:active?rs.text:T.text3,border:`1px solid ${active?rs.border:T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>;})}
         </div></div>
       </div>

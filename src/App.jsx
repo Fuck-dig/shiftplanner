@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
@@ -35,6 +35,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [blocks,setBlocksRaw]        = useState([]);
   const [schedules,setSchedsRaw]     = useState({});
   const [timeOff,setTORaw]           = useState([]);
+  const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
+  const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
   const [weekOffset,setWeekOffset]   = useState(0);
   const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
   const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
@@ -59,7 +61,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [editRole,setEditRole]                   = useState(null);
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
-  const [newEmp,setNewEmp]           = useState({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
+  const [newEmp,setNewEmp]           = useState({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
   const [showAddTO,setShowAddTO]     = useState(false);
   const [newTO,setNewTO]             = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,setToFilter]       = useState('all');
@@ -114,6 +116,26 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         setBlocksRaw(blks.length?blks:DEFAULT_BLOCKS);
         setTORaw(to); setSchedsRaw(scheds); setLoading(false);
       }).catch(err=>{console.error('Load error:',err);if(alive)setLoading(false);});
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // Shift swaps are written incrementally by employees in their own
+  // sessions, so there's nothing here to debounce-sync — just poll (no
+  // realtime subscription yet) so newly-claimed swaps show up without a
+  // manual refresh.
+  useEffect(()=>{
+    let alive=true;
+    const load=()=>fetchShiftSwaps(orgId).then(v=>{if(alive)setSwaps(v);}).catch(err=>console.error('Load swaps failed:',err));
+    load();
+    const iv=setInterval(load,45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Templates are only ever written from this same Dashboard, so a single
+  // load on mount/org-change is enough — no polling needed.
+  useEffect(()=>{
+    let alive=true;
+    fetchTemplates(orgId).then(v=>{if(alive)setTemplates(v);}).catch(err=>console.error('Load templates failed:',err));
     return ()=>{alive=false;};
   },[orgId]);
 
@@ -314,7 +336,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     },100);
   };
 
-  const confirmSchedule   =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));
+  // Notify every employee who has a shift this week that the schedule is
+  // live. Fire-and-forget: a failed notification insert shouldn't block
+  // confirming the schedule itself (it's just retried implicitly next time
+  // this employee's bell polls anyway if we ever add retry — for now it's
+  // logged and otherwise ignored).
+  const notifySchedulePublished=()=>{
+    if(!schedule)return;
+    const empIds=new Set();
+    DAYS.forEach(day=>blocks.forEach(b=>(schedule[day]?.[b.id]||[]).forEach(a=>empIds.add(a.empId))));
+    const week=`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
+    empIds.forEach(empId=>{
+      createNotification(orgId,empId,{type:'schedule_published',messageKey:'notif.schedulePublished',messageVars:{week}}).catch(err=>console.error('Notify failed:',err));
+    });
+  };
+  const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();};
   const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
   const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);};
   const deleteMonth       =()=>{const offs=getMonthOffsets(displayMonth);setSchedules(p=>{const n={...p};offs.forEach(off=>delete n[weekKey(off)]);return n;});};
@@ -555,17 +591,62 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const updateAvail =(id,day,f,v)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day]||{from:'10:00',to:'18:00'};return{...e,availability:{...e.availability,[day]:{...cur,[f]:v}}};}));
   const toggleDay   =(id,day)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day];return{...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}};}));
   const applyTemplate=(id,tpl)=>{const tmpl=AVAIL_TEMPLATES[tpl];if(tmpl)setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tmpl))}:e));};
-  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',palIdx:p.length%EMP_PALETTE.length}]);
+  // Cloning an employee deliberately drops email — two roster rows sharing
+  // one login email would make "which one am I" ambiguous in EmployeeView.
+  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length}]);
   const removeEmp   =id=>{setEmployees(p=>p.filter(e=>e.id!==id));if(expandedEmp===id)setExpandedEmp(null);};
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
     setEmployees(p=>[...p,{...newEmp,id:crypto.randomUUID(),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]);
-    setNewEmp({name:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});setShowAddEmp(false);
+    setNewEmp({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});setShowAddEmp(false);
   };
 
   const addTO         =()=>{if(!newTO.empId)return;setTimeOff(p=>[...p,{...newTO,id:crypto.randomUUID()}]);setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});setShowAddTO(false);};
   const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
   const removeTO      =id=>setTimeOff(p=>p.filter(t=>t.id!==id));
+
+  const reloadSwaps=()=>fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err));
+  const pendingSwaps=swaps.filter(sw=>sw.status==='claimed');
+
+  // Move the assignment on the real schedule from whoever offered the shift
+  // to whoever claimed it, then mark the swap approved and let both sides
+  // know. The swap may reference a week other than the one currently being
+  // viewed, so it's looked up by weekKey rather than assumed to be `schedule`.
+  const approveSwap=(sw)=>{
+    const weekEntry=schedules[sw.weekKey];
+    const list=weekEntry?.schedule?.[sw.day]?.[sw.blockId];
+    const idx=list?list.findIndex(a=>a.empId===sw.fromEmpId&&a.role===sw.role):-1;
+    const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+    if(idx==null||idx<0||!claimant){alert(t('swap.approveFailed'));return;}
+    const ns=JSON.parse(JSON.stringify(schedules));
+    const entry=ns[sw.weekKey].schedule[sw.day][sw.blockId][idx];
+    ns[sw.weekKey].schedule[sw.day][sw.blockId][idx]={...entry,empId:claimant.id,name:claimant.name};
+    setSchedules(ns);
+    updateShiftSwap(sw.id,{status:'approved'}).catch(err=>console.error(err));
+    const day=t('day.'+sw.day);
+    createNotification(orgId,sw.fromEmpId,{type:'swap_approved',messageKey:'notif.swapApproved',messageVars:{day}}).catch(err=>console.error(err));
+    createNotification(orgId,sw.claimedByEmpId,{type:'swap_approved',messageKey:'notif.swapApproved',messageVars:{day}}).catch(err=>console.error(err));
+    reloadSwaps();
+  };
+
+  const declineSwapManager=(sw)=>{
+    updateShiftSwap(sw.id,{status:'declined'}).catch(err=>console.error(err));
+    const day=t('day.'+sw.day);
+    createNotification(orgId,sw.fromEmpId,{type:'swap_declined',messageKey:'notif.swapDeclined',messageVars:{day}}).catch(err=>console.error(err));
+    if(sw.claimedByEmpId) createNotification(orgId,sw.claimedByEmpId,{type:'swap_declined',messageKey:'notif.swapDeclined',messageVars:{day}}).catch(err=>console.error(err));
+    reloadSwaps();
+  };
+
+  const saveCurrentAsTemplate=(name)=>{
+    saveTemplate(orgId,name,blocks).then(tpl=>setTemplates(p=>[tpl,...p])).catch(err=>{console.error(err);alert(t('save.failedGeneric'));});
+  };
+  const applyTemplateBlocks=(tpl)=>{
+    if(!confirm(t('tmpl.applyConfirm',{name:tpl.name})))return;
+    setBlocks(tpl.blocks);
+  };
+  const deleteTemplateById=(id)=>{
+    deleteTemplate(id).then(()=>setTemplates(p=>p.filter(x=>x.id!==id))).catch(err=>{console.error(err);alert(t('save.failedGeneric'));});
+  };
 
   const calcWageCost=(e,hours)=>{const rate=effectiveHourlyRate(e);if(rate==null)return parseFloat((hours*(e.priority||100)/100).toFixed(2));return parseFloat((hours*rate).toFixed(2));};
   const hasWages=employees.some(e=>e.wage>0);
@@ -588,7 +669,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
   const stats=totalStats();
   const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
-  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:pendingCount?`${t('nav.timeoff')} · ${pendingCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const attentionCount=pendingCount+pendingSwaps.length;
+  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
   const s=styles;
@@ -851,6 +933,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     toFilter={toFilter} setToFilter={setToFilter}
     showAddTO={showAddTO} setShowAddTO={setShowAddTO} newTO={newTO} setNewTO={setNewTO} addTO={addTO}
     employees={employees} filteredTO={filteredTO} updateTOStatus={updateTOStatus} removeTO={removeTO}
+    pendingSwaps={pendingSwaps} blocks={blocks} approveSwap={approveSwap} declineSwapManager={declineSwapManager}
     s={s} t={t}
   />
 )}
@@ -861,6 +944,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles}
     editingRole={editingRole} setEditingRole={setEditingRole} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
     setEmployees={setEmployees} blocks={blocks} setBlocks={setBlocks}
+    templates={templates} saveCurrentAsTemplate={saveCurrentAsTemplate} applyTemplateBlocks={applyTemplateBlocks} deleteTemplateById={deleteTemplateById}
     s={s} t={t}
   />
 )}

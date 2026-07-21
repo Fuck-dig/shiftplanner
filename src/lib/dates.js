@@ -26,6 +26,14 @@ export function weekKey(off){
   return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`;
 }
 
+// Inverse of weekKey() — turns a "YYYY-MM-DD" (Monday) key back into a Date,
+// for anything that only stores the string (e.g. shift_swaps.week_key) but
+// needs a real date to check time-off against or to display.
+export function weekKeyToMonday(key){
+  const [y,m,d]=key.split('-').map(Number);
+  return new Date(y,m-1,d);
+}
+
 export function dateToISO(d){
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { T, DAYS, ROLE_COLOR_PALETTE, DEFAULT_ROLE_STYLES, isDark } from '../../lib/constants';
 import { blockHours } from '../../lib/schedule';
 import { Btn, SectionLabel, AddRoleInline } from '../ui';
@@ -6,9 +7,31 @@ export default function CoverageView({
   allRoles, roleStyles, setRoleStyles,
   editingRole, setEditingRole, confirmDelete, setConfirmDelete,
   setEmployees, blocks, setBlocks,
+  templates, saveCurrentAsTemplate, applyTemplateBlocks, deleteTemplateById,
   s, t,
 }){
+  const [newTplName,setNewTplName]=useState('');
   return (<div style={{display:'flex',flexDirection:'column',gap:12}}>
+    <div style={s.card}>
+      <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('tmpl.savedTemplates')}</div>
+      <div style={{display:'flex',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+        <input value={newTplName} onChange={e=>setNewTplName(e.target.value)} placeholder={t('tmpl.namePlaceholder')} style={{...s.input,flex:'2 1 200px'}}/>
+        <Btn onClick={()=>{if(newTplName.trim()){saveCurrentAsTemplate(newTplName.trim());setNewTplName('');}}} variant="secondary">{t('tmpl.save')}</Btn>
+      </div>
+      {templates.length===0?(
+        <div style={{fontSize:12,color:T.text3,fontStyle:'italic'}}>{t('tmpl.none')}</div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {templates.map(tpl=>(
+            <div key={tpl.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <span style={{fontSize:13,fontWeight:500,color:T.text,flex:1,minWidth:120}}>{tpl.name}</span>
+              <Btn small onClick={()=>applyTemplateBlocks(tpl)}>{t('tmpl.apply')}</Btn>
+              <Btn small variant="danger" onClick={()=>deleteTemplateById(tpl.id)}>{t('tmpl.delete')}</Btn>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
     <div style={s.card}>
       <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cov.roles')}</div>
       <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('cov.rolesDesc')}</div>
