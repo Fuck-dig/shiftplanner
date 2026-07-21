@@ -86,10 +86,14 @@ export async function acceptPendingInvitations(){
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return 0;
 
+  // createInvitation() stores the email lowercased — match the same way here,
+  // otherwise a casing difference between how the manager typed the invite
+  // and how the invited person's account email is capitalized means the
+  // invite is silently never found, and they end up with zero orgs.
   const { data: invites, error: fetchErr } = await supabase
     .from('invitations')
     .select('id, org_id, role')
-    .eq('email', user.email)
+    .eq('email', (user.email||'').toLowerCase().trim())
     .is('used_at', null);
   if (fetchErr) throw fetchErr;
 

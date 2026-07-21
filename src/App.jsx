@@ -18,16 +18,18 @@ import CostsView from './components/views/CostsView';
 import MonthView from './components/views/MonthView';
 import TeamView from './components/views/TeamView';
 import WeekView from './components/views/WeekView';
+import ProfileSettings from './components/ProfileSettings';
 import { LANGUAGES, makeT, detectLang } from './i18n';
 
 const loadPref = (k, fb) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):fb; } catch { return fb; } };
 const savePref = (k, v) => { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} };
+const ROLE_BADGE_COLORS = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
 
 function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
 }
 
-function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTheme, onBack=()=>{} }) {
+function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', theme, toggleTheme, onBack=()=>{} }) {
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
@@ -37,6 +39,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   const [timeOff,setTORaw]           = useState([]);
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
   const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
+  const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
+  const [showProfile,setShowProfile] = useState(false);
   const [weekOffset,setWeekOffset]   = useState(0);
   const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
   const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
@@ -139,6 +143,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
     return ()=>{alive=false;};
   },[orgId]);
 
+  // A manager/owner might ALSO be on the schedule roster (e.g. a working
+  // owner) — used only for the profile page's "my display name/avatar"
+  // section, same self-match EmployeeView does for its own session.
+  useEffect(()=>{
+    let alive=true;
+    supabase.auth.getUser().then(({data})=>{ if(alive) setMyEmail((data?.user?.email||'').toLowerCase()); });
+    return ()=>{alive=false;};
+  },[]);
+
   // time_off.employee_id has a FK on employees.id, so a time-off save that
   // races ahead of an in-flight/pending employees save can violate that
   // constraint (e.g. add an employee, then quickly add their time off).
@@ -178,6 +191,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
   useEffect(()=>()=>{ document.body.style.overflow=''; },[]);
 
   if(loading) return <LoadingScreen/>;
+
+  const myId=employees.find(e=>myEmail&&e.email&&e.email.toLowerCase()===myEmail)?.id||null;
+  const me=employees.find(e=>e.id===myId);
+  const saveMyName=(newName)=>updateEmp(myId,'name',newName);
+  const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -675,7 +693,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
   const s=styles;
 
-  return (
+  return (<>
     <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'center',gap:12,marginRight:isMobile?'auto':36,minWidth:0,overflow:'hidden'}}>
@@ -689,7 +707,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
         <div style={{display:'flex',alignItems:'center',flex:1}}>
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
         </div>
+        <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:ROLE_BADGE_COLORS[role]?.bg||ROLE_BADGE_COLORS.employee.bg,color:ROLE_BADGE_COLORS[role]?.text||ROLE_BADGE_COLORS.employee.text,border:`1px solid ${ROLE_BADGE_COLORS[role]?.border||ROLE_BADGE_COLORS.employee.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
+        <button onClick={()=>setShowProfile(true)} title={t('profile.myProfile')} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
         {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">Test: full month</Btn></span>}
@@ -704,6 +724,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
           {navItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
           <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
             <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
+            <button onClick={()=>{setMobileMenuOpen(false);setShowProfile(true);}} title={t('profile.myProfile')} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
@@ -962,6 +983,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
 
       </div>
     </div>
+    {showProfile && <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onClose={()=>setShowProfile(false)} s={s} t={t}/>}
+    </>
   );
 }
 
@@ -1020,14 +1043,18 @@ export default function App(){
   const active=orgs.find(o=>o.id===activeOrg);
   if(!active)return<LoadingScreen/>;
 
-  const isManager=(active.role==='owner'||active.role==='manager'||!active.role);
+  // A missing/unrecognized role must NOT grant manager access — default to
+  // least privilege (employee view) rather than silently trusting a blank
+  // role, which is what let invited members land in the manager dashboard
+  // whenever their membership role failed to come through as expected.
+  const isManager=(active.role==='owner'||active.role==='manager');
   const isOwner=(active.role==='owner');
 
   if(!isManager)return(
-    <EmployeeView orgId={active.id} key={active.id} orgName={active.name} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+    <EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
   );
 
   return(
-    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} role={active.role} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
   );
 }

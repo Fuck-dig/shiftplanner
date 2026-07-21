@@ -280,3 +280,17 @@ export async function deleteTemplate(id){
   const { error } = await supabase.from('schedule_templates').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ── Self-service profile edits ───────────────────────────────────────────────
+// Incremental single-row update, unlike syncEmployees() above — EmployeeView
+// only ever holds a read snapshot of the whole org's roster, not something
+// it's safe to resync wholesale on every keystroke from an employee's own
+// session (that's Dashboard/manager territory).
+export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
+  const row = {};
+  if (name != null)   row.name = name;
+  if (palIdx != null)  row.pal_idx = palIdx;
+  if (Object.keys(row).length === 0) return;
+  const { error } = await supabase.from('employees').update(row).eq('id', empId);
+  if (error) throw error;
+}

@@ -3,18 +3,21 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
 import NotificationBell from './NotificationBell';
+import ProfileSettings from './ProfileSettings';
 import { Btn } from './ui';
+
+const roleColors = { owner:{bg:'#F5E2E2',text:'#963030',border:'#E8BABA'}, manager:{bg:'#F5EAE2',text:'#7A3318',border:'#E8C0A0'}, employee:{bg:'#E5F0E9',text:'#236040',border:'#9FD8B8'} };
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
 }
 
-export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
+export default function EmployeeView({ orgId, orgName, role='employee', theme, toggleTheme }){
   const [loading, setLoading]     = useState(true);
   const [employees, setEmployees] = useState([]);
   const [blocks, setBlocks]       = useState([]);
@@ -29,6 +32,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
   const [swaps, setSwaps]         = useState([]);       // all shift_swaps for this org, any week/status
   const [swapModal, setSwapModal] = useState(null);      // {day,blockId,blockName,role} while the give-away modal is open
   const [swapBusy, setSwapBusy]   = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -98,6 +102,17 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
   }, {});
 
   const me = employees.find(e=>e.id===myId);
+
+  const saveMyName = (newName) => {
+    updateEmployeeSelfProfile(myId, { name: newName })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,name:newName}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
+  const saveMyColor = (palIdx) => {
+    updateEmployeeSelfProfile(myId, { palIdx })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
 
   const notify = (targetEmpId, messageKey, messageVars) =>
     createNotification(orgId, targetEmpId, { type: messageKey.replace('notif.',''), messageKey, messageVars })
@@ -173,8 +188,10 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:isMobile?18:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0}}>Rorota</span>
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
         </div>
+        {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(roleColors[role]||roleColors.employee).bg,color:(roleColors[role]||roleColors.employee).text,border:`1px solid ${(roleColors[role]||roleColors.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:isMobile?0:8,cursor:'pointer',outline:'none',flexShrink:0}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{isMobile?L.code.toUpperCase():L.label}</option>)}</select>
         <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
+        <button onClick={()=>setShowProfile(true)} title={t('profile.myProfile')} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>👤</button>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <button onClick={()=>supabase.auth.signOut()} style={{padding:isMobile?'6px 10px':'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}>{t('common.logout')}</button>
       </div>
@@ -319,6 +336,7 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
       </div>
     </div>
     {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={employees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
+    {showProfile && <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onClose={()=>setShowProfile(false)} s={s} t={t}/>}
     </>
   );
 }
