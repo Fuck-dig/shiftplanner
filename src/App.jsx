@@ -830,16 +830,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, theme, toggleTh
                     <div style={{fontSize:gridTight?10:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
                   </div>
                 ):assignedBlocks.length>0?assignedBlocks.map(b=>{
-                  const bh=blockHours(b);
                   const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+                  const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
+                  const bh=assignmentHours(shiftEntry||{},b);
                   const shiftRole=shiftEntry?.role;
                   const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
                   return(
                     <div key={b.id} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
                       <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
-                      {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
-                      {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{b.start.slice(0,5)}</div>}
+                      {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>}
+                      {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{dispStart.slice(0,5)}</div>}
                       {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{bh.toFixed(1)}h</div>}
                       {(emp.roles||[]).length>1&&shiftRole&&<div style={{marginTop:3,display:'inline-block',fontSize:9,fontWeight:600,color:isDark()?rrs.dot:rrs.text,background:isDark()?rrs.dot+'22':rrs.bg,border:`1px solid ${isDark()?rrs.dot+'55':rrs.border}`,padding:'1px 5px',borderRadius:999}}>{shiftRole}</div>}
                     </div>

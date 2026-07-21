@@ -73,11 +73,13 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
   const schedule   = schedules[wKey]?.schedule || null;
   const s          = styles;
 
+  const assignmentHours = (a,b) => blockHours({start:a.start||b.start,end:a.end||b.end});
   const empHoursMap = employees.reduce((acc, e) => {
     if (!schedule) { acc[e.id] = 0; return acc; }
     let h = 0;
     DAYS.forEach(day => blocks.forEach(b => {
-      if ((schedule[day]?.[b.id]||[]).some(a => a.empId === e.id)) h += blockHours(b);
+      const a=(schedule[day]?.[b.id]||[]).find(a => a.empId === e.id);
+      if (a) h += assignmentHours(a,b);
     }));
     acc[e.id] = h; return acc;
   }, {});
@@ -151,14 +153,17 @@ export default function EmployeeView({ orgId, orgName, theme, toggleTheme }){
                         <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                           <div style={{fontSize:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
                         </div>
-                      ):assignedBlocks.length>0?assignedBlocks.map(b=>(
+                      ):assignedBlocks.length>0?assignedBlocks.map(b=>{
+                        const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+                        const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
+                        return(
                         <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${isMe?T.accent:p.dot}55`,position:'relative'}}>
                           <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:isMe?T.accent:p.dot}}/>
                           <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
-                          <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>
-                          <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{blockHours(b).toFixed(1)}h</div>
+                          <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
+                          <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{assignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
                         </div>
-                      )):(
+                      );}):(
                         <div style={{height:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
                           <span style={{fontSize:16,color:T.text3}}>—</span>
                         </div>
