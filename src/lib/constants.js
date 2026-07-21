@@ -73,12 +73,13 @@ export const EMP_PALETTE = [
 export const TIMEOFF_TYPES  = ['Holiday','Sick','Personal','Other'];
 export const DAYS           = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
+// Keys are short codes (translated for display via t('tpl.'+key), not shown raw).
 export const AVAIL_TEMPLATES = {
-  'Full-time (Mon–Fri)': Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,{from:'09:00',to:'17:00'}]),...['Sat','Sun'].map(d=>[d,null])]),
-  'Evenings only':       Object.fromEntries(DAYS.map(d=>[d,{from:'16:00',to:'00:00'}])),
-  'Weekends only':       Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,null]),...['Sat','Sun'].map(d=>[d,{from:'10:00',to:'00:00'}])]),
-  'Full availability':   Object.fromEntries(DAYS.map(d=>[d,{from:'09:00',to:'00:00'}])),
-  'Not available':       Object.fromEntries(DAYS.map(d=>[d,null])),
+  fulltime:     Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,{from:'09:00',to:'17:00'}]),...['Sat','Sun'].map(d=>[d,null])]),
+  evenings:     Object.fromEntries(DAYS.map(d=>[d,{from:'16:00',to:'00:00'}])),
+  weekends:     Object.fromEntries([...['Mon','Tue','Wed','Thu','Fri'].map(d=>[d,null]),...['Sat','Sun'].map(d=>[d,{from:'10:00',to:'00:00'}])]),
+  full:         Object.fromEntries(DAYS.map(d=>[d,{from:'09:00',to:'00:00'}])),
+  notavailable: Object.fromEntries(DAYS.map(d=>[d,null])),
 };
 
 export const DEFAULT_BLOCKS = [
