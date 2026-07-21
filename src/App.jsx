@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, initials, isDark } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, toMin, getMonthOffsets, todayISO } from './lib/dates';
 import { blockHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, effectiveHourlyRate } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
 import { migrateEmployee } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
@@ -167,6 +167,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return ()=>{alive=false;};
   },[orgId]);
 
+  // Role colours are shared org-wide (unlike order) — load whatever's
+  // saved. An empty result means this org has never saved a role set yet
+  // (brand new), so keep the built-in defaults; otherwise the saved set is
+  // authoritative as-is — it already reflects any roles the manager has
+  // added or removed, so it must NOT be merged back on top of the defaults
+  // (that would resurrect a deliberately-deleted default role like Kitchen).
+  useEffect(()=>{
+    let alive=true;
+    fetchRoleStyles(orgId).then(v=>{
+      if(!alive) return;
+      if(Object.keys(v).length) setRoleStylesRaw(v);
+    }).catch(err=>console.error('Load role colours failed:',err));
+    return ()=>{alive=false;};
+  },[orgId]);
+
   // A manager/owner might ALSO be on the schedule roster (e.g. a working
   // owner) — used only for the profile page's "my display name/avatar"
   // section, same self-match EmployeeView does for its own session.
@@ -186,12 +201,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const dBlk  =useCallback(mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
   const dTO   =useCallback(mkDebounce(v=>empSaveRef.current.then(()=>syncTimeOff(orgId,v)),'timeoff'),[orgId]);
   const dSched=useCallback(mkDebounce(v=>syncSchedules(orgId,v),'schedules'),[orgId]);
+  const dRoleStyles=useCallback(mkDebounce(v=>saveRoleStyles(orgId,v),'roleStyles'),[orgId]);
 
   const setEmployees=v=>{const val=typeof v==='function'?v(employees):v;setEmpRaw(val);dEmp(val);};
   const setBlocks   =v=>{const val=typeof v==='function'?v(blocks):v;setBlocksRaw(val);dBlk(val);};
   const setSchedules=v=>{const val=typeof v==='function'?v(schedules):v;setSchedsRaw(val);dSched(val);};
   const setTimeOff  =v=>{const val=typeof v==='function'?v(timeOff):v;setTORaw(val);dTO(val);};
-  const setRoleStyles=v=>{const val=typeof v==='function'?v(roleStyles):v;setRoleStylesRaw(val);};
+  const setRoleStyles=v=>{const val=typeof v==='function'?v(roleStyles):v;setRoleStylesRaw(val);dRoleStyles(val);};
 
   useEffect(()=>{
     const s=document.createElement('style');

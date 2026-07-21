@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, dateToISO, todayISO, getMonthOffsets, toMin } from '../lib/dates';
 import { blockHours, isOnTimeOff } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
@@ -44,6 +44,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [collapsedRoles, setCollapsedRoles] = useState(()=>new Set()); // role names currently collapsed in the Team tab's "By role" grouping
   const [dragRole, setDragRole] = useState(null); // drag-and-drop reordering of role groups in the Team tab
   const [dragOverRole, setDragOverRole] = useState(null);
+  const [roleStyles, setRoleStyles] = useState({}); // the manager's actual role colours, read-only here — shared org-wide, unlike order above
 
   const reloadSwaps = () => { if(orgId) fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err)); };
   useEffect(()=>{
@@ -70,12 +71,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         fetchBlocks(orgId),
         fetchTimeOff(orgId),
         fetchSchedules(orgId),
-      ]).then(([emps, blks, to, scheds]) => {
+        fetchRoleStyles(orgId).catch(err => { console.error('Load role colours failed:', err); return {}; }),
+      ]).then(([emps, blks, to, scheds, rStyles]) => {
         if (!alive) return;
         setEmployees(emps);
         setBlocks(blks);
         setTimeOff(to);
         setSchedules(scheds);
+        setRoleStyles(rStyles || {});
         // Try to find the current user's employee record by email
         const me = emps.find(e => e.email && e.email.toLowerCase() === (email||'').toLowerCase());
         if (me) setMyId(me.id);
@@ -360,7 +363,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                   style={{padding:'6px '+(isMobile?'12px':'20px'),background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:ri>0?`2px solid ${T.border}`:'none',cursor:'grab',userSelect:'none',display:'flex',alignItems:'center',gap:8,opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
                   <GripDots title={t('grid.dragToReorder')}/>
                   <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
-                  <RoleBadge role={row.role} rs={roleColorFor(row.role)}/>
+                  <RoleBadge role={row.role} rs={roleStyles[row.role] || roleColorFor(row.role)}/>
                 </div>}
                 {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
                   {/* Name */}

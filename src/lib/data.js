@@ -300,3 +300,18 @@ export async function updateEmployeeSelfProfile(empId, { name, palIdx } = {}){
 // keeping their own local order (see 'sa2_roleOrder_'+orgId in App.jsx and
 // EmployeeView.jsx), since that's what was actually wanted: everyone gets
 // to arrange their own Team view, not one shared order for the whole org.
+
+// ── Role colours ─────────────────────────────────────────────────────────────
+// Unlike order, colour IS shared org-wide — it's how a role visually reads
+// as "the same role" everywhere, not a personal layout preference. Written
+// by the manager only (Coverage); read-only everywhere else.
+export async function fetchRoleStyles(orgId){
+  const { data, error } = await supabase.from('organizations').select('role_styles').eq('id', orgId).single();
+  if (error) throw error;
+  return (data?.role_styles && typeof data.role_styles === 'object') ? data.role_styles : {};
+}
+
+export async function saveRoleStyles(orgId, styles){
+  const { error } = await supabase.from('organizations').update({ role_styles: styles }).eq('id', orgId);
+  if (error) throw error;
+}
