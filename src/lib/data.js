@@ -357,14 +357,20 @@ export async function fetchMessageReplies(messageId){
 // other side: an employee's reply sets manager_unread=true (surfaces in the
 // manager's pendingItems), a manager's reply sets read=false (resurfaces the
 // thread as unread in the employee's own bell).
+// Returns the inserted row (real id + created_at) rather than nothing, so
+// the caller can use it for its own optimistic UI update instead of making
+// one up client-side — otherwise a locally-generated id never matches the
+// real row's id when the realtime subscription in MessageThreadModal
+// delivers the same INSERT a moment later, and the reply renders twice.
 export async function sendMessageReply(messageId, { fromEmployee, authorLabel, body }){
-  const { error: insErr } = await supabase.from('message_replies').insert({
+  const { data, error: insErr } = await supabase.from('message_replies').insert({
     message_id: messageId, from_employee: fromEmployee, author_label: authorLabel, body,
-  });
+  }).select().single();
   if (insErr) throw insErr;
   const patch = fromEmployee ? { manager_unread: true } : { read: false };
   const { error: updErr } = await supabase.from('messages').update(patch).eq('id', messageId);
   if (updErr) throw updErr;
+  return replyFromRow(data);
 }
 
 export async function sendNotificationEmail({ to, subject, body, ctaLabel, ctaUrl }){

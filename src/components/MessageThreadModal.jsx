@@ -45,8 +45,12 @@ export default function MessageThreadModal({ message, viewerIsManager, myLabel, 
     if (!text) return;
     setBusy(true);
     sendMessageReply(message.id, { fromEmployee: !viewerIsManager, authorLabel: myLabel, body: text })
-      .then(() => {
-        setReplies(p => [...p, { id: crypto.randomUUID(), fromEmployee: !viewerIsManager, authorLabel: myLabel, body: text, createdAt: new Date().toISOString() }]);
+      .then((saved) => {
+        // Use the real row (real id) for the optimistic update, not a
+        // locally-made-up one — the realtime subscription below will
+        // deliver this exact same row shortly after, and its dedup check
+        // only works if the ids actually match.
+        setReplies(p => p.some(r => r.id === saved.id) ? p : [...p, saved]);
         setReply('');
       })
       .catch(err => alert(err.message || 'Failed to send'))
