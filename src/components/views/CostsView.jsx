@@ -11,9 +11,10 @@ const csvField = (v) => {
   return /[",\r\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
 };
 
-// Builds a payroll-friendly CSV from the same per-employee cost breakdown
-// already shown on screen, so what a manager sees and what they hand off to
-// payroll always match.
+// Raw/data version — plain numbers and a separate Currency column, sorted
+// highest-cost-first (matches the on-screen breakdown). Meant for importing
+// into a spreadsheet or payroll system, not for a human to read top to
+// bottom.
 function buildCostsCSV(data, currency) {
   const header = ['Employee', 'Roles', 'Hours', 'Max Hours', 'Cost', 'Currency'];
   const rows = [...data]
@@ -27,6 +28,25 @@ function buildCostsCSV(data, currency) {
       currency,
     ]);
   return [header, ...rows].map(row => row.map(csvField).join(',')).join('\r\n');
+}
+
+// Human-readable companion version — alphabetical by name (easier to look
+// up one person), roles written out normally, cost pre-formatted with the
+// org's currency via the same toMoney() the on-screen breakdown uses, and a
+// Total row at the bottom. Nothing here is meant to be machine-parsed; it's
+// for someone to open and just read.
+function buildReadableCostsCSV(data, toMoney, totalHours, totalCost) {
+  const header = ['Employee', 'Roles', 'Hours', 'Cost'];
+  const rows = [...data]
+    .sort((a, b) => a.emp.name.localeCompare(b.emp.name))
+    .map(({ emp, hours, costUnits }) => [
+      emp.name,
+      (emp.roles || []).join(', ') || '—',
+      hours > 0 ? `${hours}h` : '—',
+      hours > 0 ? toMoney(costUnits) : '—',
+    ]);
+  const totalRow = ['Total', '', `${totalHours}h`, toMoney(totalCost)];
+  return [header, ...rows, [], totalRow].map(row => row.map(csvField).join(',')).join('\r\n');
 }
 
 function downloadCSV(csv, filename) {
@@ -78,6 +98,9 @@ export default function CostsView({
           ?`${displayMonth.y}-${String(displayMonth.m+1).padStart(2,'0')}`
           :`${dateToISO(weekDates[0])}_to_${dateToISO(weekDates[6])}`;
         downloadCSV(buildCostsCSV(data,hourlyRate.currency),`costs-${costsMode}-${label}.csv`);
+        // Two back-to-back downloads can get silently dropped by some
+        // browsers' popup/download-spam guard — a small stagger avoids that.
+        setTimeout(()=>downloadCSV(buildReadableCostsCSV(data,toMoney,totalHours,totalCost),`costs-${costsMode}-${label}-readable.csv`),200);
       };
       return(<>
         <div style={{display:'flex',justifyContent:'flex-end'}}>
