@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   blockHours,
   assignmentHours,
+  actualAssignmentHours,
   effectiveHourlyRate,
   calcWageCost,
   coversBlock,
@@ -45,6 +46,28 @@ describe('assignmentHours', () => {
 
   it('allows a partial override (custom start, block\'s end)', () => {
     expect(assignmentHours({ start: '12:00' }, block)).toBe(5);
+  });
+});
+
+describe('actualAssignmentHours', () => {
+  const block = { start: '09:00', end: '17:00' };
+
+  it('falls back to the scheduled hours when nothing actual is recorded (e.g. a future shift)', () => {
+    expect(actualAssignmentHours({}, block)).toBe(8);
+    expect(actualAssignmentHours({ start: '10:00', end: '14:00' }, block)).toBe(4);
+  });
+
+  it('uses actualStart/actualEnd over the scheduled start/end when set', () => {
+    expect(actualAssignmentHours({ start: '10:00', end: '18:00', actualStart: '10:00', actualEnd: '15:30' }, block)).toBe(5.5);
+  });
+
+  it('allows a partial actual override (actual start only, scheduled end)', () => {
+    expect(actualAssignmentHours({ actualStart: '11:00' }, block)).toBe(6);
+  });
+
+  it('is 0 for a no-show regardless of any recorded times', () => {
+    expect(actualAssignmentHours({ noShow: true }, block)).toBe(0);
+    expect(actualAssignmentHours({ noShow: true, actualStart: '09:00', actualEnd: '17:00' }, block)).toBe(0);
   });
 });
 

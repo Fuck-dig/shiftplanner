@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
-import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
 import ComposeMessageModal from './components/ComposeMessageModal';
 import MessageThreadModal from './components/MessageThreadModal';
@@ -77,6 +77,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [editingSlot,setEditingSlot]             = useState(null); // {day,blockId,idx} — an existing assignment being edited from Week/Day view
   const [editTimes,setEditTimes]                 = useState({start:'',end:''});
   const [editRole,setEditRole]                   = useState(null);
+  // What actually happened for this shift, edited separately from the
+  // scheduled time above — 'scheduled' means "trust the planned time" (the
+  // default, and all that a future shift ever needs), 'adjusted' records a
+  // different actualStart/actualEnd, 'noshow' zeroes the hours outright.
+  const [editActual,setEditActual]               = useState({mode:'scheduled',start:'',end:''});
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -647,6 +652,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     setEditingSlot({day,blockId,idx});
     setEditTimes({start:entry.start||block.start,end:entry.end||block.end});
     setEditRole(entry.role);
+    setEditActual({
+      mode:entry.noShow?'noshow':(entry.actualStart||entry.actualEnd)?'adjusted':'scheduled',
+      start:entry.actualStart||entry.start||block.start,
+      end:entry.actualEnd||entry.end||block.end,
+    });
     document.body.style.overflow='hidden';
   };
   const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
@@ -660,6 +670,9 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     entry.role=editRole;
     if(editTimes.start===block.start&&editTimes.end===block.end){delete entry.start;delete entry.end;}
     else{entry.start=editTimes.start;entry.end=editTimes.end;}
+    if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.actualStart; delete entry.actualEnd; }
+    else if(editActual.mode==='adjusted'){ delete entry.noShow; entry.actualStart=editActual.start; entry.actualEnd=editActual.end; }
+    else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; }
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     closeEditSlot();
   };
@@ -709,9 +722,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // lib/schedule.js, shared with EmployeeView.jsx instead of being redefined
   // identically in both places.
 
+  // "Hours worked" — actual hours where recorded (post-shift corrections,
+  // no-shows), scheduled hours everywhere else (i.e. every future/unedited
+  // shift, since actualAssignmentHours falls back to the scheduled time).
   const empHoursMap=employees.reduce((acc,e)=>{
     if(!schedule){acc[e.id]=0;return acc;}
-    let h=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=assignmentHours(a,b);}));
+    let h=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=actualAssignmentHours(a,b);}));
     acc[e.id]=h;return acc;
   },{});
   const empHours=id=>empHoursMap[id]||0;
@@ -738,7 +754,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         if (iso < startISO || iso > endISO) return;
         blocks.forEach(b => {
           const a = (sched[day]?.[b.id] || []).find(x => x.empId === myId);
-          if (a) total += assignmentHours(a, b);
+          if (a) total += actualAssignmentHours(a, b);
         });
       });
     });
@@ -957,11 +973,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const costsWeekDates=getWeekDates(costsWeekOffset);
   const costsWKey=weekKey(costsWeekOffset);
   const costsSchedule=schedules[costsWKey]?.schedule||null;
-  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId); if(a) h+=assignmentHours(a,b); })); return h; };
+  // Costs is specifically about real money spent, so it uses actual hours
+  // (falls back to scheduled for anything not yet corrected) rather than
+  // the plain scheduled-hours assignmentHours used for planning/coverage.
+  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId); if(a) h+=actualAssignmentHours(a,b); })); return h; };
   const costData=employees.map(e=>{const hours=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
-  const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=assignmentHours(a,b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
+  const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=actualAssignmentHours(a,b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
@@ -976,7 +995,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // assignment scheduled that day, summed the same way costData sums a
   // whole week per employee. Feeds the revenue-vs-labor-cost comparison
   // below (each day's actual sales vs what staffing that day cost).
-  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; const hrs=assignmentHours(a,b); h+=hasWages?calcWageCost(emp,hrs):parseFloat((hrs*(emp.priority||100)/100).toFixed(2)); }); }); return h; };
+  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; const hrs=actualAssignmentHours(a,b); h+=hasWages?calcWageCost(emp,hrs):parseFloat((hrs*(emp.priority||100)/100).toFixed(2)); }); }); return h; };
   const dailyLaborCostByDate=Object.fromEntries(DAYS.map((day,i)=>[dateToISO(costsWeekDates[i]),toMoneyRaw(dailyCostUnits(day))]));
 
   // Revenue is entered by hand (no POS integration) — one number per
@@ -1207,6 +1226,30 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           <TimePicker small value={editTimes.end} onChange={v=>setEditTimes(p=>({...p,end:v}))}/>
           {customized&&<button onClick={()=>setEditTimes({start:block.start,end:block.end})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
         </div>
+        {/* Only shown for a shift that's already happened (today or
+            earlier) — a future shift has nothing to record yet, and
+            actualAssignmentHours already falls back to the scheduled time
+            whenever this is left alone. */}
+        {dateToISO(weekDates[DAYS.indexOf(day)])<=todayISO() && (
+          <div style={{padding:'0 18px 16px',borderTop:`1px solid ${T.border}`,paddingTop:14}}>
+            <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('emp.actualHours')}</div>
+            <div style={{display:'flex',gap:4,marginBottom:editActual.mode==='adjusted'?10:0,flexWrap:'wrap'}}>
+              {[['scheduled',t('emp.actualAsScheduled')],['adjusted',t('emp.actualAdjust')],['noshow',t('emp.actualNoShow')]].map(([mode,label])=>{
+                const active=editActual.mode===mode,isDanger=mode==='noshow';
+                return (
+                  <button key={mode} onClick={()=>setEditActual(p=>({mode,start:p.start||editTimes.start,end:p.end||editTimes.end}))} style={{padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',fontFamily:'inherit',background:active?(isDanger?T.dangerLight:T.accentLight):'transparent',color:active?(isDanger?T.danger:T.accent):T.text3,border:`1px solid ${active?(isDanger?T.danger+'55':T.accent+'55'):T.border}`}}>{label}</button>
+                );
+              })}
+            </div>
+            {editActual.mode==='adjusted'&&(
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <TimePicker small value={editActual.start} onChange={v=>setEditActual(p=>({...p,start:v}))}/>
+                <span style={{fontSize:11,color:T.text3}}>–</span>
+                <TimePicker small value={editActual.end} onChange={v=>setEditActual(p=>({...p,end:v}))}/>
+              </div>
+            )}
+          </div>
+        )}
         <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',flexWrap:'wrap',gap:6}}>
           <Btn small onClick={saveEditSlot}>{t('common.save')}</Btn>
           <Btn small variant="secondary" onClick={moveEditSlot}>{t('week.move')}</Btn>

@@ -7,6 +7,20 @@ export function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<
 // unset). Was previously redefined identically in both App.jsx and
 // EmployeeView.jsx — consolidated here so there's one definition to change.
 export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,end:a.end||b.end}); }
+
+// What actually happened for an assignment, as opposed to what was planned
+// (assignmentHours above). Falls back to the scheduled hours whenever
+// nothing's been recorded yet — which is always true for a shift that
+// hasn't happened yet, so this is safe to use anywhere "hours worked" is
+// meant, not just for past shifts. `actualStart`/`actualEnd` are a further
+// override on top of the assignment's own start/end (itself already an
+// override of the block's nominal time) — set only when someone corrects a
+// shift after the fact, e.g. left early or stayed late. `noShow` short-
+// circuits to 0 regardless of any recorded times.
+export function actualAssignmentHours(a,b){
+  if(a.noShow) return 0;
+  return blockHours({start:a.actualStart||a.start||b.start,end:a.actualEnd||a.end||b.end});
+}
 const prio=e=>e.priority??e.salaryPct??100;
 
 // Average weeks per calendar month — used to normalize a monthly salary into

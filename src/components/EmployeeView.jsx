@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
-import { assignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -216,12 +216,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     save('sa2_roleOrder_'+orgId, next);
   };
 
+  // "Hours worked" — actual hours where corrected after the fact, scheduled
+  // hours everywhere else (actualAssignmentHours falls back automatically).
   const empHoursMap = employees.reduce((acc, e) => {
     if (!schedule) { acc[e.id] = 0; return acc; }
     let h = 0;
     DAYS.forEach(day => blocks.forEach(b => {
       const a=(schedule[day]?.[b.id]||[]).find(a => a.empId === e.id);
-      if (a) h += assignmentHours(a,b);
+      if (a) h += actualAssignmentHours(a,b);
     }));
     acc[e.id] = h; return acc;
   }, {});
@@ -244,7 +246,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         if (iso < startISO || iso > endISO) return;
         blocks.forEach(b => {
           const a = (sched[day]?.[b.id]||[]).find(x=>x.empId===empId);
-          if (a) total += assignmentHours(a,b);
+          if (a) total += actualAssignmentHours(a,b);
         });
       });
     });
@@ -521,7 +523,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:isMe?T.accent:p.dot}}/>
                 <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
                 <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
-                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{assignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
+                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{actualAssignmentHours(shiftEntry||{},b).toFixed(1)}h{shiftEntry?.noShow?` · ${t('emp.noShow')}`:(shiftEntry?.actualStart||shiftEntry?.actualEnd)?` · ${t('emp.hoursAdjusted')}`:''}</div>
                 {/* Which role this particular shift is — matters whenever
                     someone with more than one role (or covering a one-off
                     shift outside their usual role) works different roles on
