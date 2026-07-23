@@ -1,8 +1,9 @@
 -- Kiosk mode: a shared, on-site device (see KioskView.jsx) that a manager
 -- unlocks once by signing in normally, after which staff standing at that
--- device pick their own name and enter this PIN to punch in/out — separate
--- from the personal punch-clock flow, which was removed from employees'
--- own logins specifically so a shift can't be clocked in from home.
+-- device pick their own name and enter this 6-digit PIN to punch in/out —
+-- separate from the personal punch-clock flow, which was removed from
+-- employees' own logins specifically so a shift can't be clocked in from
+-- home.
 --
 -- This is a soft, UI-level identification code, not a real authentication
 -- factor: the actual security boundary is the manager/owner login required

@@ -161,7 +161,7 @@ export default function KioskView({ orgId, orgName, theme, toggleTheme, onExitKi
             </div>
             <div style={{fontSize:12,color:T.text3,marginBottom:16}}>{t('kiosk.enterPin')}</div>
             <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:18}}>
-              {Array.from({length: Math.max((selectedEmp.pin||'').length,4)}).map((_,i)=>(
+              {Array.from({length: Math.max((selectedEmp.pin||'').length,6)}).map((_,i)=>(
                 <div key={i} style={{width:14,height:14,borderRadius:'50%',border:`1.5px solid ${pinError?T.danger:T.border}`,background:i<pinDigits.length?(pinError?T.danger:T.accent):'transparent'}}/>
               ))}
             </div>
