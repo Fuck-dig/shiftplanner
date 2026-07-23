@@ -185,6 +185,36 @@ export async function syncSchedules(orgId, schedules){
   if (e2) throw e2;
 }
 
+// Read-modify-write a single assignment inside one week's schedule blob —
+// used by the employee-facing punch clock (clock in/out, self-added ad hoc
+// shifts). Unlike App.jsx's debounced syncSchedules above (which pushes the
+// manager's ENTIRE locally-held schedules object every ~600ms), this
+// re-reads the current server row immediately before writing, touching only
+// the one day/block/employee slot involved — so an employee clocking in
+// doesn't risk clobbering a manager's unrelated concurrent edit to the same
+// week the way overwriting the whole blob from stale local state would.
+export async function updateShiftAssignment(orgId, weekKey, day, blockId, empId, patch){
+  const { data, error } = await supabase
+    .from('schedules').select('data').eq('org_id', orgId).eq('week_key', weekKey).maybeSingle();
+  if (error) throw error;
+  const current = data?.data || {};
+  const scheduleObj = { ...(current.schedule || {}) };
+  const dayObj = { ...(scheduleObj[day] || {}) };
+  const list = [...(dayObj[blockId] || [])];
+  const idx = list.findIndex(a => a.empId === empId);
+  if (idx >= 0) list[idx] = { ...list[idx], ...patch };
+  else list.push({ empId, ...patch });
+  dayObj[blockId] = list;
+  scheduleObj[day] = dayObj;
+  const nextData = { ...current, schedule: scheduleObj };
+  const { error: upErr } = await supabase.from('schedules').upsert(
+    { org_id: orgId, week_key: weekKey, data: nextData, status: nextData.confirmed ? 'confirmed' : 'draft' },
+    { onConflict: 'org_id,week_key' }
+  );
+  if (upErr) throw upErr;
+  return nextData;
+}
+
 // ── Shift swaps ──────────────────────────────────────────────────────────────
 // Unlike employees/blocks/time_off/schedules above, these three tables are
 // written incrementally (insert/update single rows) rather than "sync the

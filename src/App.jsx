@@ -1216,6 +1216,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           <div style={{fontSize:15,fontWeight:600,color:T.text}}>{emp?.name||entry.name}</div>
           <div style={{fontSize:12,color:T.text3,marginTop:2}}>{block.name} · {t('day.'+day)}</div>
         </div>
+        {/* Flag anything the employee did themselves via the punch clock —
+            a shift they added ad hoc (no manager ever scheduled it) and/or
+            a note they left when clocking out — so this doesn't just show
+            up silently as a corrected hours figure with no context. */}
+        {(entry.selfAdded||entry.clockNote)&&(
+          <div style={{padding:'0 18px 12px'}}>
+            {entry.selfAdded&&<div style={{fontSize:11,color:T.accentText,marginBottom:entry.clockNote?4:0}}>{t('emp.selfAddedNotice')}</div>}
+            {entry.clockNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic'}}>&ldquo;{entry.clockNote}&rdquo;</div>}
+          </div>
+        )}
         {empRoles.length>1&&<div style={{padding:'0 18px 12px',display:'flex',gap:4,flexWrap:'wrap'}}>
           {empRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=editRole===r;return(<button key={r} onClick={()=>setEditRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
         </div>}
