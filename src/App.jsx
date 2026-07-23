@@ -1342,6 +1342,25 @@ export default function App(){
   Object.assign(styles,computeStyles());
   const toggleTheme=()=>{const next=theme==='dark'?'light':'dark';setThemeRaw(next);save('sa2_theme',next);};
 
+  // Rendered above every screen below (Auth, RestaurantPicker, loading,
+  // Dashboard, EmployeeView alike) rather than inside any one of them, so it
+  // shows up no matter where someone is when their connection drops. Only
+  // reflects the browser's own connectivity signal — it doesn't mean the
+  // Supabase calls themselves are failing (a captive portal or a server
+  // outage wouldn't flip this), just that the device itself has no network.
+  const [isOffline,setIsOffline]=useState(()=>typeof navigator!=='undefined'&&!navigator.onLine);
+  useEffect(()=>{
+    const goOnline=()=>setIsOffline(false);
+    const goOffline=()=>setIsOffline(true);
+    window.addEventListener('online',goOnline);
+    window.addEventListener('offline',goOffline);
+    return()=>{window.removeEventListener('online',goOnline);window.removeEventListener('offline',goOffline);};
+  },[]);
+  // App() itself doesn't otherwise track a language (each screen below picks
+  // its own independently) — this banner needs one anyway, so it reads the
+  // same stored preference they all do.
+  const bannerT=makeT(load('sa2_lang',detectLang()));
+
   const [session,setSession]    =useState(undefined);
   const [orgs,setOrgs]          =useState(undefined);
   const [orgTick,setOrgTick]    =useState(0);
@@ -1381,36 +1400,45 @@ export default function App(){
   const switchOrg =id=>{setActiveOrg(id);try{localStorage.setItem('sa2_active_org',id);}catch{}};
   const reloadOrgs=async()=>{setOrgs(undefined);setOrgTick(t=>t+1);};
 
-  if(session===undefined)return<LoadingScreen/>;
-  if(!session)return<Auth/>;
-  if(orgs===undefined)return<LoadingScreen/>;
-
+  let content;
+  if(session===undefined) content=<LoadingScreen/>;
+  else if(!session) content=<Auth/>;
+  else if(orgs===undefined) content=<LoadingScreen/>;
   // Show restaurant picker if no active org selected or user has no orgs yet
-  if(!activeOrg||!orgs.find(o=>o.id===activeOrg)){
-    return<RestaurantPicker
+  else if(!activeOrg||!orgs.find(o=>o.id===activeOrg)){
+    content=<RestaurantPicker
       orgs={orgs}
       onSelect={id=>switchOrg(id)}
       onCreated={async id=>{await reloadOrgs();switchOrg(id);}}
       theme={theme}
       toggleTheme={toggleTheme}
     />;
+  } else {
+    const active=orgs.find(o=>o.id===activeOrg);
+    if(!active){
+      content=<LoadingScreen/>;
+    } else {
+      // A missing/unrecognized role must NOT grant manager access — default
+      // to least privilege (employee view) rather than silently trusting a
+      // blank role, which is what let invited members land in the manager
+      // dashboard whenever their membership role failed to come through as
+      // expected.
+      const isManager=(active.role==='owner'||active.role==='manager');
+      const isOwner=(active.role==='owner');
+      content=!isManager
+        ? <EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+        : <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} role={active.role} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>;
+    }
   }
 
-  const active=orgs.find(o=>o.id===activeOrg);
-  if(!active)return<LoadingScreen/>;
-
-  // A missing/unrecognized role must NOT grant manager access — default to
-  // least privilege (employee view) rather than silently trusting a blank
-  // role, which is what let invited members land in the manager dashboard
-  // whenever their membership role failed to come through as expected.
-  const isManager=(active.role==='owner'||active.role==='manager');
-  const isOwner=(active.role==='owner');
-
-  if(!isManager)return(
-    <EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
-  );
-
   return(
-    <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} role={active.role} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+    <>
+      {isOffline && (
+        <div style={{position:'fixed',top:0,left:0,right:0,zIndex:500,background:T.warningLight,color:T.warning,fontSize:12,fontWeight:600,textAlign:'center',padding:'6px 12px',fontFamily:"'Hanken Grotesk',sans-serif"}}>
+          {bannerT('offline.banner')}
+        </div>
+      )}
+      {content}
+    </>
   );
 }
