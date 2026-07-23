@@ -217,6 +217,60 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
+  // Manager-facing email notifications for the three "needs your attention"
+  // events (new pending time-off request, newly-claimed swap, new unseen
+  // reply) — piggybacks on the polling/state above rather than adding a
+  // fourth data source. Refs (not state) track which ids have already been
+  // emailed about, so a later 45s poll re-fetching an item that's still
+  // pending doesn't re-send the same email every cycle. The very first
+  // load's already-pending items are recorded as seen without emailing —
+  // only things that show up *after* this session started should ping the
+  // manager; otherwise every login would re-email the whole backlog.
+  // Requires myEmail (the manager's own login email, independent of whether
+  // they have an employees row) and respects nothing else — there's no
+  // per-manager opt-out toggle yet, unlike the employee-facing one.
+  const seenTOIds=useRef(null);
+  useEffect(()=>{
+    if(!myEmail) return;
+    const pending=timeOff.filter(to=>to.status==='Pending');
+    if(seenTOIds.current===null){ seenTOIds.current=new Set(pending.map(to=>to.id)); return; }
+    pending.forEach(to=>{
+      if(seenTOIds.current.has(to.id)) return;
+      seenTOIds.current.add(to.id);
+      const emp=employees.find(e=>e.id===to.empId);
+      const range=fmtLong(to.startDate)+(to.endDate!==to.startDate?' – '+fmtLong(to.endDate):'');
+      const text=t('notif.mgrTimeOffRequest',{name:emp?.name||'?',type:to.type,range});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[timeOff,employees,myEmail]);
+
+  const seenSwapIds=useRef(null);
+  useEffect(()=>{
+    if(!myEmail) return;
+    const pending=swaps.filter(sw=>sw.status==='claimed');
+    if(seenSwapIds.current===null){ seenSwapIds.current=new Set(pending.map(sw=>sw.id)); return; }
+    pending.forEach(sw=>{
+      if(seenSwapIds.current.has(sw.id)) return;
+      seenSwapIds.current.add(sw.id);
+      const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+      const text=t('notif.mgrSwapClaimed',{name:claimant?.name||'?',day:t('day.'+sw.day)});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[swaps,employees,myEmail]);
+
+  const seenReplyIds=useRef(null);
+  useEffect(()=>{
+    if(!myEmail) return;
+    if(seenReplyIds.current===null){ seenReplyIds.current=new Set(unseenMessageReplies.map(m=>m.id)); return; }
+    unseenMessageReplies.forEach(m=>{
+      if(seenReplyIds.current.has(m.id)) return;
+      seenReplyIds.current.add(m.id);
+      const recipient=employees.find(e=>e.id===m.recipientEmpId);
+      const text=t('msg.repliedNotif',{name:recipient?.name||'?'});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[unseenMessageReplies,employees,myEmail]);
+
   // Templates are only ever written from this same Dashboard, so a single
   // load on mount/org-change is enough — no polling needed.
   useEffect(()=>{
