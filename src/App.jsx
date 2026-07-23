@@ -188,8 +188,21 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     let alive=true;
     const loadReplies=()=>fetchUnseenMessageReplies(orgId).then(v=>{if(alive)setUnseenMessageReplies(v);}).catch(err=>console.error('Load message replies failed:',err));
     loadReplies();
-    const iv=setInterval(loadReplies,45000);
+    const iv=setInterval(loadReplies,45000); // fallback in case the realtime subscription below ever drops
     return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+  // Realtime companion to the poll above — a reply flipping manager_unread
+  // to true (or a manager clearing it by opening the thread) shows up
+  // immediately. Requires `messages` to be in the supabase_realtime
+  // publication (see the direct-messages migration follow-up note).
+  useEffect(()=>{
+    if(!orgId) return;
+    const channel=supabase.channel(`messages-mgr-${orgId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'messages',filter:`org_id=eq.${orgId}`},()=>{
+        fetchUnseenMessageReplies(orgId).then(setUnseenMessageReplies).catch(err=>console.error('Load message replies failed:',err));
+      })
+      .subscribe();
+    return ()=>{ supabase.removeChannel(channel); };
   },[orgId]);
 
   // Time off can now also be filed directly by an employee (their own

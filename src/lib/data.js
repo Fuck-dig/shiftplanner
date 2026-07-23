@@ -340,7 +340,7 @@ export async function markMessageSeenByManager(id){
   if (error) throw error;
 }
 
-const replyFromRow = (r) => ({
+export const replyFromRow = (r) => ({
   id: r.id, messageId: r.message_id, fromEmployee: !!r.from_employee,
   authorLabel: r.author_label, body: r.body, createdAt: r.created_at,
 });

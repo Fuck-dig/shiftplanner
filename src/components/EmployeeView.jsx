@@ -69,8 +69,21 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const reloadMessages = () => { if(myId) fetchMessages(myId).then(setMessages).catch(err=>console.error('Load messages failed:',err)); };
   useEffect(()=>{
     reloadMessages();
-    const iv=setInterval(reloadMessages,45000);
+    const iv=setInterval(reloadMessages,45000); // fallback in case the realtime subscription below ever drops
     return ()=>clearInterval(iv);
+  },[myId]);
+  // Realtime subscription — new messages (and existing ones flipping back
+  // to unread when a manager replies) show up immediately instead of
+  // waiting for the next 45s poll. Requires `messages` to be added to the
+  // `supabase_realtime` publication (see the direct-messages migration's
+  // follow-up note) — falls back to the poll above if that hasn't been run
+  // yet or the socket drops.
+  useEffect(()=>{
+    if(!myId) return;
+    const channel=supabase.channel(`messages-emp-${myId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'messages',filter:`recipient_emp_id=eq.${myId}`},reloadMessages)
+      .subscribe();
+    return ()=>{ supabase.removeChannel(channel); };
   },[myId]);
   // Optimistic — the modal itself also calls markMessageRead, this just
   // avoids waiting for the next poll to clear the unread dot.

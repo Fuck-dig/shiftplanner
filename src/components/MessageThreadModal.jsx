@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { T } from '../lib/constants';
+import { supabase } from '../lib/supabase';
 import { Btn } from './ui';
-import { fetchMessageReplies, sendMessageReply, markMessageRead, markMessageSeenByManager } from '../lib/data';
+import { fetchMessageReplies, sendMessageReply, markMessageRead, markMessageSeenByManager, replyFromRow } from '../lib/data';
 
 // Shared thread view for both sides of a direct message: an employee
 // reading (and possibly replying to) something they received, or a manager
@@ -20,6 +21,21 @@ export default function MessageThreadModal({ message, viewerIsManager, myLabel, 
     else if (!message.read) markMessageRead(message.id).catch(()=>{});
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [message.id]);
+
+  // While this thread is open, a reply from the other side appears without
+  // needing to close and reopen it. Requires `message_replies` to be in the
+  // supabase_realtime publication (see the direct-messages migration
+  // follow-up note) — harmless no-op if that hasn't been run yet, the
+  // person just won't see it update live.
+  useEffect(() => {
+    const channel = supabase.channel(`message-replies-${message.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_replies', filter: `message_id=eq.${message.id}` }, (payload) => {
+        const incoming = replyFromRow(payload.new);
+        setReplies(p => p.some(r => r.id === incoming.id) ? p : [...p, incoming]);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [message.id]);
 
   const isMine = (r) => viewerIsManager ? !r.fromEmployee : r.fromEmployee;
