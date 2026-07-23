@@ -8,7 +8,7 @@ export default function EmployeesView({
   expandedEmp, setExpandedEmp,
   updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
-  onAddShift, onOpenCompose,
+  onAddShift, onOpenCompose, myId,
   orgId, orgName, isOwner, s, t,
 }){
   return (<>
@@ -25,7 +25,7 @@ export default function EmployeesView({
         </div>
         <div style={{display:'flex',gap:6}}>
           <Btn onClick={()=>onAddShift(emp)} variant="secondary" small>{'+ '+t('emp.addShift')}</Btn>
-          <Btn onClick={()=>onOpenCompose([emp.id])} variant="ghost" small>{'✉ '+t('msg.message')}</Btn>
+          {emp.id!==myId && <Btn onClick={()=>onOpenCompose([emp.id])} variant="ghost" small>{'✉ '+t('msg.message')}</Btn>}
           <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
           <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
           <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>

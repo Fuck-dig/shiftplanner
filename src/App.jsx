@@ -1207,6 +1207,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
     onAddShift={openShiftModalFor}
     onOpenCompose={openCompose}
+    myId={myId}
     orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
   />
 )}
@@ -1253,7 +1254,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       </div>
     </div>
     {composeModal && createPortal(
-      <ComposeMessageModal employees={employees} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>,
+      // Excludes the sender's own employees row (if the manager happens to
+      // be linked to one) — messaging yourself isn't a real use case, and
+      // it would otherwise show up under "Everyone"/"By role" too.
+      <ComposeMessageModal employees={employees.filter(e=>e.id!==myId)} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>,
       document.body
     )}
     {openManagerThread && createPortal(
