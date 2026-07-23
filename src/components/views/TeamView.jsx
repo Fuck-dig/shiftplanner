@@ -9,7 +9,7 @@ export default function TeamView({
   schedule, employees, blocks, roleStyles, weekDates, weekOffset, timeOff, allRoles,
   gridGroupBy, setGridGroupBy, gridTight, setGridTight, gridSearch, setGridSearch,
   empHours, assignmentHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
-  generate, generateMonth, offThisWeek, isMobile, reorderRoles,
+  generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
   s, t,
 }){
   const [collapsedRoles,setCollapsedRoles]=useState(()=>new Set());
@@ -67,10 +67,10 @@ export default function TeamView({
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-            return(<div key={day} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none'}}>
+            return(<button key={day} onClick={()=>onIsolateDay&&onIsolateDay(day)} title={t('week.isolateDay')} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderTop:'none',borderLeft:'none',borderBottom:'none',borderRight:i<6?`1px solid ${T.border}`:'none',background:'transparent',cursor:onIsolateDay?'pointer':'default',fontFamily:'inherit',width:'100%',boxSizing:'border-box',outline:'none'}} onMouseEnter={e=>{if(onIsolateDay)e.currentTarget.style.background=T.surface;}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}>
               <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
               <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
-            </div>);
+            </button>);
           })}
         </div>
       </div>
