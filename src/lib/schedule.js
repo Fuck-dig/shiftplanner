@@ -19,6 +19,13 @@ export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,
 // circuits to 0 regardless of any recorded times.
 export function actualAssignmentHours(a,b){
   if(a.noShow) return 0;
+  // blockHours treats an identical start/end as a full 24h wrap (the right
+  // call for a genuinely round-the-clock scheduled block) — but two real
+  // clock punches landing in the same minute (clocking in then straight back
+  // out, e.g. while testing) mean essentially no time worked, not 24h.
+  // Only short-circuit this for real actual punches, not whenever the
+  // scheduled start/end themselves happen to match.
+  if(a.actualStart && a.actualEnd && a.actualStart===a.actualEnd) return 0;
   return blockHours({start:a.actualStart||a.start||b.start,end:a.actualEnd||a.end||b.end});
 }
 const prio=e=>e.priority??e.salaryPct??100;

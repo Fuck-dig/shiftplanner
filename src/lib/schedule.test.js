@@ -69,6 +69,18 @@ describe('actualAssignmentHours', () => {
     expect(actualAssignmentHours({ noShow: true }, block)).toBe(0);
     expect(actualAssignmentHours({ noShow: true, actualStart: '09:00', actualEnd: '17:00' }, block)).toBe(0);
   });
+
+  it('is 0 (not a 24h wrap) when actualStart and actualEnd land in the same minute', () => {
+    // Regression: clocking in and straight back out (e.g. a quick kiosk
+    // test) sets actualStart===actualEnd, which blockHours would otherwise
+    // read as a full 24h day — the same convention that correctly gives a
+    // genuinely round-the-clock scheduled block (start===end) 24 hours.
+    expect(actualAssignmentHours({ actualStart: '17:29', actualEnd: '17:29' }, block)).toBe(0);
+  });
+
+  it('still gives a real overnight actual shift its correct wrapped hours', () => {
+    expect(actualAssignmentHours({ actualStart: '22:00', actualEnd: '06:00' }, block)).toBe(8);
+  });
 });
 
 describe('effectiveHourlyRate', () => {

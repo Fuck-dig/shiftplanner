@@ -190,7 +190,10 @@ const STRINGS = {
     'clock.clockedInAt':'Clocked in at {time}',
     'clock.clockOut':'Clock out',
     'clock.notePlaceholder':'Anything to note? (optional)',
+    'clock.confirmClockIn':'Confirm clock in',
     'clock.confirmClockOut':'Confirm clock out',
+    'clock.inNoteLabel':'In:',
+    'clock.outNoteLabel':'Out:',
     'clock.clockedOutAt':'Clocked out at {time} · {h}h worked',
 
     'kiosk.title':'Punch clock',
@@ -639,7 +642,10 @@ const STRINGS = {
     'clock.clockedInAt':'Stemplet ind kl. {time}',
     'clock.clockOut':'Stemp ud',
     'clock.notePlaceholder':'Noget at tilføje? (valgfrit)',
+    'clock.confirmClockIn':'Bekræft indstempling',
     'clock.confirmClockOut':'Bekræft udstempling',
+    'clock.inNoteLabel':'Ind:',
+    'clock.outNoteLabel':'Ud:',
     'clock.clockedOutAt':'Stemplet ud kl. {time} · {h} t arbejdet',
 
     'kiosk.title':'Stempelur',
@@ -1088,7 +1094,10 @@ const STRINGS = {
     'clock.clockedInAt':'Entrada fichada a las {time}',
     'clock.clockOut':'Fichar salida',
     'clock.notePlaceholder':'¿Algo que anotar? (opcional)',
+    'clock.confirmClockIn':'Confirmar entrada',
     'clock.confirmClockOut':'Confirmar salida',
+    'clock.inNoteLabel':'Entrada:',
+    'clock.outNoteLabel':'Salida:',
     'clock.clockedOutAt':'Salida fichada a las {time} · {h}h trabajadas',
 
     'kiosk.title':'Fichaje',

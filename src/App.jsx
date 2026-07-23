@@ -1225,12 +1225,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         </div>
         {/* Flag anything the employee did themselves via the punch clock —
             a shift they added ad hoc (no manager ever scheduled it) and/or
-            a note they left when clocking out — so this doesn't just show
-            up silently as a corrected hours figure with no context. */}
-        {(entry.selfAdded||entry.clockNote)&&(
+            a note they left when clocking in and/or out — so this doesn't
+            just show up silently as a corrected hours figure with no
+            context. */}
+        {(entry.selfAdded||entry.clockInNote||entry.clockNote)&&(
           <div style={{padding:'0 18px 12px'}}>
-            {entry.selfAdded&&<div style={{fontSize:11,color:T.accentText,marginBottom:entry.clockNote?4:0}}>{t('emp.selfAddedNotice')}</div>}
-            {entry.clockNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic'}}>&ldquo;{entry.clockNote}&rdquo;</div>}
+            {entry.selfAdded&&<div style={{fontSize:11,color:T.accentText,marginBottom:(entry.clockInNote||entry.clockNote)?4:0}}>{t('emp.selfAddedNotice')}</div>}
+            {entry.clockInNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic'}}>{t('clock.inNoteLabel')} &ldquo;{entry.clockInNote}&rdquo;</div>}
+            {entry.clockNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic',marginTop:entry.clockInNote?4:0}}>{t('clock.outNoteLabel')} &ldquo;{entry.clockNote}&rdquo;</div>}
           </div>
         )}
         {empRoles.length>1&&<div style={{padding:'0 18px 12px',display:'flex',gap:4,flexWrap:'wrap'}}>

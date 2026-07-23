@@ -127,7 +127,7 @@ export default function KioskView({ orgId, orgName, theme, toggleTheme, onExitKi
       .catch(err=>alert(err.message||'Failed to save'))
       .finally(()=>setBusy(false));
   };
-  const clockIn    = (blockId)       => applyAssignmentPatch(blockId, { actualStart: nowHM() });
+  const clockIn    = (blockId, note) => applyAssignmentPatch(blockId, { actualStart: nowHM(), clockInNote: note||'' });
   const clockOut   = (blockId, note) => applyAssignmentPatch(blockId, { actualEnd: nowHM(), clockNote: note||'' });
   const addShift   = (blockId, role) => applyAssignmentPatch(blockId, { role, selfAdded: true });
 

@@ -9,14 +9,15 @@ import { RoleBadge, Btn } from '../ui';
 // today's blocks so an unplanned shift shows up on the schedule instead of
 // only existing as an actual-hours correction after the fact. Clock in/out
 // writes go straight to the shared assignment object (actualStart/actualEnd/
-// clockNote) via EmployeeView's applyAssignmentPatch — actualAssignmentHours
+// clockInNote/clockNote) via the caller's applyAssignmentPatch — actualAssignmentHours
 // (lib/schedule.js) is what turns actualStart/actualEnd into the hours shown
 // once clocked out, same helper the Costs tab and Profile page already use.
 export default function PunchClockView({ me, myId, blocks, todayLabel, daySchedule, roleStyles, roleColorFor, busy, onClockIn, onClockOut, onAddShift, s, t }){
   const [addingShift, setAddingShift] = useState(false);
   const [addBlockId, setAddBlockId]   = useState('');
   const [addRole, setAddRole]         = useState('');
-  const [clockingOut, setClockingOut] = useState(null); // blockId currently showing the note field, or null
+  const [clockingIn, setClockingIn]   = useState(null); // blockId currently showing the clock-in note field, or null
+  const [clockingOut, setClockingOut] = useState(null); // blockId currently showing the clock-out note field, or null
   const [note, setNote]               = useState('');
 
   const myRoles = me?.roles || [];
@@ -36,6 +37,8 @@ export default function PunchClockView({ me, myId, blocks, todayLabel, daySchedu
     setAddingShift(false);
   };
 
+  const startClockIn   = (blockId) => { setClockingIn(blockId); setNote(''); };
+  const submitClockIn  = (blockId) => { onClockIn(blockId, note); setClockingIn(null); setNote(''); };
   const startClockOut  = (blockId) => { setClockingOut(blockId); setNote(''); };
   const submitClockOut = (blockId) => { onClockOut(blockId, note); setClockingOut(null); setNote(''); };
 
@@ -94,10 +97,19 @@ export default function PunchClockView({ me, myId, blocks, todayLabel, daySchedu
             {assignment.noShow ? (
               <div style={{fontSize:12,color:T.text3}}>{t('clock.noShowNotice')}</div>
             ) : !assignment.actualStart ? (
-              <Btn onClick={()=>onClockIn(block.id)} disabled={busy}>{t('clock.clockIn')}</Btn>
+              clockingIn===block.id ? (<>
+                <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t('clock.notePlaceholder')} rows={2} style={{...s.input,resize:'vertical',marginBottom:10}}/>
+                <div style={{display:'flex',gap:8}}>
+                  <Btn onClick={()=>submitClockIn(block.id)} disabled={busy}>{t('clock.confirmClockIn')}</Btn>
+                  <Btn variant="ghost" onClick={()=>setClockingIn(null)}>{t('common.cancel')}</Btn>
+                </div>
+              </>) : (
+                <Btn onClick={()=>startClockIn(block.id)} disabled={busy}>{t('clock.clockIn')}</Btn>
+              )
             ) : !assignment.actualEnd ? (
               <div>
-                <div style={{fontSize:12,color:T.success,marginBottom:8}}>{t('clock.clockedInAt',{time:assignment.actualStart})}</div>
+                <div style={{fontSize:12,color:T.success,marginBottom:assignment.clockInNote?4:8}}>{t('clock.clockedInAt',{time:assignment.actualStart})}</div>
+                {assignment.clockInNote && <div style={{fontSize:12,color:T.text3,marginBottom:8,fontStyle:'italic'}}>&ldquo;{assignment.clockInNote}&rdquo;</div>}
                 {clockingOut===block.id ? (<>
                   <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={t('clock.notePlaceholder')} rows={2} style={{...s.input,resize:'vertical',marginBottom:10}}/>
                   <div style={{display:'flex',gap:8}}>
@@ -111,7 +123,8 @@ export default function PunchClockView({ me, myId, blocks, todayLabel, daySchedu
             ) : (
               <div>
                 <div style={{fontSize:12,color:T.text2}}>{t('clock.clockedOutAt',{time:assignment.actualEnd,h:hrs.toFixed(1)})}</div>
-                {assignment.clockNote && <div style={{fontSize:12,color:T.text3,marginTop:6,fontStyle:'italic'}}>&ldquo;{assignment.clockNote}&rdquo;</div>}
+                {assignment.clockInNote && <div style={{fontSize:12,color:T.text3,marginTop:6,fontStyle:'italic'}}>{t('clock.inNoteLabel')} &ldquo;{assignment.clockInNote}&rdquo;</div>}
+                {assignment.clockNote && <div style={{fontSize:12,color:T.text3,marginTop:4,fontStyle:'italic'}}>{t('clock.outNoteLabel')} &ldquo;{assignment.clockNote}&rdquo;</div>}
               </div>
             )}
           </div>
