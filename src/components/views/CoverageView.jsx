@@ -84,8 +84,13 @@ export default function CoverageView({
     <div style={{fontSize:13,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'12px 16px'}}>{t('cov.blocksDesc')}</div>
     {blocks.map(block=>{
       const overrides=block.overrides||{},daysWithOverride=DAYS.filter(d=>overrides[d]);
-      const updDefRole=(role,val)=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,roles:{...b.roles,[role]:Math.max(0,Number(val))}}:b));
-      const updOvRole=(day,role,val)=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};ov[day]={...(ov[day]||{...b.roles}),[role]:Math.max(0,Number(val))};return{...b,overrides:ov};}));
+      // val passes through as '' while the field is mid-edit (backspaced to
+      // empty) rather than being forced to 0 immediately — otherwise
+      // clearing the field to type a fresh number gets stuck at a
+      // re-appearing "0" (see the onBlur handlers on these inputs below,
+      // which apply the real 0-floor once editing is done).
+      const updDefRole=(role,val)=>setBlocks(p=>p.map(b=>b.id===block.id?{...b,roles:{...b.roles,[role]:val===''?'':Math.max(0,Number(val))}}:b));
+      const updOvRole=(day,role,val)=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};ov[day]={...(ov[day]||{...b.roles}),[role]:val===''?'':Math.max(0,Number(val))};return{...b,overrides:ov};}));
       const addDayOv=day=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};ov[day]={...b.roles};return{...b,overrides:ov};}));
       const remDayOv=day=>setBlocks(p=>p.map(b=>{if(b.id!==block.id)return b;const ov={...b.overrides||{}};delete ov[day];return{...b,overrides:Object.keys(ov).length?ov:undefined};}));
       return(<div key={block.id} style={s.card}>
@@ -100,14 +105,14 @@ export default function CoverageView({
         <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6,marginBottom:16}}>
           {allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1px solid ${isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}>
             <span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span>
-            <input type="number" min="0" max="99" value={block.roles[role]||0} onChange={e=>updDefRole(role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>
+            <input type="number" min="0" max="99" value={block.roles[role]??''} onChange={e=>updDefRole(role,e.target.value)} onBlur={e=>{if(e.target.value==='')updDefRole(role,0);}} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>
           </div>);})}
         </div>
         <SectionLabel>{t('cov.dayOverrides')}</SectionLabel>
         <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:8}}>
           {daysWithOverride.map(day=>{const dr=overrides[day];return(<div key={day} style={{background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 12px'}}>
             <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}><span style={{fontSize:12,fontWeight:600,color:T.text,width:36}}>{t('day.'+day)}</span><span style={{fontSize:11,color:T.text3,flex:1}}>{t('cov.customStaffing',{day:t('day.'+day)})}</span><Btn small variant="ghost" onClick={()=>remDayOv(day)}>{t('cov.removeX')}</Btn></div>
-            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isChanged=(dr[role]||0)!==(block.roles[role]||0);return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isChanged?rs.dot:isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}><span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span><input type="number" min="0" max="99" value={dr[role]||0} onChange={e=>updOvRole(day,role,e.target.value)} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>{isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}</div>);})}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>{allRoles.map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other,isChanged=(dr[role]||0)!==(block.roles[role]||0);return(<div key={role} style={{display:'flex',alignItems:'center',gap:6,background:isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isChanged?rs.dot:isDark()?rs.dot+'80':rs.border}`,borderRadius:8,padding:'6px 10px'}}><span style={{fontSize:11,fontWeight:500,color:isDark()?rs.dot:rs.text}}>{role}</span><input type="number" min="0" max="99" value={dr[role]??''} onChange={e=>updOvRole(day,role,e.target.value)} onBlur={e=>{if(e.target.value==='')updOvRole(day,role,0);}} style={{width:36,textAlign:'center',padding:'3px 4px',fontSize:12,borderRadius:5,border:`1px solid ${rs.border}`,background:isDark()?'rgba(255,255,255,0.08)':'rgba(255,255,255,0.6)',color:isDark()?rs.dot:rs.text,fontFamily:'inherit'}}/>{isChanged&&<span style={{fontSize:9,color:rs.dot,fontWeight:600}}>↑</span>}</div>);})}
             </div>
           </div>);})}
           <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}><span style={{fontSize:11,color:T.text3}}>{t('cov.addOverrideFor')}</span>

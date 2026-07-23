@@ -121,7 +121,7 @@ export default function CostsView({
       )}
       <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
         <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
-        <input type="number" min="1" step="1" value={hourlyRate.amount} onChange={e=>setHourlyRate(p=>({...p,amount:Math.max(1,Number(e.target.value))}))} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
+        <input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
         <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
         <span style={{fontSize:11,color:T.text3}}>/h</span>
       </div>
