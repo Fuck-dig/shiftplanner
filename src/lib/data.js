@@ -17,6 +17,7 @@ const empToRow = (orgId, e) => ({
   availability:    e.availability || {},
   pal_idx:         e.palIdx ?? 0,
   email_notifications: e.emailNotifications !== false,
+  pin:             (e.pin||'').trim() || null,
 });
 
 const empFromRow = (r) => ({
@@ -34,6 +35,7 @@ const empFromRow = (r) => ({
   availability:   r.availability || {},
   palIdx:         r.pal_idx ?? 0,
   emailNotifications: r.email_notifications ?? true,
+  pin:            r.pin || '',
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────

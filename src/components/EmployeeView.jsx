@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
 import { assignmentHours, actualAssignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages, updateShiftAssignment } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
@@ -12,7 +12,6 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import PunchClockView from './views/PunchClockView';
 import { Btn, RoleBadge, GripDots, WeekPicker, EmpChip } from './ui';
 
 function LoadingScreen(){
@@ -41,8 +40,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [swapBusy, setSwapBusy]   = useState(false);
   const [timeOffModalOpen, setTimeOffModalOpen] = useState(false);
   const [toBusy, setToBusy]       = useState(false);
-  const [view, setView]           = useState('clock'); // 'clock' | 'schedule' | 'employees' | 'profile' — top-level nav tabs; punch clock is the landing tab
-  const [clockBusy, setClockBusy] = useState(false); // true while a clock-in/out/add-shift write is in flight
+  const [view, setView]           = useState('schedule'); // 'schedule' | 'employees' | 'profile' — top-level nav tabs
   const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
@@ -261,30 +259,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   })() : 0;
 
   const me = employees.find(e=>e.id===myId);
-
-  // Punch clock — always keyed to TODAY's actual calendar day, regardless of
-  // which week/day the Schedule tab happens to be showing (that tab has its
-  // own independent weekOffset/dayFilter nav state). Writes go straight to
-  // the server via updateShiftAssignment (a targeted read-modify-write, see
-  // lib/data.js) rather than through setSchedules' whole-object debounce —
-  // this session never holds the full schedules object as the source of
-  // truth the way the manager Dashboard does, so a blind overwrite here
-  // could stomp a manager's concurrent edit to the same week.
-  const todayDayName = (() => { const jsDay=new Date().getDay(); return DAYS[jsDay===0?6:jsDay-1]; })();
-  const todayWeekKey = weekKey(0);
-  const daySchedule  = schedules[todayWeekKey]?.schedule?.[todayDayName] || {};
-  const nowHM = () => { const d=new Date(); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
-  const applyAssignmentPatch = (blockId, patch) => {
-    if (!myId) return;
-    setClockBusy(true);
-    updateShiftAssignment(orgId, todayWeekKey, todayDayName, blockId, myId, patch)
-      .then(nextData => setSchedules(p=>({...p,[todayWeekKey]:nextData})))
-      .catch(err=>alert(err.message||'Failed to save'))
-      .finally(()=>setClockBusy(false));
-  };
-  const clockIn    = (blockId)       => applyAssignmentPatch(blockId, { actualStart: nowHM() });
-  const clockOut   = (blockId, note) => applyAssignmentPatch(blockId, { actualEnd: nowHM(), clockNote: note||'' });
-  const addMyShift = (blockId, role) => applyAssignmentPatch(blockId, { role, selfAdded: true });
 
   const saveMyName = (newName) => {
     updateEmployeeSelfProfile(myId, { name: newName })
@@ -594,7 +568,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         </div>
         {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).bg,color:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).text,border:`1px solid ${(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
         <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginRight:isMobile?6:10,flexShrink:0}}>
-          <button onClick={()=>setView('clock')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='clock'?600:400,background:view==='clock'?T.surface:'transparent',color:view==='clock'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.clock')}</button>
           <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
           <button onClick={()=>setView('employees')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='employees'?600:400,background:view==='employees'?T.surface:'transparent',color:view==='employees'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('sched.directory')}</button>
           <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>
@@ -607,9 +580,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       </div>
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
-      {view==='clock' ? (
-        <PunchClockView me={me} myId={myId} blocks={blocks} todayLabel={fmtLong(todayISO())} daySchedule={daySchedule} roleStyles={roleStyles} roleColorFor={roleColorFor} busy={clockBusy} onClockIn={clockIn} onClockOut={clockOut} onAddShift={addMyShift} s={s} t={t}/>
-      ) : view==='profile' ? (
+      {view==='profile' ? (
         <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>

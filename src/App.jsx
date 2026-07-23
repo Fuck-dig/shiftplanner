@@ -16,6 +16,7 @@ import NotificationBell from './components/NotificationBell';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
 import EmployeeView from './components/EmployeeView';
+import KioskView from './components/KioskView';
 import EmployeesView from './components/views/EmployeesView';
 import TimeOffView from './components/views/TimeOffView';
 import CoverageView from './components/views/CoverageView';
@@ -554,6 +555,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // one employee (the per-card "Message" quick action in Employees) rather
   // than defaulting to "everyone" every time.
   const openCompose=(presetEmpIds)=>setComposeModal({presetEmpIds:presetEmpIds||[]});
+  // Opens Kiosk mode (see KioskView.jsx) in a new tab, so this manager tab
+  // stays on the normal Dashboard. On a shared on-site device, a manager
+  // instead just visits this same URL with ?kiosk=1 directly and signs in —
+  // this button is really only for trying it out or re-launching it from
+  // the same device you're already managing from.
+  const openKiosk=()=>{ const url=new URL(window.location.href); url.searchParams.set('kiosk','1'); window.open(url.toString(), '_blank'); };
   const senderLabel=me?.name||orgName||'Management';
   const submitCompose=({recipientEmpIds,subject,body,allowReplies})=>{
     setComposeBusy(true);
@@ -1360,6 +1367,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
     onAddShift={openShiftModalFor}
     onOpenCompose={openCompose}
+    onOpenKiosk={openKiosk}
     myId={myId}
     orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
   />
@@ -1487,6 +1495,11 @@ export default function App(){
   const switchOrg =id=>{setActiveOrg(id);try{localStorage.setItem('sa2_active_org',id);}catch{}};
   const reloadOrgs=async()=>{setOrgs(undefined);setOrgTick(t=>t+1);};
 
+  // Kiosk mode is just a URL flag (?kiosk=1) — see KioskView.jsx and the
+  // isManager branch below for why that's an adequate gate rather than a
+  // second login system.
+  const isKiosk = typeof window!=='undefined' && new URLSearchParams(window.location.search).get('kiosk')==='1';
+
   let content;
   if(session===undefined) content=<LoadingScreen/>;
   else if(!session) content=<Auth/>;
@@ -1512,8 +1525,15 @@ export default function App(){
       // expected.
       const isManager=(active.role==='owner'||active.role==='manager');
       const isOwner=(active.role==='owner');
+      // Kiosk mode (?kiosk=1) is a separate, shared-device screen for
+      // clocking in/out — see KioskView.jsx. It only ever activates for a
+      // manager/owner login (that login IS the access gate for reaching
+      // kiosk mode at all); a plain employee login ignores the flag and
+      // always gets the normal EmployeeView regardless.
       content=!isManager
         ? <EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+        : isKiosk
+        ? <KioskView orgId={active.id} key={active.id+'-kiosk'} orgName={active.name} theme={theme} toggleTheme={toggleTheme} onExitKiosk={()=>{ const url=new URL(window.location.href); url.searchParams.delete('kiosk'); window.location.href=url.toString(); }}/>
         : <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} role={active.role} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>;
     }
   }

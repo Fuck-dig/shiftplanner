@@ -8,11 +8,12 @@ export default function EmployeesView({
   expandedEmp, setExpandedEmp,
   updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
-  onAddShift, onOpenCompose, myId,
+  onAddShift, onOpenCompose, onOpenKiosk, myId,
   orgId, orgName, isOwner, s, t,
 }){
   return (<>
-  <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+  <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:10}}>
+    {onOpenKiosk && <Btn onClick={onOpenKiosk} variant="ghost">{'⏱ '+t('kiosk.openButton')}</Btn>}
     <Btn onClick={()=>onOpenCompose()} variant="secondary">{'✉ '+t('msg.newMessage')}</Btn>
   </div>
   <div style={{display:'flex',flexDirection:'column',gap:10}}>
@@ -36,6 +37,7 @@ export default function EmployeesView({
           <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
         <div style={{flex:'2 1 160px'}}><SectionLabel>{t('emp.email')}</SectionLabel><input type="email" value={emp.email||''} onChange={e=>updateEmp(emp.id,'email',e.target.value)} placeholder={t('team.emailPlaceholder')} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.emailHint')}</div></div>
         <div style={{flex:'1 1 140px'}}><SectionLabel>{t('emp.phone')}</SectionLabel><input type="tel" value={emp.phone||''} onChange={e=>updateEmp(emp.id,'phone',e.target.value)} placeholder={t('emp.phonePlaceholder')} style={s.input}/></div>
+        <div style={{flex:'1 1 110px'}}><SectionLabel>{t('emp.kioskPin')}</SectionLabel><input type="text" inputMode="numeric" maxLength={6} value={emp.pin||''} onChange={e=>updateEmp(emp.id,'pin',e.target.value.replace(/\D/g,'').slice(0,6))} placeholder={t('emp.kioskPinPlaceholder')} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.kioskPinHint')}</div></div>
         </div>
         <div style={{marginBottom:12}}>
           <SectionLabel>{t('emp.roles')}</SectionLabel>

@@ -1,0 +1,12 @@
+-- Kiosk mode: a shared, on-site device (see KioskView.jsx) that a manager
+-- unlocks once by signing in normally, after which staff standing at that
+-- device pick their own name and enter this PIN to punch in/out — separate
+-- from the personal punch-clock flow, which was removed from employees'
+-- own logins specifically so a shift can't be clocked in from home.
+--
+-- This is a soft, UI-level identification code, not a real authentication
+-- factor: the actual security boundary is the manager/owner login required
+-- to reach kiosk mode at all. Kept intentionally simple (a plain text PIN,
+-- no hashing) to match the rest of this app's trust model, where RLS scopes
+-- data to an org rather than locking down individual columns.
+alter table employees add column if not exists pin text;
