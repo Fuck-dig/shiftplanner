@@ -116,7 +116,14 @@ export default function WeekView({
                     let actStart=seg.start,actEnd=seg.end,actOngoing=false;
                     if(hasActual){
                       actStart=realA.actualStart?toMin(realA.actualStart):seg.start;
-                      if(realA.actualEnd){ actEnd=toMin(realA.actualEnd); if(actEnd<=actStart)actEnd+=1440; }
+                      if(realA.actualEnd){
+                        actEnd=toMin(realA.actualEnd);
+                        // Same convention as actualAssignmentHours (lib/schedule.js):
+                        // two real punches landing in the same minute mean ~0 time
+                        // worked, not a wrap to almost a full 24h bar.
+                        if(realA.actualStart===realA.actualEnd) actEnd=actStart;
+                        else if(actEnd<=actStart) actEnd+=1440;
+                      }
                       else { actOngoing=true; actEnd=Math.max(actStart+15,seg.end); }
                     }
                     const rawStart=dragging?ganttPreview.start:(hasActual?actStart:seg.start);
@@ -138,7 +145,12 @@ export default function WeekView({
                     // long a shift ran compared to plan.
                     const showGhost=hasActual&&(actStart!==seg.start||actEnd!==seg.end);
                     const ghostLeftPct=(seg.start-rangeStart)/totalMin*100,ghostWidthPct=(seg.end-seg.start)/totalMin*100;
-                    const barColor=isNoShow?T.danger:hasActual?T.success:rs.dot;
+                    // No-show is the one state worth a color change (nothing
+                    // actually happened) — an ordinary clocked shift just uses
+                    // the role's own color same as always, only resized; the
+                    // ✓/● in the label is what signals "this already
+                    // happened" rather than a background tint.
+                    const barColor=isNoShow?T.danger:rs.dot;
                     // A Fragment (not a wrapping div) — the drag handles below
                     // walk up two parentElements to find the row "rail" for
                     // computing drag position, which only works if the bar
@@ -146,7 +158,7 @@ export default function WeekView({
                     return(<Fragment key={si}>
                       {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${rs.dot}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
                       <div onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?barColor+'40':barColor+'30',border:`1.5px solid ${barColor}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
-                        <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?barColor:(isNoShow||hasActual)?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                        <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?barColor:isNoShow?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                       </div>
