@@ -1,7 +1,42 @@
 import { T, pal } from '../../lib/constants';
-import { fmt, getMonthOffsets, weekKey } from '../../lib/dates';
+import { fmt, getMonthOffsets, weekKey, dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
 import { Avatar, RoleBadge, Btn } from '../ui';
+
+// CSV field escaping — wrap in quotes (doubling any embedded quotes) only
+// when the value actually needs it, so simple values stay readable in the
+// raw file.
+const csvField = (v) => {
+  const str = String(v ?? '');
+  return /[",\r\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+};
+
+// Builds a payroll-friendly CSV from the same per-employee cost breakdown
+// already shown on screen, so what a manager sees and what they hand off to
+// payroll always match.
+function buildCostsCSV(data, currency) {
+  const header = ['Employee', 'Roles', 'Hours', 'Max Hours', 'Cost', 'Currency'];
+  const rows = [...data]
+    .sort((a, b) => b.costUnits - a.costUnits)
+    .map(({ emp, hours, costUnits }) => [
+      emp.name,
+      (emp.roles || []).join('/'),
+      hours,
+      emp.maxHours,
+      costUnits.toFixed(2),
+      currency,
+    ]);
+  return [header, ...rows].map(row => row.map(csvField).join(',')).join('\r\n');
+}
+
+function downloadCSV(csv, filename) {
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
 export default function CostsView({
   costsMode, setCostsMode, costsWeekOffset, setCostsWeekOffset, displayMonth, schedules, schedule, weekDates,
@@ -38,7 +73,16 @@ export default function CostsView({
       <div style={{position:'relative'}}><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div><Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn></div>
     </div>):(()=>{
       const data=costsMode==='month'?monthCostData:costData,totalCost=costsMode==='month'?totalMonthCostUnits:totalCostUnits,maxCost=costsMode==='month'?maxMonthCostUnits:maxCostUnits,roleCosts=costsMode==='month'?monthRoleCosts:weekRoleCosts,maxRC=Math.max(...Object.values(roleCosts),0.01),workingCount=data.filter(d=>d.hours>0).length,totalHours=data.reduce((sv,d)=>sv+d.hours,0);
+      const exportCsv=()=>{
+        const label=costsMode==='month'
+          ?`${displayMonth.y}-${String(displayMonth.m+1).padStart(2,'0')}`
+          :`${dateToISO(weekDates[0])}_to_${dateToISO(weekDates[6])}`;
+        downloadCSV(buildCostsCSV(data,hourlyRate.currency),`costs-${costsMode}-${label}.csv`);
+      };
       return(<>
+        <div style={{display:'flex',justifyContent:'flex-end'}}>
+          <Btn small variant="ghost" onClick={exportCsv}>{t('cost.exportCsv')}</Btn>
+        </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
           {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
         </div>

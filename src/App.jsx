@@ -27,6 +27,13 @@ import { LANGUAGES, makeT, detectLang, LOCALES } from './i18n';
 // lib/storage.js's load/save already do (and which EmployeeView.jsx, Auth.jsx
 // and RestaurantPicker.jsx already use) — now shared instead of duplicated.
 
+// Used only when building the printable schedule's HTML string (see
+// printSchedule below) — names/roles are user-entered free text, so they
+// need escaping before being dropped into markup.
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
 }
@@ -450,6 +457,53 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
   const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);};
   const deleteMonth       =()=>{const offs=getMonthOffsets(displayMonth);setSchedules(p=>{const n={...p};offs.forEach(off=>delete n[weekKey(off)]);return n;});};
+
+  // Opens a standalone, unstyled-by-the-app HTML page in a new tab and
+  // triggers the browser's print dialog on it — a clean printout (e.g. for
+  // a break-room board) is much easier to get right in its own document
+  // than by fighting the live app's layout/print CSS.
+  const printSchedule = () => {
+    if (!schedule) return;
+    const empById = new Map(employees.map(e=>[e.id,e]));
+    const rangeLabel = `${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
+    const dayHeaders = DAYS.map((day,i)=>`<th>${escapeHtml(t('day.'+day))}<br><span class="date">${escapeHtml(fmt(weekDates[i]))}</span></th>`).join('');
+    const rows = blocks.map(b=>{
+      const cells = DAYS.map(day=>{
+        const assigned = schedule[day]?.[b.id] || [];
+        if (!assigned.length) return '<td class="empty">—</td>';
+        const shifts = assigned.map(a=>{
+          const name = empById.get(a.empId)?.name || a.name || '?';
+          return `<div class="shift"><span class="name">${escapeHtml(name)}</span><span class="role">${escapeHtml(a.role)}</span></div>`;
+        }).join('');
+        return `<td>${shifts}</td>`;
+      }).join('');
+      return `<tr><th class="blockName">${escapeHtml(b.name)}<br><span class="time">${escapeHtml(b.start)}–${escapeHtml(b.end)}</span></th>${cells}</tr>`;
+    }).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(orgName)} — ${escapeHtml(rangeLabel)}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#211b15;padding:24px;}
+      h1{font-size:18px;margin:0 0 2px;}
+      .sub{font-size:12px;color:#6b625a;margin-bottom:18px;}
+      table{width:100%;border-collapse:collapse;}
+      th,td{border:1px solid #d8d1c8;padding:6px 8px;font-size:11px;vertical-align:top;text-align:left;}
+      thead th{background:#f4efe8;text-align:center;}
+      th.blockName{background:#f4efe8;white-space:nowrap;}
+      .time,.date{font-weight:400;color:#6b625a;font-size:10px;}
+      td.empty{text-align:center;color:#b3aa9f;}
+      .shift{margin-bottom:4px;}
+      .name{display:block;font-weight:600;}
+      .role{display:block;font-size:9px;color:#6b625a;}
+      @media print{ body{padding:0;} }
+    </style></head><body>
+      <h1>${escapeHtml(orgName)}</h1>
+      <div class="sub">${escapeHtml(rangeLabel)}</div>
+      <table><thead><tr><th></th>${dayHeaders}</tr></thead><tbody>${rows}</tbody></table>
+      <script>window.onload=()=>window.print();<\/script>
+    </body></html>`;
+    const blob = new Blob([html], { type:'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  };
 
   // Only ever called while a move is already armed (via the edit modal's
   // "Move" button) — clicking a chip with nothing armed opens the edit
@@ -1016,6 +1070,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       <div style={{width:1,height:16,background:T.border}}/>
       {confirmed?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('sched.confirmed')}</span>:<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>}
       {confirmed?<Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn>:<Btn small variant="success" onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
+      <Btn small variant="ghost" onClick={printSchedule}>{t('sched.print')}</Btn>
       <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
     </div>)}
   </div>
