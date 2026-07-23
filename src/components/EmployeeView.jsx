@@ -518,12 +518,23 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
               const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
               const pendingSwap=isMe&&swaps.find(sw=>sw.weekKey===wKey&&sw.day===day&&sw.blockId===b.id&&sw.fromEmpId===myId&&(sw.status==='open'||sw.status==='claimed'));
+              // Same "what actually happened" treatment as the manager's Team
+              // tab (TeamView.jsx) — a colored border/dot plus an explicit
+              // "Clocked HH:MM–HH:MM" line once someone's punched in, so this
+              // isn't only visible from the manager side.
+              const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
+              const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
               return(
-              <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${isMe?T.accent:p.dot}55`,position:'relative'}}>
-                <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:isMe?T.accent:p.dot}}/>
+              <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'99':(isMe?T.accent:p.dot)+'55'}`,position:'relative'}}>
+                <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:(isMe?T.accent:p.dot)}}/>
                 <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
                 <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
-                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{actualAssignmentHours(shiftEntry||{},b).toFixed(1)}h{shiftEntry?.noShow?` · ${t('emp.noShow')}`:(shiftEntry?.actualStart||shiftEntry?.actualEnd)?` · ${t('emp.hoursAdjusted')}`:''}</div>
+                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{actualAssignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
+                {clockedInfo&&(
+                  <div style={{fontSize:10,fontWeight:600,color:clockStatusColor,marginTop:2}}>
+                    {shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`}
+                  </div>
+                )}
                 {/* Which role this particular shift is — matters whenever
                     someone with more than one role (or covering a one-off
                     shift outside their usual role) works different roles on
@@ -1086,15 +1097,20 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                     const rawStart=hasActual?actStart:seg.start, rawEnd=hasActual?actEnd:seg.end;
                     const clampedStart=Math.min(Math.max(rawStart,rangeStart),rangeEnd);
                     const clampedEnd=Math.min(Math.max(rawEnd,rangeStart),rangeEnd);
-                    const leftPct=(clampedStart-rangeStart)/totalMin*100, widthPct=Math.max((clampedEnd-clampedStart)/totalMin*100,1.5);
+                    const leftPct=(clampedStart-rangeStart)/totalMin*100, widthPct=(clampedEnd-clampedStart)/totalMin*100;
+                    // Same fix as the manager's WeekView.jsx — a plain
+                    // percentage width can shrink to an unreadable sliver
+                    // (e.g. a same-minute clock in/out), so floor it with a
+                    // real pixel minimum wide enough for the label instead.
+                    const barMinPx=isMobile?84:104;
                     const label=isNoShow?t('emp.noShow'):hasActual?`${seg.actualStart||seg.startStr}–${seg.actualEnd||'…'}${actOngoing?' ●':' ✓'}`:`${seg.startStr}–${seg.endStr}`;
                     const showGhost=hasActual&&(actStart!==seg.start||actEnd!==seg.end);
                     const ghostLeftPct=(seg.start-rangeStart)/totalMin*100, ghostWidthPct=(seg.end-seg.start)/totalMin*100;
                     const barColor=isNoShow?T.danger:isMe?T.accent:rs.dot;
                     return(<Fragment key={si}>
                       {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${(isMe?T.accent:rs.dot)}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
-                      <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isNoShow?(isDark()?T.danger+'30':T.dangerLight):isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${barColor}`,borderRadius:6}}>
-                        <span style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',fontSize:isMobile?9:10,fontWeight:600,color:isNoShow?T.danger:isMe?T.accent:(isDark()?rs.dot:rs.text),whiteSpace:'nowrap',padding:'1px 6px',borderRadius:4,background:isDark()?'rgba(30,24,20,0.7)':'rgba(255,255,255,0.85)'}}>{label}</span>
+                      <div style={{position:'absolute',left:`${leftPct}%`,width:`max(${widthPct}%, ${barMinPx}px)`,top:0,bottom:0,zIndex:1,background:isNoShow?(isDark()?T.danger+'30':T.dangerLight):isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${barColor}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+                        <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isNoShow?T.danger:isMe?T.accent:(isDark()?rs.dot:rs.text),whiteSpace:'nowrap',padding:'0 5px'}}>{label}</span>
                       </div>
                     </Fragment>);
                   })}
