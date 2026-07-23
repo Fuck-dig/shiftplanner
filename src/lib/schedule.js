@@ -36,6 +36,19 @@ function targetHoursOf(e){
 }
 export function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
 export function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
+// What it costs to schedule an employee for a given number of hours this
+// week. Falls back to a priority-based heuristic (same scale schedule
+// generation itself uses to rank candidates) when no hourly/monthly wage is
+// set, so the Costs view always has *something* comparable to show even for
+// orgs that haven't entered pay rates yet. Previously duplicated inline in
+// App.jsx — moved here so the Costs view and any future caller (and its
+// tests) share one definition instead of two that could drift apart.
+export function calcWageCost(e,hours){
+  const rate=effectiveHourlyRate(e);
+  if(rate==null) return parseFloat((hours*(e.priority||100)/100).toFixed(2));
+  return parseFloat((hours*rate).toFixed(2));
+}
+
 // An employee's "effective" roles for a given week — their configured
 // job roles, PLUS whatever role(s) they're actually scheduled under this
 // week. Without the second part, someone whose configured role is e.g.

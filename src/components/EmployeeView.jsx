@@ -866,11 +866,26 @@ function TimeOffRequestModal({ busy, onCancel, onSubmit, s, t }){
 // their contact details.
 function Directory({ employees, myId, roleStyles, roleColorFor, s, t }){
   const [selected, setSelected] = useState(null); // employee whose info popup is open, or null
+  const [query, setQuery] = useState('');
   const sorted = [...employees].sort((a,b)=>a.name.localeCompare(b.name));
+  const q = query.trim().toLowerCase();
+  // Only worth showing a search box once the team is big enough that
+  // scanning the grid by eye stops being faster than typing.
+  const showSearch = employees.length > 6;
+  const filtered = q ? sorted.filter(emp=>emp.name.toLowerCase().includes(q)||(emp.roles||[]).some(r=>r.toLowerCase().includes(q))) : sorted;
   return (
     <>
+      {showSearch && (
+        <div style={{position:'relative',maxWidth:320,marginBottom:14}}>
+          <span style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:13,color:T.text3,pointerEvents:'none'}}>⌕</span>
+          <input value={query} onChange={e=>setQuery(e.target.value)} placeholder={t('dir.searchPlaceholder')} style={{...s.input,width:'100%',paddingLeft:32}}/>
+        </div>
+      )}
+      {filtered.length===0 ? (
+        <div style={{fontSize:12,color:T.text3,fontStyle:'italic',padding:'24px 0',textAlign:'center'}}>{t('dir.noResults')}</div>
+      ) : (
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(180px, 1fr))',gap:12}}>
-        {sorted.map(emp=>{
+        {filtered.map(emp=>{
           const isMe=emp.id===myId, p=pal(emp);
           return (
             <div key={emp.id} onClick={()=>setSelected(emp)} style={{...s.card,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',textAlign:'center',gap:10,padding:'22px 14px',border:isMe?`1.5px solid ${T.accent}`:s.card.border,background:isMe?(isDark()?T.accent+'12':T.accentLight):s.card.background,transition:'transform 0.12s, box-shadow 0.12s'}}>
@@ -885,6 +900,7 @@ function Directory({ employees, myId, roleStyles, roleColorFor, s, t }){
           );
         })}
       </div>
+      )}
       {selected && createPortal(
         <StaffInfoModal emp={selected} isMe={selected.id===myId} roleStyles={roleStyles} roleColorFor={roleColorFor} onClose={()=>setSelected(null)} s={s} t={t}/>,
         document.body
