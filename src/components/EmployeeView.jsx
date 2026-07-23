@@ -187,16 +187,26 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // (mergeRoleOrder, shared via lib/roles.js).
   const allRoles = mergeRoleOrder(roleOrder, discoveredRoles);
   // Team tab row order — mirrors the manager's TeamView grouping: sorted by
-  // name, or bucketed by role (an employee with multiple roles — or who's
-  // covering a one-off shift outside their usual role this week,
-  // effectiveRolesFor — appears once per matching role, same as the manager
-  // side). Your own row also gets pinned in a sticky "Your Shifts" strip
-  // above the list (see the Team tab JSX below) instead of being sorted to
-  // the top here — that way the full list stays in its normal order.
+  // name, or bucketed by role. Each employee appears in exactly ONE role
+  // group (their first effective role, in Coverage's role order) rather
+  // than once per role they have — showing someone's whole week duplicated
+  // under every one of their roles was more confusing than useful; which
+  // role a given shift is actually for is one tap away (open the shift).
+  // "Effective" roles means configured roles OR whatever they're actually
+  // scheduled as this week (effectiveRolesFor), so someone covering a
+  // one-off shift outside their usual role still groups sensibly. Your own
+  // row also gets pinned in a sticky "Your Shifts" strip above the list
+  // (see the Team tab JSX below) instead of being sorted to the top here —
+  // that way the full list stays in its normal order.
   const effRoles = new Map(employees.map(e=>[e.id, effectiveRolesFor(e,schedule,blocks)]));
+  const primaryRoleFor = new Map(employees.map(e=>{
+    const eff=effRoles.get(e.id);
+    const first=allRoles.find(r=>eff.has(r));
+    return [e.id, first||null];
+  }));
   const gridRows = gridGroupBy==='role'
-    ? allRoles.filter(role=>employees.some(e=>effRoles.get(e.id).has(role)))
-        .flatMap(role=>[...employees].filter(e=>effRoles.get(e.id).has(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    ? allRoles.filter(role=>employees.some(e=>primaryRoleFor.get(e.id)===role))
+        .flatMap(role=>[...employees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // roleStyles (the manager's real, Supabase-synced colours) covers most
@@ -535,11 +545,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                     {shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`}
                   </div>
                 )}
-                {/* Which role this particular shift is — matters whenever
-                    someone with more than one role (or covering a one-off
-                    shift outside their usual role) works different roles on
-                    different days; the block name alone doesn't say that. */}
-                {shiftEntry?.role&&<div style={{marginTop:4}}><RoleBadge role={shiftEntry.role} rs={roleStyles[shiftEntry.role]||roleColorFor(shiftEntry.role)}/></div>}
                 {isMe&&(pendingSwap?(
                   <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{pendingSwap.status==='claimed'?t('swap.statusClaimed',{name:employees.find(e=>e.id===pendingSwap.claimedByEmpId)?.name||'?'}):t('swap.statusOpen')}</div>
                 ):(

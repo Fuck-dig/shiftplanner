@@ -29,20 +29,28 @@ export default function TeamView({
     </div>
   </div>);
 
-  // Sort/group employees — in "by role" mode, an employee with multiple roles
-  // appears once per matching role group. "Matching" means their configured
-  // roles OR whatever they're actually scheduled as this week (effectiveRolesFor)
-  // — otherwise someone covering a one-off shift outside their usual role
-  // wouldn't show up grouped under it, even though the day grid shows them
-  // working it.
+  // Sort/group employees — in "by role" mode, each employee appears in
+  // exactly ONE role group (their first effective role, in the same order
+  // as the Coverage tab's role list), not once per role they have. Showing
+  // someone's whole week duplicated under every one of their roles was more
+  // confusing than useful; which role a given shift is actually for is one
+  // click away (open the shift). "Effective" roles means their configured
+  // roles OR whatever they're actually scheduled as this week
+  // (effectiveRolesFor) — so someone covering a one-off shift outside their
+  // usual role still gets grouped sensibly.
   const allRoleOrder=allRoles;
   const gq=gridSearch.trim().toLowerCase();
   const gridEmployees=gq?employees.filter(e=>e.name.toLowerCase().includes(gq)):employees;
   const effRoles=new Map(gridEmployees.map(e=>[e.id,effectiveRolesFor(e,schedule,blocks)]));
+  const primaryRoleFor=new Map(gridEmployees.map(e=>{
+    const eff=effRoles.get(e.id);
+    const first=allRoleOrder.find(r=>eff.has(r));
+    return [e.id,first||null];
+  }));
   const rows=gridGroupBy==='role'
     ?allRoleOrder
-        .filter(role=>gridEmployees.some(e=>effRoles.get(e.id).has(role)))
-        .flatMap(role=>[...gridEmployees].filter(e=>effRoles.get(e.id).has(role)).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+        .filter(role=>gridEmployees.some(e=>primaryRoleFor.get(e.id)===role))
+        .flatMap(role=>[...gridEmployees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     :[...gridEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
@@ -136,8 +144,6 @@ export default function TeamView({
                   const bh=actualAssignmentHours(shiftEntry||{},b);
                   const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
                   const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
-                  const shiftRole=shiftEntry?.role;
-                  const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
                   const realIdx=(schedule[day]?.[b.id]||[]).findIndex(a=>a.empId===emp.id);
                   return(
                     <div key={b.id} onClick={()=>openEditSlot(day,b.id,realIdx)} title={clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
@@ -155,7 +161,6 @@ export default function TeamView({
                           {shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`}
                         </div>
                       )}
-                      {(emp.roles||[]).length>1&&shiftRole&&<div style={{marginTop:3,display:'inline-block',fontSize:9,fontWeight:600,color:isDark()?rrs.dot:rrs.text,background:isDark()?rrs.dot+'22':rrs.bg,border:`1px solid ${isDark()?rrs.dot+'55':rrs.border}`,padding:'1px 5px',borderRadius:999}}>{shiftRole}</div>}
                     </div>
                   );
                 }):(
