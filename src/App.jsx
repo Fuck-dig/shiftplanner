@@ -1349,7 +1349,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
 )}
 
       </div>

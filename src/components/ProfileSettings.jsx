@@ -8,7 +8,7 @@ import { Btn, TimePicker } from './ui';
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, monthHours, s, t }){
+export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, monthHours, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
@@ -128,7 +128,18 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
             </div>
           )}
         </>) : (
-          <div style={{fontSize:12,color:T.text3,fontStyle:'italic',padding:'10px 12px',background:T.surfaceWarm,borderRadius:10,border:`1px solid ${T.border}`}}>{t('profile.noEmployeeRecord')}</div>
+          <div style={{padding:'14px 16px',background:T.surfaceWarm,borderRadius:10,border:`1px solid ${T.border}`}}>
+            <div style={{fontSize:12,color:T.text2,lineHeight:1.6,marginBottom:onGoToEmployees?14:(myEmail?12:0)}}>
+              {onGoToEmployees ? t('profile.noEmployeeRecordManager') : t('profile.noEmployeeRecord')}
+            </div>
+            {myEmail && (
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:onGoToEmployees?14:0}}>
+                <span style={{fontSize:11,color:T.text3}}>{t('profile.yourLoginEmail')}</span>
+                <span style={{fontSize:13,fontWeight:500,color:T.text}}>{myEmail}</span>
+              </div>
+            )}
+            {onGoToEmployees && <Btn small onClick={onGoToEmployees}>{t('profile.addSelfToRoster')}</Btn>}
+          </div>
         )}
       </div>
 
