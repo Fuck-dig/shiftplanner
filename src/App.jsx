@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
 import ComposeMessageModal from './components/ComposeMessageModal';
 import MessageThreadModal from './components/MessageThreadModal';
 import { migrateEmployee, load, save } from './lib/storage';
@@ -48,6 +48,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [composeBusy,setComposeBusy] = useState(false);
   const [openManagerThread,setOpenManagerThread]=useState(null); // the message shown in MessageThreadModal from the manager's side, or null
   const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
+  const [revenue,setRevenue]         = useState({}); // {isoDate: amount} — manager-entered daily sales, for Costs' revenue-vs-labor-cost view
   const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
   const [weekOffset,setWeekOffset]   = useState(0);
   const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
@@ -276,6 +277,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   useEffect(()=>{
     let alive=true;
     fetchTemplates(orgId).then(v=>{if(alive)setTemplates(v);}).catch(err=>console.error('Load templates failed:',err));
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // Daily revenue — like templates, only ever entered here (Costs), so a
+  // single load on mount/org-change is enough.
+  useEffect(()=>{
+    let alive=true;
+    fetchDailyRevenue(orgId).then(v=>{if(alive)setRevenue(v);}).catch(err=>console.error('Load revenue failed:',err));
     return ()=>{alive=false;};
   },[orgId]);
 
@@ -958,6 +967,30 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
   const weekRoleCosts=mkRoleCosts(costData),monthRoleCosts=mkRoleCosts(monthCostData);
   const toMoney=u=>{if(hasWages){return `kr ${Math.round(u).toLocaleString('da-DK')}`;}const val=u*hourlyRate.amount;return `${hourlyRate.currency} ${Math.round(val).toLocaleString('da-DK')}`;};
+  // Same conversion toMoney does (costUnits -> a real money figure), but
+  // returning the raw number instead of a formatted string — needed to do
+  // math (labor cost % of revenue) rather than just display it.
+  const toMoneyRaw=u=>hasWages?u:u*hourlyRate.amount;
+
+  // Per-day labor cost for the Costs tab's own selected week — every
+  // assignment scheduled that day, summed the same way costData sums a
+  // whole week per employee. Feeds the revenue-vs-labor-cost comparison
+  // below (each day's actual sales vs what staffing that day cost).
+  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; const hrs=assignmentHours(a,b); h+=hasWages?calcWageCost(emp,hrs):parseFloat((hrs*(emp.priority||100)/100).toFixed(2)); }); }); return h; };
+  const dailyLaborCostByDate=Object.fromEntries(DAYS.map((day,i)=>[dateToISO(costsWeekDates[i]),toMoneyRaw(dailyCostUnits(day))]));
+
+  // Revenue is entered by hand (no POS integration) — one number per
+  // calendar day, kept in the `revenue` map ({isoDate:amount}) and persisted
+  // immediately on blur. Optimistic: the input reflects the typed value
+  // right away, the Supabase write happens in the background.
+  const saveRevenueForDate=(iso,amount)=>{
+    setRevenue(p=>({...p,[iso]:amount}));
+    saveDailyRevenue(orgId,iso,amount).catch(err=>console.error('Save revenue failed:',err));
+  };
+  // Whole calendar month's revenue, independent of which weeks actually got
+  // scheduled/generated — "how much did we make this month" shouldn't
+  // silently exclude days that just don't have a published schedule yet.
+  const monthRevenueTotal=(()=>{ const{y,m}=displayMonth; const days=new Date(y,m+1,0).getDate(); let total=0; for(let d=1;d<=days;d++){ total+=revenue[dateToISO(new Date(y,m,d))]||0; } return total; })();
 
   const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
   const stats=totalStats();
@@ -1068,7 +1101,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         </div>
       )}
 
-      <div style={{maxWidth:1100,margin:'0 auto',padding:isMobile?'20px 14px':'24px 20px'}}>
+      <div style={{maxWidth:1600,margin:'0 auto',padding:isMobile?'20px 14px':'24px 32px'}}>
 
 {shiftModalEmp&&createPortal(
   <div onClick={closeShiftModal} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
@@ -1308,7 +1341,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     costsMode={costsMode} setCostsMode={setCostsMode} costsWeekOffset={costsWeekOffset} setCostsWeekOffset={setCostsWeekOffset} displayMonth={displayMonth} schedules={schedules} schedule={costsSchedule} weekDates={costsWeekDates}
     hourlyRate={hourlyRate} setHourlyRate={setHourlyRate}
     monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
-    toMoney={toMoney} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView} orgName={orgName}
+    toMoney={toMoney} toMoneyRaw={toMoneyRaw} hasWages={hasWages} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView} orgName={orgName}
+    revenue={revenue} onSaveRevenue={saveRevenueForDate} dailyLaborCostByDate={dailyLaborCostByDate} monthRevenueTotal={monthRevenueTotal}
     s={s} t={t}
   />
 )}

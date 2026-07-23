@@ -457,3 +457,23 @@ export async function saveRoleStyles(orgId, styles){
   const { error } = await supabase.from('organizations').update({ role_styles: styles }).eq('id', orgId);
   if (error) throw error;
 }
+
+// ── Daily revenue (Costs tab: revenue vs labor cost) ─────────────────────────
+// One row per org per calendar day, entered by hand from Costs — there's no
+// POS integration, this is just what the manager typed in. Loaded in bulk
+// (like schedules/time off) and kept as a plain {isoDate: amount} map in
+// App.jsx, rather than re-fetching per week, since the whole point is being
+// able to look back across weeks/months without extra round-trips.
+export async function fetchDailyRevenue(orgId){
+  const { data, error } = await supabase.from('daily_revenue').select('date, amount').eq('org_id', orgId);
+  if (error) throw error;
+  return Object.fromEntries((data || []).map(r => [r.date, Number(r.amount) || 0]));
+}
+
+export async function saveDailyRevenue(orgId, date, amount){
+  const { error } = await supabase.from('daily_revenue').upsert(
+    { org_id: orgId, date, amount: amount || 0, updated_at: new Date().toISOString() },
+    { onConflict: 'org_id,date' }
+  );
+  if (error) throw error;
+}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { T, pal } from '../../lib/constants';
 import { fmt, getMonthOffsets, weekKey, dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
@@ -96,13 +97,25 @@ function openCostsReport(html){
   setTimeout(()=>URL.revokeObjectURL(url), 30000);
 }
 
+// Restaurant-industry rule of thumb for labor cost as a % of revenue —
+// used only to color-code the figure (green/amber/red), not to gate
+// anything. 30/35 are the commonly-cited "healthy"/"watch it" thresholds.
+const laborPctColor=pct=>pct<=30?T.success:pct<=35?T.warning:T.danger;
+
 export default function CostsView({
   costsMode, setCostsMode, costsWeekOffset, setCostsWeekOffset, displayMonth, schedules, schedule, weekDates,
   hourlyRate, setHourlyRate,
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
-  toMoney, employees, timeOff, roleStyles, setView, orgName,
+  toMoney, toMoneyRaw, hasWages, employees, timeOff, roleStyles, setView, orgName,
+  revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
   s, t,
 }){
+  // Local echo of whatever's being typed into a revenue box right now, so a
+  // field can be fully cleared while editing instead of snapping back to 0
+  // (same fix as the hourly-rate/wage inputs elsewhere) — committed to the
+  // real revenue map (and Supabase) onBlur, not on every keystroke.
+  const [revenueDraft, setRevenueDraft] = useState({});
+  const moneyFmt=n=>`${hasWages?'kr':hourlyRate.currency} ${Math.round(n).toLocaleString('da-DK')}`;
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
@@ -131,6 +144,16 @@ export default function CostsView({
       <div style={{position:'relative'}}><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div><Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn></div>
     </div>):(()=>{
       const data=costsMode==='month'?monthCostData:costData,totalCost=costsMode==='month'?totalMonthCostUnits:totalCostUnits,maxCost=costsMode==='month'?maxMonthCostUnits:maxCostUnits,roleCosts=costsMode==='month'?monthRoleCosts:weekRoleCosts,maxRC=Math.max(...Object.values(roleCosts),0.01),workingCount=data.filter(d=>d.hours>0).length,totalHours=data.reduce((sv,d)=>sv+d.hours,0);
+      // Revenue vs labor cost — revenue is hand-entered per calendar day
+      // (see Costs' new Revenue card below), compared against that same
+      // period's scheduled labor cost in real money (toMoneyRaw undoes the
+      // "cost index" fallback used when nobody has a wage set, so this
+      // still means something even for orgs that never entered wages).
+      const laborCostMoney=toMoneyRaw(totalCost);
+      const weekRevenueTotal=weekDates.reduce((sum,d)=>sum+(revenue[dateToISO(d)]||0),0);
+      const revenueTotal=costsMode==='month'?monthRevenueTotal:weekRevenueTotal;
+      const laborPct=revenueTotal>0?(laborCostMoney/revenueTotal*100):null;
+      const profit=revenueTotal-laborCostMoney;
       const periodLabel=costsMode==='month'
         ?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
         :`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
@@ -167,6 +190,60 @@ export default function CostsView({
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
           {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
+        </div>
+        <div style={s.card}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.revenueTitle')}</div>
+          <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.revenueDesc')}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:costsMode==='week'?20:0}}>
+            <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.revenue')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.success,marginBottom:2}}>{revenueTotal>0?moneyFmt(revenueTotal):'—'}</div>
+              <div style={{fontSize:11,color:T.text3}}>{costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub')}</div>
+            </div>
+            <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.laborCost')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:2}}>{moneyFmt(laborCostMoney)}</div>
+              <div style={{fontSize:11,color:T.text3}}>{t('cost.laborCostSub')}</div>
+            </div>
+            <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.laborPct')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:laborPct==null?T.text3:laborPctColor(laborPct),marginBottom:2}}>{laborPct==null?'—':`${laborPct.toFixed(1)}%`}</div>
+              <div style={{fontSize:11,color:T.text3}}>{laborPct==null?t('cost.laborPctNoRevenue'):t('cost.laborPctSub')}</div>
+            </div>
+            <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.profit')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:revenueTotal>0?(profit>=0?T.success:T.danger):T.text3,marginBottom:2}}>{revenueTotal>0?moneyFmt(profit):'—'}</div>
+              <div style={{fontSize:11,color:T.text3}}>{t('cost.profitSub')}</div>
+            </div>
+          </div>
+          {costsMode==='week'&&(
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {weekDates.map(d=>{
+                const iso=dateToISO(d);
+                const dayRevenue=revenue[iso]||0;
+                const dayLabor=dailyLaborCostByDate[iso]||0;
+                const dayPct=dayRevenue>0?(dayLabor/dayRevenue*100):null;
+                return (
+                  <div key={iso} style={{display:'grid',gridTemplateColumns:'110px 130px 100px 1fr 60px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:12,fontWeight:500,color:T.text}}>{fmt(d)}</div>
+                    <div style={{display:'flex',alignItems:'center',gap:4,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:7,padding:'2px 8px'}}>
+                      <span style={{fontSize:11,color:T.text3}}>{hasWages?'kr':hourlyRate.currency}</span>
+                      <input
+                        type="number" min="0" step="1" placeholder={t('cost.enterRevenue')}
+                        value={revenueDraft[iso]??(revenue[iso]??'')}
+                        onChange={e=>setRevenueDraft(p=>({...p,[iso]:e.target.value}))}
+                        onBlur={e=>{const v=e.target.value;onSaveRevenue(iso,v===''?0:Number(v));setRevenueDraft(p=>{const n={...p};delete n[iso];return n;});}}
+                        style={{width:'100%',border:'none',background:'transparent',fontSize:12,fontFamily:'inherit',textAlign:'right',outline:'none',color:T.text}}
+                      />
+                    </div>
+                    <div style={{fontSize:12,color:T.text2,textAlign:'right'}}>{dayLabor>0?moneyFmt(dayLabor):'—'}</div>
+                    <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}>{dayPct!=null&&<div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,dayPct)}%`,background:laborPctColor(dayPct),borderRadius:999}}/>}</div>
+                    <div style={{fontSize:12,fontWeight:600,textAlign:'right',color:dayPct==null?T.text3:laborPctColor(dayPct)}}>{dayPct==null?'—':`${dayPct.toFixed(0)}%`}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div style={s.card}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.empBreakdown')}</div>
