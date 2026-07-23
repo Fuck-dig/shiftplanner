@@ -7,8 +7,17 @@
 -- One row per org per calendar day — the manager types in that day's actual
 -- sales from Costs, and the app compares it against that same day's
 -- scheduled labor cost (a "labor cost %" figure, the same KPI tools like
--- Planday surface). This is deliberately just a number the manager enters
--- by hand: there's no POS/point-of-sale integration behind it.
+-- Planday surface). Right now this is entirely hand-entered — there's no
+-- POS/point-of-sale integration behind it yet.
+--
+-- The `source` column exists for that future integration, not for anything
+-- today: whichever POS eventually gets hooked up (Zettle, Flatpay, OnlinePOS,
+-- whatever) would just call the same upsert this manual entry already uses,
+-- tagged 'pos:<provider>' instead of 'manual'. Adding the column now avoids a
+-- second migration later, and gives the app a way to tell "the manager typed
+-- this" apart from "a POS pushed this" if that ever matters (e.g. not
+-- silently overwriting a manual correction, or showing where a number came
+-- from) — none of that UI exists yet, only the column to build it on top of.
 --
 -- Security model matches the rest of the schema (see the notes in
 -- 20260721120000_swaps_notifications_templates.sql): every policy only
@@ -21,6 +30,7 @@ create table if not exists daily_revenue (
   org_id     uuid not null references organizations(id) on delete cascade,
   date       date not null,
   amount     numeric not null default 0,
+  source     text not null default 'manual', -- 'manual' | 'pos:<provider>' once a POS integration exists
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(org_id, date)

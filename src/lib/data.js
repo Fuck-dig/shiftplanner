@@ -470,9 +470,14 @@ export async function fetchDailyRevenue(orgId){
   return Object.fromEntries((data || []).map(r => [r.date, Number(r.amount) || 0]));
 }
 
-export async function saveDailyRevenue(orgId, date, amount){
+// `source` defaults to 'manual' since that's the only writer today (the
+// Costs tab input). A future POS integration would call this same function
+// with source:'pos:<provider>' instead of duplicating the upsert logic —
+// see the migration's comment for why the column exists ahead of any actual
+// integration.
+export async function saveDailyRevenue(orgId, date, amount, source='manual'){
   const { error } = await supabase.from('daily_revenue').upsert(
-    { org_id: orgId, date, amount: amount || 0, updated_at: new Date().toISOString() },
+    { org_id: orgId, date, amount: amount || 0, source, updated_at: new Date().toISOString() },
     { onConflict: 'org_id,date' }
   );
   if (error) throw error;
