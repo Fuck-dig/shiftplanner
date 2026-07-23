@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -145,6 +145,19 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
+  // Schedules were previously fetched once at mount and never refreshed —
+  // so a shift clocked in/out via the Kiosk (or a manager's own edit) sat
+  // invisible here until a manual page reload. This session never writes
+  // the whole schedules object back to the server (no debounced sync to
+  // worry about clobbering), so it's safe to just poll and overwrite.
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{
+      fetchSchedules(orgId).then(scheds=>{ if(alive) setSchedules(scheds); }).catch(err=>console.error('Poll schedules failed:',err));
+    },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
   // Re-inject global styles when theme changes
   useEffect(()=>{
     const s = document.createElement('style');
@@ -238,6 +251,20 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     acc[e.id] = h; return acc;
   }, {});
 
+  // Parallel map: how many of this week's shifts are clocked/corrected
+  // rather than a bare schedule estimate — same flag Costs shows managers,
+  // surfaced here too so an employee's own Profile hours card is equally
+  // honest about what's an estimate vs. an actual.
+  const empCorrectedMap = employees.reduce((acc, e) => {
+    if (!schedule) { acc[e.id] = 0; return acc; }
+    let c = 0;
+    DAYS.forEach(day => blocks.forEach(b => {
+      const a=(schedule[day]?.[b.id]||[]).find(a => a.empId === e.id);
+      if (a && (a.noShow || a.actualStart || a.actualEnd)) c++;
+    }));
+    acc[e.id] = c; return acc;
+  }, {});
+
   // Hours across an arbitrary [startISO,endISO] range (inclusive) — unlike
   // empHoursMap above, which only ever looks at the single week currently
   // loaded into `schedule`. `schedules` already holds every week's data for
@@ -266,6 +293,32 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     const now = new Date();
     const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
     return hoursInRange(myId, startISO, todayISO());
+  })() : 0;
+
+  // Same [startISO,endISO] walk as hoursInRange, counting clocked/corrected
+  // shifts instead of summing hours.
+  const correctedInRange = (empId, startISO, endISO) => {
+    let count = 0;
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day,i) => {
+        const d = new Date(monday); d.setDate(monday.getDate()+i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id]||[]).find(x=>x.empId===empId);
+          if (a && (a.noShow || a.actualStart || a.actualEnd)) count++;
+        });
+      });
+    });
+    return count;
+  };
+  const myMonthCorrected = myId ? (() => {
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    return correctedInRange(myId, startISO, todayISO());
   })() : 0;
 
   const me = employees.find(e=>e.id===myId);
@@ -597,7 +650,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
@@ -1090,14 +1143,21 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                     // when the two differ. Read-only here (no drag handles).
                     const isNoShow=!!seg.noShow;
                     const hasActual=!isNoShow&&(seg.actualStart||seg.actualEnd);
+                    // actualTimeRange (lib/schedule.js) is the single shared
+                    // place that turns actualStart/actualEnd into minutes —
+                    // this used to be a hand-duplicated copy of the same
+                    // logic living separately in this file and WeekView.jsx.
                     let actStart=seg.start,actEnd=seg.end,actOngoing=false;
                     if(hasActual){
-                      actStart=seg.actualStart?toMin(seg.actualStart):seg.start;
-                      if(seg.actualEnd){
-                        actEnd=toMin(seg.actualEnd);
-                        if(seg.actualStart===seg.actualEnd) actEnd=actStart; // same-minute punch = ~0, not a 24h wrap
-                        else if(actEnd<=actStart) actEnd+=1440;
-                      } else { actOngoing=true; actEnd=Math.max(actStart+15,seg.end); }
+                      // seg.start/seg.end are already-converted MINUTES, not
+                      // the HH:MM strings actualTimeRange expects — pass a
+                      // bare {noShow,actualStart,actualEnd} instead (seg
+                      // carries no separate raw string override to give it),
+                      // so the fallback resolves through startStr/endStr,
+                      // which already account for any per-assignment override.
+                      const range=actualTimeRange({noShow:seg.noShow,actualStart:seg.actualStart,actualEnd:seg.actualEnd},{start:seg.startStr,end:seg.endStr});
+                      actStart=range.startMin; actEnd=range.endMin; actOngoing=range.ongoing;
+                      if(actOngoing) actEnd=Math.max(actStart+15,actEnd);
                     }
                     const rawStart=hasActual?actStart:seg.start, rawEnd=hasActual?actEnd:seg.end;
                     const clampedStart=Math.min(Math.max(rawStart,rangeStart),rangeEnd);

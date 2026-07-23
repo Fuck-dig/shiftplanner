@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt } from '../../lib/dates';
-import { blockHours, getBlockRoles, effectiveHourlyRate } from '../../lib/schedule';
+import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
 import { Avatar, RoleBadge, EmpChip, Btn } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
@@ -108,23 +108,19 @@ export default function WeekView({
                     // clocked (falling back to whichever edge hasn't been
                     // recorded yet), not just the scheduled time — so a shift
                     // that ran short or long actually looks short or long,
-                    // not just a same-size bar with a note attached. Still
-                    // clocked in with no clock-out yet gets a placeholder
-                    // width (at least the scheduled end, or 15min past
-                    // clock-in, whichever's later) rather than a guess at a
-                    // real end time.
+                    // not just a same-size bar with a note attached.
+                    // actualTimeRange (lib/schedule.js) is the single shared
+                    // place that turns actualStart/actualEnd into minutes,
+                    // including the overnight-wrap and same-minute-punch
+                    // conventions — this used to be hand-duplicated here.
                     let actStart=seg.start,actEnd=seg.end,actOngoing=false;
                     if(hasActual){
-                      actStart=realA.actualStart?toMin(realA.actualStart):seg.start;
-                      if(realA.actualEnd){
-                        actEnd=toMin(realA.actualEnd);
-                        // Same convention as actualAssignmentHours (lib/schedule.js):
-                        // two real punches landing in the same minute mean ~0 time
-                        // worked, not a wrap to almost a full 24h bar.
-                        if(realA.actualStart===realA.actualEnd) actEnd=actStart;
-                        else if(actEnd<=actStart) actEnd+=1440;
-                      }
-                      else { actOngoing=true; actEnd=Math.max(actStart+15,seg.end); }
+                      const range=actualTimeRange(realA,{start:seg.startStr,end:seg.endStr});
+                      actStart=range.startMin; actEnd=range.endMin; actOngoing=range.ongoing;
+                      // Still clocked in with no clock-out yet — nudge the
+                      // placeholder width out a bit so a bar that's barely
+                      // started still reads as a visible sliver.
+                      if(actOngoing) actEnd=Math.max(actStart+15,actEnd);
                     }
                     const rawStart=dragging?ganttPreview.start:(hasActual?actStart:seg.start);
                     const rawEnd=dragging?ganttPreview.end:(hasActual?actEnd:seg.end);

@@ -3,6 +3,7 @@ import {
   blockHours,
   assignmentHours,
   actualAssignmentHours,
+  actualTimeRange,
   effectiveHourlyRate,
   calcWageCost,
   coversBlock,
@@ -80,6 +81,34 @@ describe('actualAssignmentHours', () => {
 
   it('still gives a real overnight actual shift its correct wrapped hours', () => {
     expect(actualAssignmentHours({ actualStart: '22:00', actualEnd: '06:00' }, block)).toBe(8);
+  });
+});
+
+describe('actualTimeRange', () => {
+  const block = { start: '09:00', end: '17:00' };
+
+  it('describes the scheduled window with hasActual:false when nothing is recorded', () => {
+    expect(actualTimeRange({}, block)).toEqual({ startMin: 9*60, endMin: 17*60, hasActual: false, ongoing: false });
+  });
+
+  it('marks a no-show the same way (scheduled window, hasActual:false)', () => {
+    expect(actualTimeRange({ noShow: true }, block)).toEqual({ startMin: 9*60, endMin: 17*60, hasActual: false, ongoing: false });
+  });
+
+  it('is "ongoing" once clocked in but not yet out — end falls back to the scheduled end', () => {
+    expect(actualTimeRange({ actualStart: '10:00' }, block)).toEqual({ startMin: 10*60, endMin: 17*60, hasActual: true, ongoing: true });
+  });
+
+  it('resolves a completed actual span, hasActual:true, ongoing:false', () => {
+    expect(actualTimeRange({ actualStart: '10:00', actualEnd: '15:30' }, block)).toEqual({ startMin: 10*60, endMin: 15*60+30, hasActual: true, ongoing: false });
+  });
+
+  it('collapses a same-minute punch to a zero-length range instead of wrapping', () => {
+    expect(actualTimeRange({ actualStart: '17:36', actualEnd: '17:36' }, block)).toEqual({ startMin: 17*60+36, endMin: 17*60+36, hasActual: true, ongoing: false });
+  });
+
+  it('wraps a real overnight actual span past midnight', () => {
+    expect(actualTimeRange({ actualStart: '22:00', actualEnd: '06:00' }, block)).toEqual({ startMin: 22*60, endMin: 24*60+6*60, hasActual: true, ongoing: false });
   });
 });
 

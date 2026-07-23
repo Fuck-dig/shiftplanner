@@ -8,6 +8,36 @@ export function blockHours(b){ const s=toMin(b.start); let e=toMin(b.end); if(e<
 // EmployeeView.jsx — consolidated here so there's one definition to change.
 export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,end:a.end||b.end}); }
 
+// Converts an assignment's actual/scheduled times into a single minute-space
+// {startMin, endMin, hasActual, ongoing} range. This is the ONE place that
+// knows how to turn actualStart/actualEnd into real minutes, including the
+// two edge cases that are easy to get wrong: an overnight shift wrapping
+// past midnight, and a same-minute clock in/out (which means ~0 minutes
+// worked, not a wrap to a full 24h day — the same values blockHours would
+// otherwise read as "a round-the-clock block"). actualAssignmentHours below
+// uses it, and so do the Gantt bars in WeekView.jsx/EmployeeView.jsx, which
+// need the same start/end in minutes to position and size a bar — before
+// this helper existed, both Gantt views had their own hand-copied version of
+// this exact logic, which is exactly the kind of thing that quietly drifts.
+//
+// - hasActual is false when nothing's been recorded yet (a future/untouched
+//   shift, or a no-show) — startMin/endMin still describe the scheduled
+//   window in that case, so a caller that just wants "the current
+//   best-known span" can ignore hasActual entirely.
+// - ongoing is true only once actualStart is recorded but actualEnd isn't
+//   (currently clocked in) — endMin in that case is a placeholder (the
+//   scheduled end, wrapped as needed), not a real recorded time.
+export function actualTimeRange(a,b){
+  const schedStart=toMin(a.start||b.start);
+  let schedEnd=toMin(a.end||b.end); if(schedEnd<=schedStart) schedEnd+=1440;
+  if(a.noShow || (!a.actualStart && !a.actualEnd)) return { startMin:schedStart, endMin:schedEnd, hasActual:false, ongoing:false };
+  const startMin=a.actualStart?toMin(a.actualStart):schedStart;
+  if(!a.actualEnd) return { startMin, endMin:schedEnd, hasActual:true, ongoing:true };
+  if(a.actualStart && a.actualStart===a.actualEnd) return { startMin, endMin:startMin, hasActual:true, ongoing:false };
+  let endMin=toMin(a.actualEnd); if(endMin<=startMin) endMin+=1440;
+  return { startMin, endMin, hasActual:true, ongoing:false };
+}
+
 // What actually happened for an assignment, as opposed to what was planned
 // (assignmentHours above). Falls back to the scheduled hours whenever
 // nothing's been recorded yet — which is always true for a shift that
@@ -15,18 +45,13 @@ export function assignmentHours(a,b){ return blockHours({start:a.start||b.start,
 // meant, not just for past shifts. `actualStart`/`actualEnd` are a further
 // override on top of the assignment's own start/end (itself already an
 // override of the block's nominal time) — set only when someone corrects a
-// shift after the fact, e.g. left early or stayed late. `noShow` short-
-// circuits to 0 regardless of any recorded times.
+// shift after the fact, e.g. left early or stayed late, or the punch
+// clock/kiosk records it live. `noShow` short-circuits to 0 regardless of
+// any recorded times.
 export function actualAssignmentHours(a,b){
   if(a.noShow) return 0;
-  // blockHours treats an identical start/end as a full 24h wrap (the right
-  // call for a genuinely round-the-clock scheduled block) — but two real
-  // clock punches landing in the same minute (clocking in then straight back
-  // out, e.g. while testing) mean essentially no time worked, not 24h.
-  // Only short-circuit this for real actual punches, not whenever the
-  // scheduled start/end themselves happen to match.
-  if(a.actualStart && a.actualEnd && a.actualStart===a.actualEnd) return 0;
-  return blockHours({start:a.actualStart||a.start||b.start,end:a.actualEnd||a.end||b.end});
+  const { startMin, endMin } = actualTimeRange(a,b);
+  return (endMin-startMin)/60;
 }
 const prio=e=>e.priority??e.salaryPct??100;
 

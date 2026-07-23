@@ -8,7 +8,7 @@ import { Btn, TimePicker } from './ui';
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, monthHours, s, t }){
+export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
@@ -192,14 +192,21 @@ export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees,
             <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.hoursWorked')}</div>
             <div style={{display:'flex',gap:28,flexWrap:'wrap'}}>
               <div>
-                <div style={{fontSize:22,fontWeight:600,color:T.text}}>{weekHours.toFixed(1)}h</div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <div style={{fontSize:22,fontWeight:600,color:T.text}}>{weekHours.toFixed(1)}h</div>
+                  {weekCorrected>0&&<span title={t('profile.hoursCorrectedHint',{n:weekCorrected})} style={{width:6,height:6,borderRadius:'50%',background:T.success,display:'inline-block'}}/>}
+                </div>
                 <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisWeek')}</div>
               </div>
               <div>
-                <div style={{fontSize:22,fontWeight:600,color:T.text}}>{monthHours.toFixed(1)}h</div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <div style={{fontSize:22,fontWeight:600,color:T.text}}>{monthHours.toFixed(1)}h</div>
+                  {monthCorrected>0&&<span title={t('profile.hoursCorrectedHint',{n:monthCorrected})} style={{width:6,height:6,borderRadius:'50%',background:T.success,display:'inline-block'}}/>}
+                </div>
                 <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.thisMonthToDate')}</div>
               </div>
             </div>
+            {(weekCorrected>0||monthCorrected>0)&&<div style={{fontSize:10,color:T.text3,marginTop:10,fontStyle:'italic'}}>{t('profile.hoursCorrectedLegend')}</div>}
           </div>
         )}
 

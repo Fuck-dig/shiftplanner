@@ -83,6 +83,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // default, and all that a future shift ever needs), 'adjusted' records a
   // different actualStart/actualEnd, 'noshow' zeroes the hours outright.
   const [editActual,setEditActual]               = useState({mode:'scheduled',start:'',end:''});
+  const [editNotes,setEditNotes]                 = useState({inNote:'',outNote:''}); // manager-editable copies of clockInNote/clockNote — see openEditSlot/saveEditSlot
   const [expandedEmp,setExpandedEmp] = useState(null);
   const [showAddEmp,setShowAddEmp]   = useState(false);
   const [newEmp,setNewEmp]           = useState({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
@@ -221,6 +222,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   useEffect(()=>{
     let alive=true;
     const iv=setInterval(()=>{ fetchTimeOff(orgId).then(v=>{if(alive)setTORaw(v);}).catch(err=>console.error('Poll time off failed:',err)); },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Schedules can now also change from OUTSIDE this session — an employee
+  // clocking in/out via the Kiosk, or another manager's tab — not just from
+  // edits made right here. Same pattern as time off above: poll and write
+  // straight to setSchedsRaw (never setSchedules), so this can't re-trigger
+  // the debounced whole-object sync back to Supabase. Without this, a
+  // manager who opened the Schedule tab before someone clocked in would
+  // never see it until they reloaded the whole page.
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{ fetchSchedules(orgId).then(v=>{if(alive)setSchedsRaw(v);}).catch(err=>console.error('Poll schedules failed:',err)); },45000);
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
@@ -664,6 +678,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       start:entry.actualStart||entry.start||block.start,
       end:entry.actualEnd||entry.end||block.end,
     });
+    setEditNotes({inNote:entry.clockInNote||'',outNote:entry.clockNote||''});
     document.body.style.overflow='hidden';
   };
   const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
@@ -677,9 +692,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     entry.role=editRole;
     if(editTimes.start===block.start&&editTimes.end===block.end){delete entry.start;delete entry.end;}
     else{entry.start=editTimes.start;entry.end=editTimes.end;}
-    if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.actualStart; delete entry.actualEnd; }
-    else if(editActual.mode==='adjusted'){ delete entry.noShow; entry.actualStart=editActual.start; entry.actualEnd=editActual.end; }
-    else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; }
+    if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    else if(editActual.mode==='adjusted'){
+      delete entry.noShow; entry.actualStart=editActual.start; entry.actualEnd=editActual.end;
+      // Manager-editable copies of whatever the punch clock/kiosk recorded —
+      // trimmed-empty clears the note entirely rather than storing ''.
+      if(editNotes.inNote.trim()) entry.clockInNote=editNotes.inNote.trim(); else delete entry.clockInNote;
+      if(editNotes.outNote.trim()) entry.clockNote=editNotes.outNote.trim(); else delete entry.clockNote;
+    }
+    else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     closeEditSlot();
   };
@@ -739,6 +760,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   },{});
   const empHours=id=>empHoursMap[id]||0;
 
+  // Parallel map counting how many of those hours came from a clocked/
+  // corrected shift rather than a bare schedule estimate — same "is this
+  // figure trustworthy as an actual, or just the plan" flag used in Costs.
+  const empCorrectedMap=employees.reduce((acc,e)=>{
+    if(!schedule){acc[e.id]=0;return acc;}
+    let c=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a&&(a.noShow||a.actualStart||a.actualEnd))c++;}));
+    acc[e.id]=c;return acc;
+  },{});
+
   // Month-to-date hours for whichever employee row the logged-in manager is
   // themselves matched to (owner-operators who also work shifts) — same
   // calculation EmployeeView.jsx uses for its own "Hours worked" card, so
@@ -766,6 +796,31 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       });
     });
     return total;
+  })() : 0;
+
+  // Same month-to-date walk, counting clocked/corrected shifts instead of
+  // summing hours — feeds the "N corrected" hint on the Profile tab's
+  // hours-worked card, same as empCorrectedMap does for the week view.
+  const myMonthCorrected = myId ? (() => {
+    let count = 0;
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endISO = todayISO();
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id] || []).find(x => x.empId === myId);
+          if (a && (a.noShow || a.actualStart || a.actualEnd)) count++;
+        });
+      });
+    });
+    return count;
   })() : 0;
 
   // Two groups: a recommended list (right role, available, not on leave,
@@ -983,11 +1038,24 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // Costs is specifically about real money spent, so it uses actual hours
   // (falls back to scheduled for anything not yet corrected) rather than
   // the plain scheduled-hours assignmentHours used for planning/coverage.
-  const hoursForSchedule=(ws,empId)=>{ if(!ws) return 0; let h=0; DAYS.forEach(day=>blocks.forEach(b=>{ const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId); if(a) h+=actualAssignmentHours(a,b); })); return h; };
-  const costData=employees.map(e=>{const hours=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
+  // Alongside the hours total, also count how many of the assignments it's
+  // built from have actually been touched by the punch clock/kiosk or a
+  // manager's correction (noShow, or an actualStart/actualEnd recorded) —
+  // so the Costs tab can flag "this figure includes N corrected shift(s)"
+  // instead of a plain hours number that looks purely scheduled either way.
+  const hoursForSchedule=(ws,empId)=>{
+    if(!ws) return {hours:0,corrected:0};
+    let h=0,corrected=0;
+    DAYS.forEach(day=>blocks.forEach(b=>{
+      const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId);
+      if(a){ h+=actualAssignmentHours(a,b); if(a.noShow||a.actualStart||a.actualEnd) corrected++; }
+    }));
+    return {hours:h,corrected};
+  };
+  const costData=employees.map(e=>{const{hours,corrected}=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,corrected,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
-  const monthCostData=employees.map(e=>{let h=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=actualAssignmentHours(a,b);}));});return{emp:e,hours:h,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
+  const monthCostData=employees.map(e=>{let h=0,corrected=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a){h+=actualAssignmentHours(a,b);if(a.noShow||a.actualStart||a.actualEnd)corrected++;}}));});return{emp:e,hours:h,corrected,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
@@ -1223,16 +1291,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           <div style={{fontSize:15,fontWeight:600,color:T.text}}>{emp?.name||entry.name}</div>
           <div style={{fontSize:12,color:T.text3,marginTop:2}}>{block.name} · {t('day.'+day)}</div>
         </div>
-        {/* Flag anything the employee did themselves via the punch clock —
-            a shift they added ad hoc (no manager ever scheduled it) and/or
-            a note they left when clocking in and/or out — so this doesn't
-            just show up silently as a corrected hours figure with no
-            context. */}
-        {(entry.selfAdded||entry.clockInNote||entry.clockNote)&&(
+        {/* Flag a shift the employee added themselves via the kiosk (no
+            manager ever scheduled it) — informational only; any clock-in/out
+            note is edited below, alongside the actual times it belongs to. */}
+        {entry.selfAdded&&(
           <div style={{padding:'0 18px 12px'}}>
-            {entry.selfAdded&&<div style={{fontSize:11,color:T.accentText,marginBottom:(entry.clockInNote||entry.clockNote)?4:0}}>{t('emp.selfAddedNotice')}</div>}
-            {entry.clockInNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic'}}>{t('clock.inNoteLabel')} &ldquo;{entry.clockInNote}&rdquo;</div>}
-            {entry.clockNote&&<div style={{fontSize:12,color:T.text2,fontStyle:'italic',marginTop:entry.clockInNote?4:0}}>{t('clock.outNoteLabel')} &ldquo;{entry.clockNote}&rdquo;</div>}
+            <div style={{fontSize:11,color:T.accentText}}>{t('emp.selfAddedNotice')}</div>
           </div>
         )}
         {empRoles.length>1&&<div style={{padding:'0 18px 12px',display:'flex',gap:4,flexWrap:'wrap'}}>
@@ -1260,13 +1324,26 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
                 );
               })}
             </div>
-            {editActual.mode==='adjusted'&&(
-              <div style={{display:'flex',alignItems:'center',gap:6}}>
+            {editActual.mode==='adjusted'&&(<>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
                 <TimePicker small value={editActual.start} onChange={v=>setEditActual(p=>({...p,start:v}))}/>
                 <span style={{fontSize:11,color:T.text3}}>–</span>
                 <TimePicker small value={editActual.end} onChange={v=>setEditActual(p=>({...p,end:v}))}/>
               </div>
-            )}
+              {/* Editable copies of whatever the punch clock/kiosk recorded —
+                  a manager can correct or clear either note here, not just
+                  view them; empty clears it on save (see saveEditSlot). */}
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div>
+                  <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{t('clock.inNoteLabel')}</div>
+                  <input value={editNotes.inNote} onChange={e=>setEditNotes(p=>({...p,inNote:e.target.value}))} placeholder={t('clock.notePlaceholder')} style={s.input}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{t('clock.outNoteLabel')}</div>
+                  <input value={editNotes.outNote} onChange={e=>setEditNotes(p=>({...p,outNote:e.target.value}))} placeholder={t('clock.notePlaceholder')} style={s.input}/>
+                </div>
+              </div>
+            </>)}
           </div>
         )}
         <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',flexWrap:'wrap',gap:6}}>
@@ -1413,7 +1490,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
 )}
 
       </div>
