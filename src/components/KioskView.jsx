@@ -97,6 +97,24 @@ export default function KioskView({ orgId, orgName, theme, toggleTheme, onExitKi
   };
   const backspace = () => setPinDigits(p=>p.slice(0,-1));
 
+  // Physical keyboard support for the PIN pad — most "shared kiosk device"
+  // setups are a plain laptop/PC rather than a touchscreen, so typing the
+  // digits (plus Backspace/Escape) needs to work exactly like tapping the
+  // on-screen keypad. Only listens while a PIN entry screen is actually
+  // showing (an employee is selected, has a PIN, and hasn't verified yet).
+  useEffect(()=>{
+    if (!selectedEmpId || verified) return;
+    const emp = employees.find(e=>e.id===selectedEmpId);
+    if (!emp || !hasPin(emp)) return;
+    const onKeyDown = (e) => {
+      if (/^[0-9]$/.test(e.key)) pressDigit(e.key);
+      else if (e.key==='Backspace') backspace();
+      else if (e.key==='Escape') returnToList();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedEmpId, verified, pinDigits, employees]);
+
   const todayDayName = (() => { const jsDay=new Date().getDay(); return DAYS[jsDay===0?6:jsDay-1]; })();
   const todayWeekKey = weekKey(0);
   const daySchedule  = schedules[todayWeekKey]?.schedule?.[todayDayName] || {};
