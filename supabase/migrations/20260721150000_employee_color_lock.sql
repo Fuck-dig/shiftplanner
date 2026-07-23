@@ -1,4 +1,0 @@
--- Shelved: the one-time avatar-colour-lock feature this migration supported
--- was reverted before shipping (color_set column never got created in any
--- real database). Kept only because it can't be deleted from this
--- environment; nothing to run here.

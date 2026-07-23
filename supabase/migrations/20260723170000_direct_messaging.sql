@@ -4,10 +4,20 @@
 -- Run this once in the Supabase SQL editor for your project (or via
 -- `supabase db push`).
 --
+-- Consolidates the messages/message_replies schema together with enabling
+-- realtime for both — previously two separate migration files, split only
+-- because realtime was added a little later. No reason to keep deploying
+-- them as two steps.
+--
 -- Security model matches the rest of the schema (see the notes in
 -- 20260721120000_swaps_notifications_templates.sql): every policy below only
 -- checks org membership, not sender/recipient identity — the app UI is what
 -- restricts composing to managers, not the database.
+--
+-- Every statement here is safe to re-run: table/column/index creation is
+-- already idempotent, policies are dropped-then-recreated, and the
+-- publication adds are guarded by an existence check (a plain
+-- `alter publication ... add table` errors out on a second run otherwise).
 -- ============================================================================
 
 -- One row per recipient (same fan-out-at-insert pattern as `notifications`):
@@ -30,12 +40,16 @@ create index if not exists messages_org_manager_unread_idx on messages (org_id, 
 
 alter table messages enable row level security;
 
+drop policy if exists "org members can read messages" on messages;
 create policy "org members can read messages" on messages
   for select using (org_id in (select org_id from memberships where user_id = auth.uid()));
+drop policy if exists "org members can insert messages" on messages;
 create policy "org members can insert messages" on messages
   for insert with check (org_id in (select org_id from memberships where user_id = auth.uid()));
+drop policy if exists "org members can update messages" on messages;
 create policy "org members can update messages" on messages
   for update using (org_id in (select org_id from memberships where user_id = auth.uid()));
+drop policy if exists "org members can delete messages" on messages;
 create policy "org members can delete messages" on messages
   for delete using (org_id in (select org_id from memberships where user_id = auth.uid()));
 
@@ -54,9 +68,33 @@ create index if not exists message_replies_message_idx on message_replies (messa
 
 alter table message_replies enable row level security;
 
+drop policy if exists "org members can read message_replies" on message_replies;
 create policy "org members can read message_replies" on message_replies
   for select using (message_id in (select id from messages where org_id in (select org_id from memberships where user_id = auth.uid())));
+drop policy if exists "org members can insert message_replies" on message_replies;
 create policy "org members can insert message_replies" on message_replies
   for insert with check (message_id in (select id from messages where org_id in (select org_id from memberships where user_id = auth.uid())));
+drop policy if exists "org members can delete message_replies" on message_replies;
 create policy "org members can delete message_replies" on message_replies
   for delete using (message_id in (select id from messages where org_id in (select org_id from memberships where user_id = auth.uid())));
+
+-- Creating a table does NOT automatically push live updates to clients —
+-- Postgres changes only reach the app if the table is added to the
+-- `supabase_realtime` publication. Without this, messages/replies still
+-- work fine, they just only show up on the next 45s poll instead of
+-- instantly (the client code has that poll as a fallback either way).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'
+  ) then
+    alter publication supabase_realtime add table messages;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'message_replies'
+  ) then
+    alter publication supabase_realtime add table message_replies;
+  end if;
+end $$;

@@ -1,4 +1,0 @@
--- Superseded — merged directly into 20260721140000_allow_self_accept_invitation.sql,
--- which now contains the final, correct policy (using auth.email() instead
--- of joining auth.users). This file is kept only because it can't be
--- deleted from this environment; there is nothing to run here.

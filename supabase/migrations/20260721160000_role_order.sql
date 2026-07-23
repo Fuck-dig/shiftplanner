@@ -1,7 +1,0 @@
--- Shelved: role display order was briefly synced org-wide via this column,
--- then reverted in favor of each person (manager or employee) keeping their
--- own local ordering preference (localStorage, per browser) instead of one
--- shared order for everyone. Kept only because it can't be deleted from
--- this environment; nothing to run here. If the column was already created
--- in your database from an earlier version of this file, it's harmless to
--- leave in place — the app no longer reads or writes it.
