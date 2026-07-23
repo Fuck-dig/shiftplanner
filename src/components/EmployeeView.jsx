@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
@@ -728,10 +728,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               <div style={{padding:isMobile?'12px 12px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('sched.team')}</div>
               {DAYS.map((day,i)=>{
                 const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
-                return(<div key={day} style={{padding:isMobile?'12px 6px':'14px 12px',textAlign:'center',borderRight:i<6?`1px solid ${T.border}`:'none'}}>
+                return(<button key={day} onClick={()=>{setDayFilter(day);setCalMode('week');}} title={t('week.isolateDay')} style={{padding:isMobile?'12px 6px':'14px 12px',textAlign:'center',borderTop:'none',borderLeft:'none',borderBottom:'none',borderRight:i<6?`1px solid ${T.border}`:'none',background:'transparent',cursor:'pointer',fontFamily:'inherit',width:'100%',boxSizing:'border-box',outline:'none'}} onMouseEnter={e=>{e.currentTarget.style.background=T.surface;}} onMouseLeave={e=>{e.currentTarget.style.background='transparent';}}>
                   <div style={{fontSize:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
                   <div style={{fontSize:11,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
-                </div>);
+                </button>);
               })}
             </div>
             {/* Employee rows */}
@@ -1026,7 +1026,7 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
       // only falling back to the embedded one if the employee record is
       // gone entirely.
       const liveName = employees.find(e=>e.id===a.empId)?.name || a.name;
-      return { empId:a.empId, name:liveName, role:a.role, start:bs, end:be, startStr:st, endStr:en };
+      return { empId:a.empId, name:liveName, role:a.role, start:bs, end:be, startStr:st, endStr:en, noShow:a.noShow, actualStart:a.actualStart, actualEnd:a.actualEnd };
     });
   }) : [];
   const byEmp = new Map();
@@ -1067,10 +1067,36 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                 const isMe=row.empId===myId, rs=colorFor(row.role);
                 return(<div key={row.empId} style={{position:'relative',height:rowH,background:T.surfaceWarm,borderRadius:6}}>
                   {row.segs.map((seg,si)=>{
-                    const leftPct=(seg.start-rangeStart)/totalMin*100, widthPct=(seg.end-seg.start)/totalMin*100;
-                    return(<div key={si} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${isMe?T.accent:rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isMe?T.accent:(isDark()?rs.dot:rs.text),whiteSpace:'nowrap',padding:'0 5px'}}>{seg.startStr}–{seg.endStr}</span>
-                    </div>);
+                    // Same "actual hours" treatment as the manager's Week tab
+                    // Gantt (see App.jsx's WeekView.jsx) — the bar is sized by
+                    // what was actually clocked, not just what was scheduled,
+                    // with a dashed outline at the original scheduled time
+                    // when the two differ. Read-only here (no drag handles).
+                    const isNoShow=!!seg.noShow;
+                    const hasActual=!isNoShow&&(seg.actualStart||seg.actualEnd);
+                    let actStart=seg.start,actEnd=seg.end,actOngoing=false;
+                    if(hasActual){
+                      actStart=seg.actualStart?toMin(seg.actualStart):seg.start;
+                      if(seg.actualEnd){
+                        actEnd=toMin(seg.actualEnd);
+                        if(seg.actualStart===seg.actualEnd) actEnd=actStart; // same-minute punch = ~0, not a 24h wrap
+                        else if(actEnd<=actStart) actEnd+=1440;
+                      } else { actOngoing=true; actEnd=Math.max(actStart+15,seg.end); }
+                    }
+                    const rawStart=hasActual?actStart:seg.start, rawEnd=hasActual?actEnd:seg.end;
+                    const clampedStart=Math.min(Math.max(rawStart,rangeStart),rangeEnd);
+                    const clampedEnd=Math.min(Math.max(rawEnd,rangeStart),rangeEnd);
+                    const leftPct=(clampedStart-rangeStart)/totalMin*100, widthPct=Math.max((clampedEnd-clampedStart)/totalMin*100,1.5);
+                    const label=isNoShow?t('emp.noShow'):hasActual?`${seg.actualStart||seg.startStr}–${seg.actualEnd||'…'}${actOngoing?' ●':' ✓'}`:`${seg.startStr}–${seg.endStr}`;
+                    const showGhost=hasActual&&(actStart!==seg.start||actEnd!==seg.end);
+                    const ghostLeftPct=(seg.start-rangeStart)/totalMin*100, ghostWidthPct=(seg.end-seg.start)/totalMin*100;
+                    const barColor=isNoShow?T.danger:isMe?T.accent:rs.dot;
+                    return(<Fragment key={si}>
+                      {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${(isMe?T.accent:rs.dot)}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
+                      <div style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,zIndex:1,background:isNoShow?(isDark()?T.danger+'30':T.dangerLight):isMe?(isDark()?T.accent+'40':T.accentLight):isDark()?rs.dot+'30':rs.bg,border:`1.5px solid ${barColor}`,borderRadius:6}}>
+                        <span style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',fontSize:isMobile?9:10,fontWeight:600,color:isNoShow?T.danger:isMe?T.accent:(isDark()?rs.dot:rs.text),whiteSpace:'nowrap',padding:'1px 6px',borderRadius:4,background:isDark()?'rgba(30,24,20,0.7)':'rgba(255,255,255,0.85)'}}>{label}</span>
+                      </div>
+                    </Fragment>);
                   })}
                 </div>);
               })}
@@ -1122,6 +1148,11 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                                 needing extra text. */}
                             <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isMe}/>
                             {dayFilter&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
+                            {dayFilter&&(a.noShow||a.actualStart||a.actualEnd)&&(
+                              <div style={{fontSize:9,color:a.noShow?T.danger:T.success,marginLeft:2}}>
+                                {a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||t('week.clockedOngoing')}`}
+                              </div>
+                            )}
                           </div>
                         );})}
                       </div>
