@@ -1338,7 +1338,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   <TeamView
     schedule={schedule} employees={employees} blocks={blocks} roleStyles={roleStyles} weekDates={weekDates} weekOffset={weekOffset} timeOff={timeOff} allRoles={allRoles}
     gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} gridSearch={gridSearch} setGridSearch={setGridSearch}
-    empHours={empHours} assignmentHours={assignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
+    empHours={empHours} assignmentHours={assignmentHours} actualAssignmentHours={actualAssignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
     generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     s={s} t={t}
   />

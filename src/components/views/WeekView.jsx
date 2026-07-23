@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt } from '../../lib/dates';
@@ -99,21 +100,57 @@ export default function WeekView({
                   {row.merged.map((seg,si)=>{
                     const rs=roleStyles[seg.role]||DEFAULT_ROLE_STYLES.Other;
                     const dragging=ganttPreview&&ganttPreview.day===effectiveDay&&ganttPreview.blockId===seg.blockId&&ganttPreview.empId===row.empId;
-                    const segStart=dragging?ganttPreview.start:seg.start,segEnd=dragging?ganttPreview.end:seg.end;
-                    const leftPct=(segStart-rangeStart)/totalMin*100,widthPct=(segEnd-segStart)/totalMin*100;
-                    const label=dragging?`${minToHHMM(segStart)}–${minToHHMM(segEnd)}`:`${seg.startStr}–${seg.endStr}`;
                     const segIdx=(schedule[effectiveDay]?.[seg.blockId]||[]).findIndex(a=>a.empId===row.empId);
                     const realA=schedule[effectiveDay]?.[seg.blockId]?.[segIdx];
-                    const clockedInfo=realA&&(realA.noShow||realA.actualStart||realA.actualEnd);
-                    return(<div key={si} onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={clockedInfo?(realA.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${realA.actualStart||'—'}–${realA.actualEnd||'…'}`):t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
-                      <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
-                      {/* Small status dot for what actually happened (punch clock/kiosk) —
-                          green once clocked, red for a no-show — so it's visible without
-                          opening the shift; hover/tap the bar for the exact times. */}
-                      {clockedInfo&&<div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:realA.noShow?T.danger:T.success,zIndex:6,pointerEvents:'none'}}/>}
-                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
-                      <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
-                    </div>);
+                    const isNoShow=!!realA?.noShow;
+                    const hasActual=!isNoShow&&realA&&(realA.actualStart||realA.actualEnd);
+                    // The bar itself is sized/positioned by what was actually
+                    // clocked (falling back to whichever edge hasn't been
+                    // recorded yet), not just the scheduled time — so a shift
+                    // that ran short or long actually looks short or long,
+                    // not just a same-size bar with a note attached. Still
+                    // clocked in with no clock-out yet gets a placeholder
+                    // width (at least the scheduled end, or 15min past
+                    // clock-in, whichever's later) rather than a guess at a
+                    // real end time.
+                    let actStart=seg.start,actEnd=seg.end,actOngoing=false;
+                    if(hasActual){
+                      actStart=realA.actualStart?toMin(realA.actualStart):seg.start;
+                      if(realA.actualEnd){ actEnd=toMin(realA.actualEnd); if(actEnd<=actStart)actEnd+=1440; }
+                      else { actOngoing=true; actEnd=Math.max(actStart+15,seg.end); }
+                    }
+                    const rawStart=dragging?ganttPreview.start:(hasActual?actStart:seg.start);
+                    const rawEnd=dragging?ganttPreview.end:(hasActual?actEnd:seg.end);
+                    // Clamped only for on-screen position/width, so a punch
+                    // well outside every scheduled window that day can't push
+                    // the bar outside its row — the label below still shows
+                    // the true recorded time regardless of clamping.
+                    const clampedStart=Math.min(Math.max(rawStart,rangeStart),rangeEnd);
+                    const clampedEnd=Math.min(Math.max(rawEnd,rangeStart),rangeEnd);
+                    const leftPct=(clampedStart-rangeStart)/totalMin*100,widthPct=Math.max((clampedEnd-clampedStart)/totalMin*100,1.5);
+                    const label=dragging?`${minToHHMM(rawStart)}–${minToHHMM(rawEnd)}`
+                      :isNoShow?t('emp.noShow')
+                      :hasActual?`${realA.actualStart||seg.startStr}–${realA.actualEnd||'…'}${actOngoing?' ●':' ✓'}`
+                      :`${seg.startStr}–${seg.endStr}`;
+                    // A dashed outline at the ORIGINAL scheduled position, drawn
+                    // behind the real bar, only when actual time genuinely
+                    // differs — lets a manager see at a glance how early/late/
+                    // long a shift ran compared to plan.
+                    const showGhost=hasActual&&(actStart!==seg.start||actEnd!==seg.end);
+                    const ghostLeftPct=(seg.start-rangeStart)/totalMin*100,ghostWidthPct=(seg.end-seg.start)/totalMin*100;
+                    const barColor=isNoShow?T.danger:hasActual?T.success:rs.dot;
+                    // A Fragment (not a wrapping div) — the drag handles below
+                    // walk up two parentElements to find the row "rail" for
+                    // computing drag position, which only works if the bar
+                    // div is still a DIRECT child of the row container.
+                    return(<Fragment key={si}>
+                      {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${rs.dot}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
+                      <div onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?barColor+'40':barColor+'30',border:`1.5px solid ${barColor}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
+                        <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?barColor:(isNoShow||hasActual)?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                        <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
+                        <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
+                      </div>
+                    </Fragment>);
                   })}
                 </div>);
               })}

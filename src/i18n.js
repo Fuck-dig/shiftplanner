@@ -140,6 +140,7 @@ const STRINGS = {
 
     'week.managerEnforced':'Manager enforced',
     'week.clockedLabel':'Clocked',
+    'week.clockedOngoing':'ongoing',
     'week.role':'Role',
     'week.moveHere':'+ move here',
     'week.editShift':'Edit shift',
@@ -593,6 +594,7 @@ const STRINGS = {
 
     'week.managerEnforced':'Leder påkrævet',
     'week.clockedLabel':'Stemplet',
+    'week.clockedOngoing':'i gang',
     'week.role':'Rolle',
     'week.moveHere':'+ flyt hertil',
     'week.editShift':'Rediger vagt',
@@ -1046,6 +1048,7 @@ const STRINGS = {
 
     'week.managerEnforced':'Encargado obligatorio',
     'week.clockedLabel':'Fichado',
+    'week.clockedOngoing':'en curso',
     'week.role':'Rol',
     'week.moveHere':'+ mover aquí',
     'week.editShift':'Editar turno',

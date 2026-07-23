@@ -8,7 +8,7 @@ import { RoleBadge, Btn, GripDots } from '../ui';
 export default function TeamView({
   schedule, employees, blocks, roleStyles, weekDates, weekOffset, timeOff, allRoles,
   gridGroupBy, setGridGroupBy, gridTight, setGridTight, gridSearch, setGridSearch,
-  empHours, assignmentHours, openEditSlot, openShiftModalFor,
+  empHours, assignmentHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles,
   s, t,
 }){
@@ -130,17 +130,31 @@ export default function TeamView({
                 ):assignedBlocks.length>0?assignedBlocks.map(b=>{
                   const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
                   const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
-                  const bh=assignmentHours(shiftEntry||{},b);
+                  // Actual (clocked) hours, not scheduled — falls back to the
+                  // scheduled figure automatically for anything not yet
+                  // clocked, same helper the Costs tab and Profile page use.
+                  const bh=actualAssignmentHours(shiftEntry||{},b);
+                  const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
+                  const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
                   const shiftRole=shiftEntry?.role;
                   const rrs=shiftRole?(roleStyles[shiftRole]||DEFAULT_ROLE_STYLES.Other):null;
                   const realIdx=(schedule[day]?.[b.id]||[]).findIndex(a=>a.empId===emp.id);
                   return(
-                    <div key={b.id} onClick={()=>openEditSlot(day,b.id,realIdx)} title={t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${p.dot}55`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
-                      <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:p.dot}}/>
+                    <div key={b.id} onClick={()=>openEditSlot(day,b.id,realIdx)} title={clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
+                      <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:p.dot}}/>
                       <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
                       {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>}
                       {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{dispStart.slice(0,5)}</div>}
                       {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{bh.toFixed(1)}h</div>}
+                      {/* What actually happened, straight from the punch clock/kiosk —
+                          only rendered once someone's actually clocked in (or been
+                          marked a no-show), so a not-yet-worked future shift still
+                          shows just the plain scheduled time above. */}
+                      {!gridTight&&clockedInfo&&(
+                        <div style={{fontSize:10,fontWeight:600,color:clockStatusColor,marginTop:3}}>
+                          {shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`}
+                        </div>
+                      )}
                       {(emp.roles||[]).length>1&&shiftRole&&<div style={{marginTop:3,display:'inline-block',fontSize:9,fontWeight:600,color:isDark()?rrs.dot:rrs.text,background:isDark()?rrs.dot+'22':rrs.bg,border:`1px solid ${isDark()?rrs.dot+'55':rrs.border}`,padding:'1px 5px',borderRadius:999}}>{shiftRole}</div>}
                     </div>
                   );
