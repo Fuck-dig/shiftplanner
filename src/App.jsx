@@ -5,6 +5,7 @@ import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, g
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
 import { migrateEmployee, load, save } from './lib/storage';
+import { escapeHtml } from './lib/html';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
@@ -26,13 +27,6 @@ import { LANGUAGES, makeT, detectLang, LOCALES } from './i18n';
 // loadPref/savePref used to be redefined here, doing exactly what
 // lib/storage.js's load/save already do (and which EmployeeView.jsx, Auth.jsx
 // and RestaurantPicker.jsx already use) — now shared instead of duplicated.
-
-// Used only when building the printable schedule's HTML string (see
-// printSchedule below) — names/roles are user-entered free text, so they
-// need escaping before being dropped into markup.
-function escapeHtml(str){
-  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
 
 function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -1157,7 +1151,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     costsMode={costsMode} setCostsMode={setCostsMode} costsWeekOffset={costsWeekOffset} setCostsWeekOffset={setCostsWeekOffset} displayMonth={displayMonth} schedules={schedules} schedule={costsSchedule} weekDates={costsWeekDates}
     hourlyRate={hourlyRate} setHourlyRate={setHourlyRate}
     monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
-    toMoney={toMoney} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView}
+    toMoney={toMoney} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView} orgName={orgName}
     s={s} t={t}
   />
 )}

@@ -1,6 +1,7 @@
 import { T, pal } from '../../lib/constants';
 import { fmt, getMonthOffsets, weekKey, dateToISO } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
+import { escapeHtml } from '../../lib/html';
 import { Avatar, RoleBadge, Btn } from '../ui';
 
 // CSV field escaping — wrap in quotes (doubling any embedded quotes) only
@@ -30,25 +31,6 @@ function buildCostsCSV(data, currency) {
   return [header, ...rows].map(row => row.map(csvField).join(',')).join('\r\n');
 }
 
-// Human-readable companion version — alphabetical by name (easier to look
-// up one person), roles written out normally, cost pre-formatted with the
-// org's currency via the same toMoney() the on-screen breakdown uses, and a
-// Total row at the bottom. Nothing here is meant to be machine-parsed; it's
-// for someone to open and just read.
-function buildReadableCostsCSV(data, toMoney, totalHours, totalCost) {
-  const header = ['Employee', 'Roles', 'Hours', 'Cost'];
-  const rows = [...data]
-    .sort((a, b) => a.emp.name.localeCompare(b.emp.name))
-    .map(({ emp, hours, costUnits }) => [
-      emp.name,
-      (emp.roles || []).join(', ') || '—',
-      hours > 0 ? `${hours}h` : '—',
-      hours > 0 ? toMoney(costUnits) : '—',
-    ]);
-  const totalRow = ['Total', '', `${totalHours}h`, toMoney(totalCost)];
-  return [header, ...rows, [], totalRow].map(row => row.map(csvField).join(',')).join('\r\n');
-}
-
 function downloadCSV(csv, filename) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -58,11 +40,67 @@ function downloadCSV(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
+// One horizontal bar row for the printable report — plain HTML/CSS (a
+// percentage-width div), not a canvas/SVG chart library, so it renders
+// identically on screen and on paper with zero dependencies.
+function barRow(label, sub, valueLabel, pct, color){
+  return `<div class="bar-row">
+    <div class="bar-label">${escapeHtml(label)}${sub?`<span class="bar-sub">${escapeHtml(sub)}</span>`:''}</div>
+    <div class="bar-track"><div class="bar-fill" style="width:${Math.max(0,Math.min(100,pct))}%;background:${color}"></div></div>
+    <div class="bar-value">${escapeHtml(valueLabel)}</div>
+  </div>`;
+}
+
+// A clean, printable one-page report — summary stats plus two bar charts
+// (cost per employee, cost per role) — opened in its own tab the same way
+// the schedule's Print button does. Meant to be looked at or saved as a PDF
+// via the browser's print dialog, not machine-parsed like the CSV export.
+function buildCostsReportHTML({ orgName, periodLabel, stats, empRows, roleRows }){
+  const statCards = stats.map(({label,value,sub})=>`<div class="stat"><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(value)}</div><div class="stat-sub">${escapeHtml(sub)}</div></div>`).join('');
+  const empBars = empRows.map(r=>barRow(r.label,r.sub,r.value,r.pct,r.color)).join('') || `<div class="empty">—</div>`;
+  const roleBars = roleRows.map(r=>barRow(r.label,r.sub,r.value,r.pct,r.color)).join('') || `<div class="empty">—</div>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(orgName)} — ${escapeHtml(periodLabel)}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#211b15;padding:28px;}
+    h1{font-size:19px;margin:0 0 2px;}
+    .sub{font-size:12px;color:#6b625a;margin-bottom:22px;}
+    h2{font-size:13px;margin:26px 0 12px;text-transform:uppercase;letter-spacing:0.06em;color:#4a4038;}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:8px;}
+    .stat{border:1px solid #d8d1c8;border-radius:8px;padding:10px 12px;}
+    .stat-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#8a8074;margin-bottom:5px;}
+    .stat-value{font-size:18px;font-weight:600;margin-bottom:2px;}
+    .stat-sub{font-size:10px;color:#8a8074;}
+    .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
+    .bar-label{width:170px;flex-shrink:0;font-size:11px;font-weight:500;}
+    .bar-sub{display:block;font-size:9px;color:#8a8074;font-weight:400;}
+    .bar-track{flex:1;height:11px;background:#eee8de;border-radius:999px;overflow:hidden;}
+    .bar-fill{height:100%;border-radius:999px;}
+    .bar-value{width:90px;flex-shrink:0;text-align:right;font-size:11px;font-weight:600;}
+    .empty{font-size:12px;color:#8a8074;padding:8px 0;}
+    @media print{ body{padding:0;} }
+  </style></head><body>
+    <h1>${escapeHtml(orgName)}</h1>
+    <div class="sub">${escapeHtml(periodLabel)}</div>
+    <div class="stats">${statCards}</div>
+    <h2>Cost by employee</h2>
+    ${empBars}
+    <h2>Cost by role</h2>
+    ${roleBars}
+    <script>window.onload=()=>window.print();<\/script>
+  </body></html>`;
+}
+
+function openCostsReport(html){
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(()=>URL.revokeObjectURL(url), 30000);
+}
+
 export default function CostsView({
   costsMode, setCostsMode, costsWeekOffset, setCostsWeekOffset, displayMonth, schedules, schedule, weekDates,
   hourlyRate, setHourlyRate,
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
-  toMoney, employees, timeOff, roleStyles, setView,
+  toMoney, employees, timeOff, roleStyles, setView, orgName,
   s, t,
 }){
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
@@ -93,17 +131,38 @@ export default function CostsView({
       <div style={{position:'relative'}}><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,marginBottom:8}}>{t('cost.noSchedule')}</div><div style={{fontSize:13,color:T.text2,marginBottom:20}}>{t('cost.noScheduleDesc')}</div><Btn onClick={()=>setView('schedule')}>{t('cost.goToSchedule')}</Btn></div>
     </div>):(()=>{
       const data=costsMode==='month'?monthCostData:costData,totalCost=costsMode==='month'?totalMonthCostUnits:totalCostUnits,maxCost=costsMode==='month'?maxMonthCostUnits:maxCostUnits,roleCosts=costsMode==='month'?monthRoleCosts:weekRoleCosts,maxRC=Math.max(...Object.values(roleCosts),0.01),workingCount=data.filter(d=>d.hours>0).length,totalHours=data.reduce((sv,d)=>sv+d.hours,0);
+      const periodLabel=costsMode==='month'
+        ?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+        :`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
       const exportCsv=()=>{
         const label=costsMode==='month'
           ?`${displayMonth.y}-${String(displayMonth.m+1).padStart(2,'0')}`
           :`${dateToISO(weekDates[0])}_to_${dateToISO(weekDates[6])}`;
         downloadCSV(buildCostsCSV(data,hourlyRate.currency),`costs-${costsMode}-${label}.csv`);
-        // Two back-to-back downloads can get silently dropped by some
-        // browsers' popup/download-spam guard — a small stagger avoids that.
-        setTimeout(()=>downloadCSV(buildReadableCostsCSV(data,toMoney,totalHours,totalCost),`costs-${costsMode}-${label}-readable.csv`),200);
+      };
+      const viewReport=()=>{
+        const statCards=[
+          {label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency})},
+          {label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub')},
+          {label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub')},
+          {label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub')},
+        ];
+        const empRows=[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,costUnits})=>({
+          label:emp.name,
+          sub:(emp.roles||[]).join(', ')||undefined,
+          value:hours>0?toMoney(costUnits):'—',
+          pct:maxCost>0?(costUnits/maxCost*100):0,
+          color:hours>0?pal(emp).dot:'#d8d1c8',
+        }));
+        const roleRows=Object.entries(roleCosts).filter(([,v])=>v>0).sort(([,a],[,b])=>b-a).map(([role,cost])=>{
+          const cnt=data.filter(d=>(d.emp.roles||[]).includes(role)&&d.hours>0).length;
+          return { label:role, sub:`${cnt} staff`, value:toMoney(cost), pct:maxRC>0?(cost/maxRC*100):0, color:(roleStyles[role]||{}).dot||'#9C9088' };
+        });
+        openCostsReport(buildCostsReportHTML({ orgName:orgName||'Restaurant', periodLabel, stats:statCards, empRows, roleRows }));
       };
       return(<>
-        <div style={{display:'flex',justifyContent:'flex-end'}}>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <Btn small variant="ghost" onClick={viewReport}>{t('cost.viewReport')}</Btn>
           <Btn small variant="ghost" onClick={exportCsv}>{t('cost.exportCsv')}</Btn>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
