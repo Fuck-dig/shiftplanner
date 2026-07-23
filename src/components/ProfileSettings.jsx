@@ -8,11 +8,19 @@ import { Btn, TimePicker } from './ui';
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, weekHours, monthHours, s, t }){
+export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, monthHours, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
   const [phoneSaved, setPhoneSaved] = useState(false);
+  // Saves immediately on click, like color/toggle-style controls elsewhere
+  // on this page — a preference toggle doesn't need a separate Save step.
+  const [emailNotif, setEmailNotif] = useState(myEmp?.emailNotifications ?? true);
+  const toggleEmailNotif = () => {
+    const next = !emailNotif;
+    setEmailNotif(next);
+    onSaveEmailNotifications(next);
+  };
   // Edited locally and only pushed on Save (rather than per-click, like
   // name/phone/color above) — a week's worth of day toggles + time pickers
   // is a lot of small edits to fire off individually.
@@ -100,7 +108,7 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
               </div>
             </div>
           </div>
-          <div style={{marginBottom:6}}>
+          <div style={{marginBottom:onSaveEmailNotifications?18:6}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:6}}>{t('profile.avatarColor')}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
               {EMP_PALETTE.map((p,i)=>(
@@ -108,6 +116,17 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
               ))}
             </div>
           </div>
+          {onSaveEmailNotifications && (
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:T.text}}>{t('profile.emailNotifTitle')}</div>
+                <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.emailNotifDesc')}</div>
+              </div>
+              <button onClick={toggleEmailNotif} aria-label={t('profile.emailNotifTitle')} aria-pressed={emailNotif} style={{width:40,height:22,borderRadius:999,border:'none',cursor:'pointer',padding:2,background:emailNotif?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s'}}>
+                <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:emailNotif?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
+              </button>
+            </div>
+          )}
         </>) : (
           <div style={{fontSize:12,color:T.text3,fontStyle:'italic',padding:'10px 12px',background:T.surfaceWarm,borderRadius:10,border:`1px solid ${T.border}`}}>{t('profile.noEmployeeRecord')}</div>
         )}

@@ -8,3 +8,8 @@ if (!url || !anon) {
 }
 
 export const supabase = createClient(url, anon);
+
+// Edge Functions live at <project-url>/functions/v1/<name> — small helper so
+// callers don't each hardcode that path (see TeamAccess.jsx's send-invite
+// call, which predates this and still hardcodes its own URL directly).
+export const functionsUrl = (name) => `${url}/functions/v1/${name}`;

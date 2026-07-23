@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, functionsUrl } from './supabase';
 
 // ── App shape <-> DB row mapping (camelCase <-> snake_case) ──────────────────
 const empToRow = (orgId, e) => ({
@@ -16,6 +16,7 @@ const empToRow = (orgId, e) => ({
   target_hours:    e.targetHours ?? null,
   availability:    e.availability || {},
   pal_idx:         e.palIdx ?? 0,
+  email_notifications: e.emailNotifications !== false,
 });
 
 const empFromRow = (r) => ({
@@ -32,6 +33,7 @@ const empFromRow = (r) => ({
   targetHours:    r.target_hours ?? null,
   availability:   r.availability || {},
   palIdx:         r.pal_idx ?? 0,
+  emailNotifications: r.email_notifications ?? true,
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────
@@ -278,6 +280,34 @@ export async function markNotificationRead(id){
   if (error) throw error;
 }
 
+// Best-effort email companion to an in-app notification, via the
+// send-notification Edge Function (Resend under the hood — same account as
+// the existing invite emails). Deliberately never throws: the in-app
+// notification row is the source of truth and always gets created
+// regardless of whether this succeeds, so a missing RESEND_API_KEY, an
+// undeployed function, or a flaky network shouldn't block the action that
+// triggered it (approving time off, publishing a schedule, etc.) — it just
+// means that one email quietly doesn't arrive, which the person can still
+// see once they open the app.
+export async function sendNotificationEmail({ to, subject, body, ctaLabel, ctaUrl }){
+  if (!to) return;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(functionsUrl('send-notification'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ to, subject, body, ctaLabel, ctaUrl }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (json.error) throw new Error(json.error);
+  } catch (err) {
+    console.error('Email notification failed (non-blocking):', err);
+  }
+}
+
 export async function markAllNotificationsRead(empId){
   const { error } = await supabase.from('notifications').update({ read: true }).eq('emp_id', empId).eq('read', false);
   if (error) throw error;
@@ -311,12 +341,13 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability } = {}){
+export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability, emailNotifications } = {}){
   const row = {};
   if (name != null)   row.name = name;
   if (palIdx != null)  row.pal_idx = palIdx;
   if (phone != null)  row.phone = phone;
   if (availability != null) row.availability = availability;
+  if (emailNotifications != null) row.email_notifications = emailNotifications;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;

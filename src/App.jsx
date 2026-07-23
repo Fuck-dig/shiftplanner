@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
 import { migrateEmployee, load, save } from './lib/storage';
 import { escapeHtml } from './lib/html';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
@@ -275,6 +275,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
   const saveMyPhone=(phone)=>updateEmp(myId,'phone',phone);
   const saveMyAvailability=(availability)=>updateEmp(myId,'availability',availability);
+  const saveMyEmailNotifications=(emailNotifications)=>updateEmp(myId,'emailNotifications',emailNotifications);
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -438,14 +439,25 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // confirming the schedule itself (it's just retried implicitly next time
   // this employee's bell polls anyway if we ever add retry — for now it's
   // logged and otherwise ignored).
+  // Creates the in-app notification row (source of truth, always happens)
+  // and, whenever the recipient has an email on file, fires an email
+  // companion reusing the exact same translated text. Shared by every
+  // manager-side notification site below instead of repeating the
+  // lookup+send pair at each call.
+  const notify=(empId,messageKey,messageVars={})=>{
+    createNotification(orgId,empId,{type:messageKey.replace('notif.',''),messageKey,messageVars}).catch(err=>console.error('Notify failed:',err));
+    const target=employees.find(e=>e.id===empId);
+    // emailNotifications defaults to true for anyone who hasn't touched the
+    // toggle yet (opt-out, not opt-in) — only skip when it's explicitly false.
+    if(target?.email && target.emailNotifications!==false){ const text=t(messageKey,messageVars); sendNotificationEmail({to:target.email,subject:text,body:text}); }
+  };
+
   const notifySchedulePublished=()=>{
     if(!schedule)return;
     const empIds=new Set();
     DAYS.forEach(day=>blocks.forEach(b=>(schedule[day]?.[b.id]||[]).forEach(a=>empIds.add(a.empId))));
     const week=`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
-    empIds.forEach(empId=>{
-      createNotification(orgId,empId,{type:'schedule_published',messageKey:'notif.schedulePublished',messageVars:{week}}).catch(err=>console.error('Notify failed:',err));
-    });
+    empIds.forEach(empId=>notify(empId,'notif.schedulePublished',{week}));
   };
   const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();};
   const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
@@ -774,7 +786,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   };
 
   const addTO         =()=>{if(!newTO.empId)return;setTimeOff(p=>[...p,{...newTO,id:crypto.randomUUID()}]);setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});setShowAddTO(false);};
-  const updateTOStatus=(id,status)=>setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
+  // Approving/rejecting a time-off request previously left the employee to
+  // discover the outcome by re-opening the app themselves — there was no
+  // notification of any kind. Now fires both the in-app row and (when they
+  // have an email on file) the email companion via the shared notify()
+  // helper above.
+  const updateTOStatus=(id,status)=>{
+    setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
+    if(status==='Approved'||status==='Rejected'){
+      const to=timeOff.find(t=>t.id===id);
+      if(!to) return;
+      const range=fmtLong(to.startDate)+(to.endDate!==to.startDate?' – '+fmtLong(to.endDate):'');
+      notify(to.empId, status==='Approved'?'notif.timeOffApproved':'notif.timeOffRejected', {type:to.type,range});
+    }
+  };
   const removeTO      =id=>setTimeOff(p=>p.filter(t=>t.id!==id));
 
   const reloadSwaps=()=>fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err));
@@ -796,16 +821,16 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     setSchedules(ns);
     updateShiftSwap(sw.id,{status:'approved'}).catch(err=>console.error(err));
     const day=t('day.'+sw.day);
-    createNotification(orgId,sw.fromEmpId,{type:'swap_approved',messageKey:'notif.swapApproved',messageVars:{day}}).catch(err=>console.error(err));
-    createNotification(orgId,sw.claimedByEmpId,{type:'swap_approved',messageKey:'notif.swapApproved',messageVars:{day}}).catch(err=>console.error(err));
+    notify(sw.fromEmpId,'notif.swapApproved',{day});
+    notify(sw.claimedByEmpId,'notif.swapApproved',{day});
     reloadSwaps();
   };
 
   const declineSwapManager=(sw)=>{
     updateShiftSwap(sw.id,{status:'declined'}).catch(err=>console.error(err));
     const day=t('day.'+sw.day);
-    createNotification(orgId,sw.fromEmpId,{type:'swap_declined',messageKey:'notif.swapDeclined',messageVars:{day}}).catch(err=>console.error(err));
-    if(sw.claimedByEmpId) createNotification(orgId,sw.claimedByEmpId,{type:'swap_declined',messageKey:'notif.swapDeclined',messageVars:{day}}).catch(err=>console.error(err));
+    notify(sw.fromEmpId,'notif.swapDeclined',{day});
+    if(sw.claimedByEmpId) notify(sw.claimedByEmpId,'notif.swapDeclined',{day});
     reloadSwaps();
   };
 
@@ -1187,7 +1212,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
 )}
 
       </div>

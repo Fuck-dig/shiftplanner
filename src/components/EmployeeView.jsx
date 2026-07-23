@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
 import { assignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail } from '../lib/data';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
@@ -245,10 +245,28 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,availability}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
+  const saveMyEmailNotifications = (emailNotifications) => {
+    updateEmployeeSelfProfile(myId, { emailNotifications })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,emailNotifications}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
 
-  const notify = (targetEmpId, messageKey, messageVars) =>
+  // Single choke point for every employee-to-employee notification (swap
+  // requests, claims, accept/decline) — the in-app row is always created;
+  // the email is a best-effort companion sent alongside it whenever the
+  // recipient has an email on file, reusing the exact same translated text
+  // so the two never say different things.
+  const notify = (targetEmpId, messageKey, messageVars) => {
     createNotification(orgId, targetEmpId, { type: messageKey.replace('notif.',''), messageKey, messageVars })
       .catch(err=>console.error('Notify failed:',err));
+    const target = employees.find(e=>e.id===targetEmpId);
+    // emailNotifications defaults to true (opt-out, not opt-in) — only skip
+    // when the person has explicitly turned it off from their Profile page.
+    if (target?.email && target.emailNotifications!==false) {
+      const text = t(messageKey, messageVars);
+      sendNotificationEmail({ to: target.email, subject: text, body: text });
+    }
+  };
 
   const openGiveAway = (day, blockId, blockName, role) => setSwapModal({ day, blockId, blockName, role });
 
@@ -528,7 +546,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
