@@ -103,8 +103,14 @@ export default function WeekView({
                     const leftPct=(segStart-rangeStart)/totalMin*100,widthPct=(segEnd-segStart)/totalMin*100;
                     const label=dragging?`${minToHHMM(segStart)}–${minToHHMM(segEnd)}`:`${seg.startStr}–${seg.endStr}`;
                     const segIdx=(schedule[effectiveDay]?.[seg.blockId]||[]).findIndex(a=>a.empId===row.empId);
-                    return(<div key={si} onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
+                    const realA=schedule[effectiveDay]?.[seg.blockId]?.[segIdx];
+                    const clockedInfo=realA&&(realA.noShow||realA.actualStart||realA.actualEnd);
+                    return(<div key={si} onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={clockedInfo?(realA.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${realA.actualStart||'—'}–${realA.actualEnd||'…'}`):t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`${widthPct}%`,top:0,bottom:0,minWidth:14,background:isDark()?rs.dot+'40':rs.dot+'30',border:`1.5px solid ${rs.dot}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
                       <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?rs.dot:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                      {/* Small status dot for what actually happened (punch clock/kiosk) —
+                          green once clocked, red for a no-show — so it's visible without
+                          opening the shift; hover/tap the bar for the exact times. */}
+                      {clockedInfo&&<div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:realA.noShow?T.danger:T.success,zIndex:6,pointerEvents:'none'}}/>}
                       <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                       <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                     </div>);
@@ -164,6 +170,16 @@ export default function WeekView({
                         <div key={idx}>
                           <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}}}/>
                           {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
+                          {/* What actually happened, straight from the punch clock/kiosk —
+                              only shown once isolated to a single day (same as the scheduled
+                              time above), since a 7-day grid has no room for it. Click the
+                              chip itself to open the full edit modal, which also shows any
+                              clock-in/out note. */}
+                          {effectiveDay&&(a.noShow||a.actualStart||a.actualEnd)&&(
+                            <div style={{fontSize:9,color:a.noShow?T.danger:T.success,marginLeft:2,marginTop:1}}>
+                              {a.noShow ? t('emp.noShow') : `${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`}
+                            </div>
+                          )}
                         </div>
                       );})}
                       {(()=>{

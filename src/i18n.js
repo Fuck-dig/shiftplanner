@@ -139,6 +139,7 @@ const STRINGS = {
     'empty.generateMonth':'Generate whole month',
 
     'week.managerEnforced':'Manager enforced',
+    'week.clockedLabel':'Clocked',
     'week.role':'Role',
     'week.moveHere':'+ move here',
     'week.editShift':'Edit shift',
@@ -591,6 +592,7 @@ const STRINGS = {
     'empty.generateMonth':'Generér hele måneden',
 
     'week.managerEnforced':'Leder påkrævet',
+    'week.clockedLabel':'Stemplet',
     'week.role':'Rolle',
     'week.moveHere':'+ flyt hertil',
     'week.editShift':'Rediger vagt',
@@ -1043,6 +1045,7 @@ const STRINGS = {
     'empty.generateMonth':'Generar todo el mes',
 
     'week.managerEnforced':'Encargado obligatorio',
+    'week.clockedLabel':'Fichado',
     'week.role':'Rol',
     'week.moveHere':'+ mover aquí',
     'week.editShift':'Editar turno',
