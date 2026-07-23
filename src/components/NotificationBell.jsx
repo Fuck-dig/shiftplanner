@@ -29,21 +29,26 @@ function relTime(iso, lang){
 
 // Notification bell — used by both employees and managers/owners.
 //
-// Two independent sources feed it:
+// Three independent sources feed it:
 // - Personal notifications (the `notifications` table, via empId) — schedule
 //   published, swap approved/declined, etc. Only available once empId
 //   resolves (i.e. the viewer is also matched to a roster row by email).
 // - `pendingItems` — an org-wide "needs your attention" list the caller
 //   builds itself (pending time-off requests, swap claims awaiting manager
-//   approval) and passes in already-formatted. This doesn't depend on the
-//   viewer being on the roster at all, so managers who aren't scheduled
-//   staff themselves still see it. Passing pendingItems (even []) is what
-//   makes the bell render for a manager with no empId match.
-export default function NotificationBell({ empId, t, lang, onNavigate, pendingItems }){
+//   approval, replies to messages the manager sent) and passes in
+//   already-formatted. This doesn't depend on the viewer being on the
+//   roster at all, so managers who aren't scheduled staff themselves still
+//   see it. Passing pendingItems (even []) is what makes the bell render
+//   for a manager with no empId match.
+// - `messages` — direct messages addressed to this employee (see
+//   ComposeMessageModal/MessageThreadModal), passed with an onOpenMessage
+//   callback since opening one needs its own modal, not just a link.
+export default function NotificationBell({ empId, t, lang, onNavigate, pendingItems, messages, onOpenMessage }){
   const [items, setItems] = useState([]);
   const [open, setOpen]   = useState(false);
   const wrapRef = useRef(null);
   const hasPending = Array.isArray(pendingItems);
+  const hasMessages = Array.isArray(messages);
 
   const load = useCallback(() => {
     if (!empId) return;
@@ -66,7 +71,8 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
   if (!empId && !hasPending) return null;
 
   const personalUnread = empId ? items.filter(n => !n.read).length : 0;
-  const unread = personalUnread + (pendingItems?.length || 0);
+  const messagesUnread = hasMessages ? messages.filter(m => !m.read).length : 0;
+  const unread = personalUnread + (pendingItems?.length || 0) + messagesUnread;
 
   const clickItem = (n) => {
     if (!n.read) {
@@ -82,12 +88,20 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
     setOpen(false);
   };
 
+  // Read state for a message flips once its thread modal actually opens
+  // (MessageThreadModal calls markMessageRead itself), not here — this bell
+  // just hands off to the caller and closes.
+  const clickMessage = (m) => {
+    if (onOpenMessage) onOpenMessage(m);
+    setOpen(false);
+  };
+
   const markAll = () => {
     markAllNotificationsRead(empId).catch(() => {});
     setItems(p => p.map(x => ({ ...x, read: true })));
   };
 
-  const nothingAtAll = (!hasPending || pendingItems.length === 0) && (!empId || items.length === 0);
+  const nothingAtAll = (!hasPending || pendingItems.length === 0) && (!empId || items.length === 0) && (!hasMessages || messages.length === 0);
 
   return (
     <div ref={wrapRef} style={{ position: 'relative', flexShrink: 0 }}>
@@ -113,8 +127,21 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
               </div>
             ))}
           </>)}
+          {hasMessages && messages.length > 0 && (<>
+            <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('msg.title')}</div>
+            {messages.map(m => (
+              <div key={m.id} onClick={() => clickMessage(m)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: m.read ? 'transparent' : T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                {!m.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: T.text3, marginBottom: 1 }}>{m.senderLabel}{m.subject?` · ${m.subject}`:''}</div>
+                  <div style={{ fontSize: 12, color: T.text, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{m.body}</div>
+                  <div style={{ fontSize: 10, color: T.text3, marginTop: 2 }}>{relTime(m.createdAt, lang)}</div>
+                </div>
+              </div>
+            ))}
+          </>)}
           {empId && items.length > 0 && (<>
-            {hasPending && pendingItems.length > 0 && <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('notif.title')}</div>}
+            {((hasPending && pendingItems.length > 0) || (hasMessages && messages.length > 0)) && <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('notif.title')}</div>}
             {items.map(n => (
               <div key={n.id} onClick={() => clickItem(n)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: n.read ? 'transparent' : T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 {!n.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />}

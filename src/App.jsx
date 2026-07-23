@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage } from './lib/data';
+import ComposeMessageModal from './components/ComposeMessageModal';
+import MessageThreadModal from './components/MessageThreadModal';
 import { migrateEmployee, load, save } from './lib/storage';
 import { escapeHtml } from './lib/html';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
@@ -41,6 +43,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [schedules,setSchedsRaw]     = useState({});
   const [timeOff,setTORaw]           = useState([]);
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
+  const [unseenMessageReplies,setUnseenMessageReplies]=useState([]); // sent messages with a new reply the manager hasn't opened yet — polled
+  const [composeModal,setComposeModal]=useState(null); // {presetEmpIds} while ComposeMessageModal is open, else null
+  const [composeBusy,setComposeBusy] = useState(false);
+  const [openManagerThread,setOpenManagerThread]=useState(null); // the message shown in MessageThreadModal from the manager's side, or null
   const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
   const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
   const [weekOffset,setWeekOffset]   = useState(0);
@@ -172,6 +178,17 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     const loadSwaps=()=>fetchShiftSwaps(orgId).then(v=>{if(alive)setSwaps(v);}).catch(err=>console.error('Load swaps failed:',err));
     loadSwaps();
     const iv=setInterval(loadSwaps,45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Sent messages that got a new reply the manager hasn't seen yet — same
+  // polling pattern as swaps/time off, feeds into pendingItems below so it
+  // shows up in the manager's own bell even without an employees row.
+  useEffect(()=>{
+    let alive=true;
+    const loadReplies=()=>fetchUnseenMessageReplies(orgId).then(v=>{if(alive)setUnseenMessageReplies(v);}).catch(err=>console.error('Load message replies failed:',err));
+    loadReplies();
+    const iv=setInterval(loadReplies,45000);
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
@@ -450,6 +467,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     // emailNotifications defaults to true for anyone who hasn't touched the
     // toggle yet (opt-out, not opt-in) — only skip when it's explicitly false.
     if(target?.email && target.emailNotifications!==false){ const text=t(messageKey,messageVars); sendNotificationEmail({to:target.email,subject:text,body:text}); }
+  };
+
+  // Direct messages — opens ComposeMessageModal, optionally pre-selecting
+  // one employee (the per-card "Message" quick action in Employees) rather
+  // than defaulting to "everyone" every time.
+  const openCompose=(presetEmpIds)=>setComposeModal({presetEmpIds:presetEmpIds||[]});
+  const senderLabel=me?.name||orgName||'Management';
+  const submitCompose=({recipientEmpIds,subject,body,allowReplies})=>{
+    setComposeBusy(true);
+    sendMessage(orgId,recipientEmpIds,{senderLabel,subject,body,allowReplies})
+      .then(()=>setComposeModal(null))
+      .catch(err=>alert(err.message||'Failed to send'))
+      .finally(()=>setComposeBusy(false));
   };
 
   const notifySchedulePublished=()=>{
@@ -880,6 +910,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       const from=employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId);
       return{ id:'sw-'+sw.id, label:`${from?.name||'?'} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
     }),
+    ...unseenMessageReplies.map(m=>{
+      const recipient=employees.find(e=>e.id===m.recipientEmpId);
+      return{ id:'msgreply-'+m.id, label:t('msg.repliedNotif',{name:recipient?.name||'?'}), onClick:()=>setOpenManagerThread(m) };
+    }),
   ];
   // Time Off / Coverage / Costs are grouped behind a single "Admin" dropdown
   // in the desktop nav (see adminNavItems below) rather than each getting
@@ -1172,6 +1206,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp}
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
     onAddShift={openShiftModalFor}
+    onOpenCompose={openCompose}
     orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
   />
 )}
@@ -1217,6 +1252,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
       </div>
     </div>
+    {composeModal && createPortal(
+      <ComposeMessageModal employees={employees} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>,
+      document.body
+    )}
+    {openManagerThread && createPortal(
+      <MessageThreadModal message={openManagerThread} viewerIsManager={true} myLabel={senderLabel} counterpartLabel={employees.find(e=>e.id===openManagerThread.recipientEmpId)?.name||''} onClose={()=>setOpenManagerThread(null)} s={s} t={t}/>,
+      document.body
+    )}
     </>
   );
 }

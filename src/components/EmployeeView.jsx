@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
 import { assignmentHours, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
+import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
@@ -58,6 +59,25 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     const iv=setInterval(reloadSwaps,45000); // no realtime subscription yet — light polling instead
     return ()=>clearInterval(iv);
   },[orgId]);
+
+  // Direct messages addressed to this employee (see ComposeMessageModal),
+  // surfaced through the same NotificationBell as system notifications.
+  // Only meaningful once myId resolves, since messages are always addressed
+  // to a specific employees row.
+  const [messages, setMessages] = useState([]);
+  const [openMessage, setOpenMessage] = useState(null); // the message shown in MessageThreadModal, or null
+  const reloadMessages = () => { if(myId) fetchMessages(myId).then(setMessages).catch(err=>console.error('Load messages failed:',err)); };
+  useEffect(()=>{
+    reloadMessages();
+    const iv=setInterval(reloadMessages,45000);
+    return ()=>clearInterval(iv);
+  },[myId]);
+  // Optimistic — the modal itself also calls markMessageRead, this just
+  // avoids waiting for the next poll to clear the unread dot.
+  const handleOpenMessage = (m) => {
+    setMessages(p=>p.map(x=>x.id===m.id?{...x,read:true}:x));
+    setOpenMessage(m);
+  };
 
   useEffect(()=>{
     const onResize=()=>setIsMobile(window.innerWidth<860);
@@ -539,7 +559,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         </div>
         <span style={{marginRight:isMobile?6:10}}><Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:isMobile?0:8,cursor:'pointer',outline:'none',flexShrink:0}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{isMobile?L.code.toUpperCase():L.label}</option>)}</select>
-        <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setView('schedule');setCalMode('team');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
+        <span style={{marginRight:isMobile?0:10}}><NotificationBell empId={myId} t={t} lang={lang} onNavigate={link=>{setView('schedule');setCalMode('team');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}} messages={myId?messages:undefined} onOpenMessage={handleOpenMessage}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:isMobile?0:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <button onClick={()=>supabase.auth.signOut()} style={{padding:isMobile?'6px 10px':'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}>{t('common.logout')}</button>
       </div>
@@ -746,6 +766,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={employees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
     {requestModal && createPortal(<RequestShiftModal modal={requestModal} busy={swapBusy} onCancel={()=>setRequestModal(null)} onSubmit={submitShiftRequest} s={s} t={t}/>, document.body)}
     {timeOffModalOpen && createPortal(<TimeOffRequestModal busy={toBusy} onCancel={()=>setTimeOffModalOpen(false)} onSubmit={submitTimeOffRequest} s={s} t={t}/>, document.body)}
+    {openMessage && createPortal(<MessageThreadModal message={openMessage} viewerIsManager={false} myLabel={me?.name||''} counterpartLabel={openMessage.senderLabel} onClose={()=>setOpenMessage(null)} s={s} t={t}/>, document.body)}
     </>
   );
 }

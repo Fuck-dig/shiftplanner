@@ -289,6 +289,84 @@ export async function markNotificationRead(id){
 // triggered it (approving time off, publishing a schedule, etc.) — it just
 // means that one email quietly doesn't arrive, which the person can still
 // see once they open the app.
+// ── Direct messages ──────────────────────────────────────────────────────────
+// Manager-authored, free-text messages to one employee, a whole role, or
+// everyone — distinct from `notifications`, which are always system-generated
+// from a translated messageKey/messageVars template. One row per recipient,
+// same fan-out-at-insert pattern as createNotification.
+const msgFromRow = (r) => ({
+  id: r.id, recipientEmpId: r.recipient_emp_id, senderLabel: r.sender_label,
+  subject: r.subject || '', body: r.body, allowReplies: !!r.allow_replies,
+  read: !!r.read, managerUnread: !!r.manager_unread, createdAt: r.created_at,
+});
+
+export async function fetchMessages(empId){
+  const { data, error } = await supabase
+    .from('messages').select('*').eq('recipient_emp_id', empId)
+    .order('created_at', { ascending: false }).limit(50);
+  if (error) throw error;
+  return (data || []).map(msgFromRow);
+}
+
+// Manager-side: sent messages that have a new reply the manager hasn't seen
+// yet — feeds the same pendingItems "needs your attention" mechanism the
+// swap/time-off approval queue already uses, which works even for a manager
+// with no employees row of their own (see NotificationBell.jsx's notes).
+export async function fetchUnseenMessageReplies(orgId){
+  const { data, error } = await supabase
+    .from('messages').select('*').eq('org_id', orgId).eq('manager_unread', true)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(msgFromRow);
+}
+
+export async function sendMessage(orgId, recipientEmpIds, { senderLabel, subject, body, allowReplies }){
+  const rows = recipientEmpIds.map(recipient_emp_id => ({
+    org_id: orgId, recipient_emp_id, sender_label: senderLabel,
+    subject: subject || null, body, allow_replies: !!allowReplies,
+  }));
+  if (!rows.length) return;
+  const { error } = await supabase.from('messages').insert(rows);
+  if (error) throw error;
+}
+
+export async function markMessageRead(id){
+  const { error } = await supabase.from('messages').update({ read: true }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function markMessageSeenByManager(id){
+  const { error } = await supabase.from('messages').update({ manager_unread: false }).eq('id', id);
+  if (error) throw error;
+}
+
+const replyFromRow = (r) => ({
+  id: r.id, messageId: r.message_id, fromEmployee: !!r.from_employee,
+  authorLabel: r.author_label, body: r.body, createdAt: r.created_at,
+});
+
+export async function fetchMessageReplies(messageId){
+  const { data, error } = await supabase
+    .from('message_replies').select('*').eq('message_id', messageId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(replyFromRow);
+}
+
+// Posts a reply and flips whichever "needs attention" flag belongs to the
+// other side: an employee's reply sets manager_unread=true (surfaces in the
+// manager's pendingItems), a manager's reply sets read=false (resurfaces the
+// thread as unread in the employee's own bell).
+export async function sendMessageReply(messageId, { fromEmployee, authorLabel, body }){
+  const { error: insErr } = await supabase.from('message_replies').insert({
+    message_id: messageId, from_employee: fromEmployee, author_label: authorLabel, body,
+  });
+  if (insErr) throw insErr;
+  const patch = fromEmployee ? { manager_unread: true } : { read: false };
+  const { error: updErr } = await supabase.from('messages').update(patch).eq('id', messageId);
+  if (updErr) throw updErr;
+}
+
 export async function sendNotificationEmail({ to, subject, body, ctaLabel, ctaUrl }){
   if (!to) return;
   try {

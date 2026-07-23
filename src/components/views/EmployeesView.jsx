@@ -8,10 +8,13 @@ export default function EmployeesView({
   expandedEmp, setExpandedEmp,
   updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
-  onAddShift,
+  onAddShift, onOpenCompose,
   orgId, orgName, isOwner, s, t,
 }){
   return (<>
+  <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
+    <Btn onClick={()=>onOpenCompose()} variant="secondary">{'✉ '+t('msg.newMessage')}</Btn>
+  </div>
   <div style={{display:'flex',flexDirection:'column',gap:10}}>
     {employees.map(emp=>(<div key={emp.id} style={s.card}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -22,6 +25,7 @@ export default function EmployeesView({
         </div>
         <div style={{display:'flex',gap:6}}>
           <Btn onClick={()=>onAddShift(emp)} variant="secondary" small>{'+ '+t('emp.addShift')}</Btn>
+          <Btn onClick={()=>onOpenCompose([emp.id])} variant="ghost" small>{'✉ '+t('msg.message')}</Btn>
           <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
           <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
           <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
