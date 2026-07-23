@@ -151,11 +151,11 @@ export default function ProfileSettings({ role, myEmp, onSaveName, onSaveColor, 
 
       {/* Hours worked and Change password are both compact cards, so they sit
           side by side on wide screens instead of eating a full row each.
-          weekHours/monthHours are only ever passed in from EmployeeView
-          (schedules is only loaded there in full) — the manager Dashboard's
-          own ProfileSettings usage omits them, so that card just doesn't
-          render there rather than showing a stat for someone who isn't
-          scheduled the same way. */}
+          weekHours/monthHours are passed from both EmployeeView and the
+          manager Dashboard — a manager only sees this card when their own
+          login is matched to an employees row (i.e. they also work
+          scheduled shifts themselves), same gating as everything else on
+          this page that depends on myEmp. */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))',gap:12,alignItems:'start'}}>
         {myEmp && weekHours!=null && (
           <div style={s.card}>

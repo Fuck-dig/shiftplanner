@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
-import { getWeekDates, getMondayDate, weekKey, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
+import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
 import { blockHours, assignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles } from './lib/data';
 import { migrateEmployee, load, save } from './lib/storage';
@@ -598,6 +598,35 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   },{});
   const empHours=id=>empHoursMap[id]||0;
 
+  // Month-to-date hours for whichever employee row the logged-in manager is
+  // themselves matched to (owner-operators who also work shifts) — same
+  // calculation EmployeeView.jsx uses for its own "Hours worked" card, so
+  // the Profile tab shows the same thing regardless of which side you're
+  // on. Walks every loaded week rather than just the one currently open in
+  // the Schedule tab, since "this month" shouldn't depend on what the
+  // manager happens to be looking at.
+  const myMonthHours = myId ? (() => {
+    let total = 0;
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endISO = todayISO();
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id] || []).find(x => x.empId === myId);
+          if (a) total += assignmentHours(a, b);
+        });
+      });
+    });
+    return total;
+  })() : 0;
+
   // Two groups: a recommended list (right role, available, not on leave,
   // under their hour cap), and a true "everyone else" roster with no
   // filtering at all — a deliberate full-override escape hatch so a manager
@@ -1158,7 +1187,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} weekHours={empHoursMap[myId]||0} monthHours={myMonthHours} s={s} t={t}/>
 )}
 
       </div>
