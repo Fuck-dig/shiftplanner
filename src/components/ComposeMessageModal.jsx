@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { T } from '../lib/constants';
+import { T, isDark } from '../lib/constants';
 import { Btn, Toggle } from './ui';
 
 // Manager-only compose UI for direct messages. Recipients can be everyone,
@@ -39,7 +39,7 @@ export default function ComposeMessageModal({ employees, allRoles, roleStyles, p
             <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12}}>
               {allRoles.map(r=>{
                 const rs = roleStyles[r]||{};
-                return <button key={r} onClick={()=>setRole(r)} style={{padding:'5px 12px',borderRadius:999,fontSize:12,fontWeight:role===r?600:400,background:role===r?(rs.bg||T.accentLight):'transparent',color:role===r?(rs.text||T.accentText):T.text2,border:`1px solid ${role===r?(rs.border||T.accent):T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>;
+                return <button key={r} onClick={()=>setRole(r)} style={{padding:'5px 12px',borderRadius:999,fontSize:12,fontWeight:role===r?600:400,background:role===r?(isDark()?(rs.dot?rs.dot+'22':T.accent+'22'):(rs.bg||T.accentLight)):'transparent',color:role===r?(isDark()?(rs.dot||T.accent):(rs.text||T.accentText)):T.text2,border:`1px solid ${role===r?(isDark()?(rs.dot?rs.dot+'55':T.accent+'55'):(rs.border||T.accent)):T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>;
               })}
             </div>
           )}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES } from '../lib/constants';
+import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES, isDark } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Btn, TimePicker, Toggle } from './ui';
 import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '../lib/push';
@@ -114,7 +114,7 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
 
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
           <span style={{fontSize:12,color:T.text3}}>{t('profile.role')}</span>
-          <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,background:rc.bg,color:rc.text,border:`1px solid ${rc.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
+          <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,background:isDark()?rc.text+'22':rc.bg,color:rc.text,border:`1px solid ${isDark()?rc.text+'44':rc.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
         </div>
 
         {myEmp ? (<>
