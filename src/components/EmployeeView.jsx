@@ -641,10 +641,15 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
         </div>
         {!isMobile&&<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).bg,color:(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).text,border:`1px solid ${(MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee).border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>}
-        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginRight:isMobile?6:10,flexShrink:0}}>
-          <button onClick={()=>setView('schedule')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='schedule'?600:400,background:view==='schedule'?T.surface:'transparent',color:view==='schedule'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.schedule')}</button>
-          <button onClick={()=>setView('employees')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='employees'?600:400,background:view==='employees'?T.surface:'transparent',color:view==='employees'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('sched.directory')}</button>
-          <button onClick={()=>setView('profile')} style={{fontFamily:'inherit',padding:isMobile?'5px 8px':'5px 12px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:view==='profile'?600:400,background:view==='profile'?T.surface:'transparent',color:view==='profile'?T.text:T.text2,whiteSpace:'nowrap'}}>{t('nav.profile')}</button>
+        {/* Underline tabs, matching the manager Dashboard's primary nav
+            (App.jsx) — was previously a segmented pill, the same visual
+            pattern this app already uses for secondary filters (Week/Team/
+            Month toggles below), which made the two top-level experiences
+            read as differently-designed apps rather than one product. */}
+        <div style={{display:'flex',alignItems:'center',height:56,marginRight:isMobile?4:16,flexShrink:0}}>
+          {[['schedule',t('nav.schedule')],['employees',t('sched.directory')],['profile',t('nav.profile')]].map(([k,l])=>{const active=view===k;return(
+            <button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:isMobile?'0 10px':'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:isMobile?12:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:isMobile?10:16,right:isMobile?10:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>
+          );})}
         </div>
         <span style={{marginRight:isMobile?6:10}}><Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></span>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:isMobile?0:8,cursor:'pointer',outline:'none',flexShrink:0}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{isMobile?L.code.toUpperCase():L.label}</option>)}</select>

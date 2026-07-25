@@ -1176,6 +1176,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
         {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">Test: full month</Btn></span>}
+        {/* Previously missing entirely on the admin side — a manager had to
+            go back to the org picker first to sign out. Mirrors the
+            employee header's own logout button (same style, same final
+            position in the row) rather than inventing a new pattern. */}
+        <button onClick={()=>supabase.auth.signOut()} style={{marginLeft:8,padding:'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}>{t('common.logout')}</button>
         </>)}
         {isMobile&&(
           <button onClick={()=>setMobileMenuOpen(p=>!p)} aria-label="Menu" style={{width:36,height:36,marginLeft:8,borderRadius:8,border:`1px solid ${T.border}`,background:mobileMenuOpen?T.surfaceWarm:T.surface,color:T.text,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{mobileMenuOpen?'✕':'☰'}</button>
@@ -1192,6 +1197,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
           {isOwner&&<div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">Test: full month</Btn></div>}
+          <div style={{marginTop:6}}><Btn onClick={()=>supabase.auth.signOut()} variant="ghost">{t('common.logout')}</Btn></div>
         </div>
       )}
 
