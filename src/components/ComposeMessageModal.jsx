@@ -66,7 +66,7 @@ export default function ComposeMessageModal({ employees, allRoles, roleStyles, p
             <Toggle checked={allowReplies} onChange={()=>setAllowReplies(p=>!p)}/>
           </div>
         </div>
-        <div style={{display:'flex',gap:8,padding:20,borderTop:`1px solid ${T.border}`}}>
+        <div style={{display:'flex',gap:8,padding:12,borderTop:`1px solid ${T.border}`}}>
           <Btn onClick={()=>onSubmit({ recipientEmpIds: recipients.map(e=>e.id), subject: subject.trim(), body: body.trim(), allowReplies })} disabled={busy||!canSend}>{busy?t('save.saving'):t('msg.send')}</Btn>
           <Btn variant="ghost" onClick={onCancel}>{t('common.cancel')}</Btn>
         </div>

@@ -77,14 +77,14 @@ export default function MessageThreadModal({ message, viewerIsManager, myLabel, 
           })}
         </div>
         {message.allowReplies ? (
-          <div style={{display:'flex',gap:8,padding:16,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+          <div style={{display:'flex',gap:8,padding:12,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
             <input value={reply} onChange={e=>setReply(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')submitReply();}} placeholder={t('msg.replyPlaceholder')} style={{...s.input,flex:1}}/>
             <Btn onClick={submitReply} disabled={busy||!reply.trim()}>{t('msg.reply')}</Btn>
           </div>
         ) : (
           <div style={{padding:'12px 20px',borderTop:`1px solid ${T.border}`,fontSize:11,color:T.text3,fontStyle:'italic',flexShrink:0}}>{t('msg.repliesOff')}</div>
         )}
-        <div style={{padding:'10px 20px',borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+        <div style={{padding:12,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
           <Btn variant="ghost" small onClick={onClose}>{t('common.close')}</Btn>
         </div>
       </div>
