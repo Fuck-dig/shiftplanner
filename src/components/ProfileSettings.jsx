@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES } from '../lib/constants';
 import { supabase } from '../lib/supabase';
-import { Btn, TimePicker } from './ui';
+import { Btn, TimePicker, Toggle } from './ui';
 import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '../lib/push';
 
 const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true };
@@ -161,9 +161,7 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
                 <div style={{fontSize:13,fontWeight:500,color:T.text}}>{t('profile.emailNotifTitle')}</div>
                 <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.emailNotifDesc')}</div>
               </div>
-              <button onClick={toggleEmailNotif} aria-label={t('profile.emailNotifTitle')} aria-pressed={emailNotif} style={{width:40,height:22,borderRadius:999,border:'none',cursor:'pointer',padding:2,background:emailNotif?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s'}}>
-                <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:emailNotif?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
-              </button>
+              <Toggle checked={emailNotif} onChange={toggleEmailNotif} ariaLabel={t('profile.emailNotifTitle')}/>
             </div>
           )}
           {onSavePushPrefs && (
@@ -175,9 +173,7 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
                     {pushStatus==='unsupported'?t('profile.pushUnsupported'):pushStatus==='denied'?t('profile.pushDenied'):t('profile.pushDesc')}
                   </div>
                 </div>
-                <button onClick={togglePushEnabled} disabled={pushBusy||pushStatus==='unsupported'||pushStatus==='denied'||pushStatus==='checking'} aria-label={t('profile.pushTitle')} aria-pressed={pushPrefs.enabled} style={{width:40,height:22,borderRadius:999,border:'none',cursor:(pushBusy||pushStatus==='unsupported'||pushStatus==='denied')?'default':'pointer',padding:2,background:pushPrefs.enabled?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s',opacity:(pushStatus==='unsupported'||pushStatus==='denied')?0.5:1}}>
-                  <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:pushPrefs.enabled?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
-                </button>
+                <Toggle checked={pushPrefs.enabled} onChange={togglePushEnabled} disabled={pushBusy||pushStatus==='unsupported'||pushStatus==='denied'||pushStatus==='checking'} dim={pushStatus==='unsupported'||pushStatus==='denied'} ariaLabel={t('profile.pushTitle')}/>
               </div>
               {pushError && <div style={{fontSize:11,color:T.danger,marginTop:8}}>{pushError}</div>}
               {pushPrefs.enabled && pushStatus==='subscribed' && (

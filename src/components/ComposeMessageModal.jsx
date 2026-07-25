@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T } from '../lib/constants';
-import { Btn } from './ui';
+import { Btn, Toggle } from './ui';
 
 // Manager-only compose UI for direct messages. Recipients can be everyone,
 // everyone with a given role, or a hand-picked set of individuals — all
@@ -63,9 +63,7 @@ export default function ComposeMessageModal({ employees, allRoles, roleStyles, p
               <div style={{fontSize:12,fontWeight:500,color:T.text}}>{t('msg.allowReplies')}</div>
               <div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('msg.allowRepliesDesc')}</div>
             </div>
-            <button onClick={()=>setAllowReplies(p=>!p)} aria-pressed={allowReplies} style={{width:40,height:22,borderRadius:999,border:'none',cursor:'pointer',padding:2,background:allowReplies?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s'}}>
-              <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:allowReplies?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
-            </button>
+            <Toggle checked={allowReplies} onChange={()=>setAllowReplies(p=>!p)}/>
           </div>
         </div>
         <div style={{display:'flex',gap:8,padding:20,borderTop:`1px solid ${T.border}`}}>

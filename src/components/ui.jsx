@@ -20,7 +20,12 @@ export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; ret
 
 export function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:(isDark()?p.dot+'22':p.bg),color:selected?'#fff':(isDark()?p.dot:p.text),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
 
-export function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:'#3D7A52'},Pending:{bg:T.warningLight,text:T.warning,dot:'#956B18'},Rejected:{bg:T.dangerLight,text:T.danger,dot:'#963030'}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
+// dot reuses T.success/warning/danger directly (not a separate hardcoded
+// hex) so the small status dot and border track dark mode the same way the
+// badge's own background/text already do via T.successLight etc — they'd
+// previously been hardcoded to the light-mode value only, a real (if
+// subtle) dark-mode bug rather than a deliberate design choice.
+export function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:T.success},Pending:{bg:T.warningLight,text:T.warning,dot:T.warning},Rejected:{bg:T.dangerLight,text:T.danger,dot:T.danger}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
 
 export function Btn({children,onClick,disabled,variant='primary',small}){
   const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
@@ -29,6 +34,22 @@ export function Btn({children,onClick,disabled,variant='primary',small}){
 }
 
 export function SectionLabel({children}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{children}</div>; }
+
+// The on/off pill switch used for every settings toggle in the app (email
+// notifications, push notifications, "allow replies", etc.) — previously
+// hand-copied inline in three different files with identical markup;
+// consolidated here so there's one definition to change. `dim` is separate
+// from `disabled` because the push toggle wants to grey out only for a
+// genuinely blocked state (unsupported/denied), not for the brief `disabled`
+// window while a subscribe/unsubscribe request is in flight.
+export function Toggle({checked,onChange,disabled,dim,ariaLabel}){
+  const isDim = dim!=null ? dim : disabled;
+  return (
+    <button onClick={onChange} disabled={disabled} aria-label={ariaLabel} aria-pressed={checked} style={{width:40,height:22,borderRadius:999,border:'none',cursor:disabled?'default':'pointer',padding:2,background:checked?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s',opacity:isDim?0.5:1}}>
+      <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:checked?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
+    </button>
+  );
+}
 
 export function AddRoleInline({onAdd,t}){
   const [editing,setEditing]=useState(false);
