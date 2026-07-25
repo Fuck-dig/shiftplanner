@@ -204,12 +204,32 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
         )}
       </div>
 
-      {/* Recurring weekly availability — previously manager-edited only
-          (the admin Employees page). Editable here now too, applied
-          immediately on Save (no approval step, same as the manager's own
-          edit), which is fine since — unlike email — nothing depends on
-          this staying in sync with anything else. */}
-      {myEmp && onSaveAvailability && (
+      {/* Recurring weekly availability. This used to be self-editable here
+          too, but availability is now an admin-only concern again — a
+          manager sets it for people via the Employees page, same as name/
+          email. Employees get a read-only view of their own week (mirrors
+          the nameLocked/emailLocked pattern above); managers/owners still
+          get the full editable card, same as before. */}
+      {myEmp && isEmployee && (
+        <div style={s.card}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.weeklyAvail')}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(210px, 1fr))',gap:10,marginBottom:10}}>
+            {DAYS.map(day=>{
+              const avail=myEmp.availability?.[day];
+              return (
+                <div key={day} style={{display:'flex',flexDirection:'column',gap:8,padding:'12px',borderRadius:10,background:avail?T.accentLight:T.surfaceWarm,border:`1px solid ${avail?T.accent+'55':T.border}`}}>
+                  <span style={{alignSelf:'flex-start',padding:'4px 12px',borderRadius:6,fontSize:12,fontWeight:600,background:avail?T.accent:'transparent',color:avail?'#fff':T.text3,border:`1px solid ${avail?T.accent:T.border}`}}>{t('day.'+day)}</span>
+                  {avail?(
+                    <span style={{fontSize:12,color:T.text2}}>{avail.from} {t('common.toLower')} {avail.to}</span>
+                  ):<span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('emp.notAvailable')}</span>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('profile.availabilityLocked')}</div>
+        </div>
+      )}
+      {myEmp && !isEmployee && onSaveAvailability && (
         <div style={s.card}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.weeklyAvail')}</div>
           <div style={{marginBottom:12}}>
