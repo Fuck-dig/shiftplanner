@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants";
-import { dateToISO } from "../lib/dates";
+import { dateToISO, LOCALE } from "../lib/dates";
 
 
 
@@ -168,7 +168,7 @@ export function WeekPicker({trigger,value,onPick,highlightStart,highlightEnd}){
         <div style={{position:'absolute',top:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',zIndex:500,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 50px -14px rgba(0,0,0,0.4)',padding:10,width:220}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
             <button onClick={()=>{ if(viewM===0){setViewY(y=>y-1);setViewM(11);} else setViewM(m=>m-1); }} style={navBtn}>‹</button>
-            <span style={{fontSize:12,fontWeight:600,color:T.text}}>{first.toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</span>
+            <span style={{fontSize:12,fontWeight:600,color:T.text}}>{first.toLocaleDateString(LOCALE,{month:'long',year:'numeric'})}</span>
             <button onClick={()=>{ if(viewM===11){setViewY(y=>y+1);setViewM(0);} else setViewM(m=>m+1); }} style={navBtn}>›</button>
           </div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2}}>

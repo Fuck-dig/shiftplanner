@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
-import { dateToISO } from '../../lib/dates';
+import { dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff, effectiveRolesFor } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
 
@@ -77,7 +77,7 @@ export default function TeamView({
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
             return(<button key={day} onClick={()=>onIsolateDay&&onIsolateDay(day)} title={t('week.isolateDay')} style={{padding:gridTight?'10px 8px':'14px 12px',textAlign:'center',borderTop:'none',borderLeft:'none',borderBottom:isToday?`2px solid ${T.accent}`:'none',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent',cursor:onIsolateDay?'pointer':'default',fontFamily:'inherit',width:'100%',boxSizing:'border-box',outline:'none'}} onMouseEnter={e=>{if(onIsolateDay)e.currentTarget.style.background=isToday?T.accentLight:T.surface;}} onMouseLeave={e=>{e.currentTarget.style.background=isToday?T.accentLight:'transparent';}}>
               <div style={{fontSize:gridTight?12:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
-              <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
+              <div style={{fontSize:gridTight?10:12,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString(LOCALE,{month:'short'})}</div>
             </button>);
           })}
         </div>

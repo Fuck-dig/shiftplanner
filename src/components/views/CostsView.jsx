@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { T, pal } from '../../lib/constants';
-import { fmt, getMonthOffsets, weekKey, dateToISO } from '../../lib/dates';
+import { fmt, getMonthOffsets, weekKey, dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
 import { escapeHtml } from '../../lib/html';
 import { Avatar, RoleBadge, Btn } from '../ui';
@@ -115,13 +115,13 @@ export default function CostsView({
   // (same fix as the hourly-rate/wage inputs elsewhere) — committed to the
   // real revenue map (and Supabase) onBlur, not on every keystroke.
   const [revenueDraft, setRevenueDraft] = useState({});
-  const moneyFmt=n=>`${hasWages?'kr':hourlyRate.currency} ${Math.round(n).toLocaleString('da-DK')}`;
+  const moneyFmt=n=>`${hourlyRate.currency} ${Math.round(n).toLocaleString(LOCALE)}`;
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
         {[['week',t('cost.thisWeek')],['month',t('cost.thisMonth')]].map(([k,l])=><button key={k} onClick={()=>setCostsMode(k)} style={{padding:'4px 14px',borderRadius:6,background:costsMode===k?T.bg:'transparent',border:costsMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:costsMode===k?500:400,color:costsMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
       </div>
-      {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})} — {t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}</span>}
+      {costsMode==='month'&&<span style={{fontSize:12,color:T.text2}}>{new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})} — {t('cost.weeksGenerated',{a:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length,b:getMonthOffsets(displayMonth).length})}</span>}
       {costsMode==='week'&&(
         <div style={{display:'flex',alignItems:'center',gap:6}}>
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
@@ -155,7 +155,7 @@ export default function CostsView({
       const laborPct=revenueTotal>0?(laborCostMoney/revenueTotal*100):null;
       const profit=revenueTotal-laborCostMoney;
       const periodLabel=costsMode==='month'
-        ?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})
+        ?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})
         :`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
       const exportCsv=()=>{
         const label=costsMode==='month'
@@ -227,7 +227,7 @@ export default function CostsView({
                   <div key={iso} style={{display:'grid',gridTemplateColumns:'110px 130px 100px 1fr 60px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                     <div style={{fontSize:12,fontWeight:500,color:T.text}}>{fmt(d)}</div>
                     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:7,padding:'2px 8px'}}>
-                      <span style={{fontSize:11,color:T.text3}}>{hasWages?'kr':hourlyRate.currency}</span>
+                      <span style={{fontSize:11,color:T.text3}}>{hourlyRate.currency}</span>
                       <input
                         type="number" min="0" step="1" placeholder={t('cost.enterRevenue')}
                         value={revenueDraft[iso]??(revenue[iso]??'')}

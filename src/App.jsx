@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
-import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
+import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
 import ComposeMessageModal from './components/ComposeMessageModal';
@@ -435,116 +435,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         updates[weekKey(off)]={schedule:s,notes,warnings};
       });
       setSchedules(p=>({...p,...updates}));setGenerating(false);
-    },100);
-  };
-
-  // TEST ONLY: replaces the employee list with a set of test staff (several with
-  // multiple roles, full-week availability, generous hours) and fills the whole
-  // displayed month with shifts, so multi-role + full-coverage behavior can be
-  // checked at a glance. Safe to remove once no longer needed.
-  const seedTestDataAndGenerateMonth=()=>{
-    const input=window.prompt('How many test employees? (4–40)','12');
-    if(input===null)return;
-    let n=parseInt(input,10);
-    if(!Number.isFinite(n))return;
-    n=Math.max(4,Math.min(40,n));
-    if(!confirm(`This replaces your current employee list with ${n} generated test employees (varied roles, availability, and some approved time off) and fills the whole month with shifts.\n\nContinue?`))return;
-    setGenerating(true);setSelected(null);
-    setTimeout(()=>{
-      const FIRST_NAMES=['Alma','Bo','Cecilie','Daniel','Emilie','Frederik','Gitte','Henrik','Ida','Jacob','Karen','Lars','Maja','Nikolaj','Oliver','Pernille','Rasmus','Sofie','Thomas','Ulla','Viggo','Winnie','Anders','Birgit','Christian','Ditte'];
-      const LAST_NAMES=['Berg','Frank','Holm','Vang','Skov','Lang','Krogh','Toft','Fog','Ry','Møller','Nielsen','Hansen','Jensen','Larsen','Sørensen','Christensen','Pedersen','Andersen','Thomsen'];
-      const SHIFT_TEMPLATES=[{from:'08:00',to:'16:00'},{from:'10:00',to:'16:00'},{from:'16:00',to:'00:00'},{from:'10:00',to:'00:00'},{from:'08:00',to:'00:00'}];
-      const nonMgrRoles=allRoles.filter(r=>r!=='Manager');
-      const usedNames=new Set();
-      const randomName=()=>{
-        let name;
-        do{ name=`${FIRST_NAMES[Math.floor(Math.random()*FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random()*LAST_NAMES.length)]}`; }
-        while(usedNames.has(name)&&usedNames.size<FIRST_NAMES.length*LAST_NAMES.length);
-        usedNames.add(name);
-        return name;
-      };
-      const randomRoles=()=>{
-        const roles=[];
-        if(Math.random()<0.18)roles.push('Manager');
-        const shuffled=[...nonMgrRoles].sort(()=>Math.random()-0.5);
-        const count=Math.random()<0.35?2:1;
-        shuffled.slice(0,count).forEach(r=>roles.push(r));
-        if(!roles.length)roles.push(nonMgrRoles[0]||'Waiter');
-        return roles;
-      };
-      const randomAvailability=()=>{
-        const avail={};
-        DAYS.forEach(d=>{ avail[d]=Math.random()<0.22?null:SHIFT_TEMPLATES[Math.floor(Math.random()*SHIFT_TEMPLATES.length)]; });
-        const availableDays=DAYS.filter(d=>avail[d]);
-        if(availableDays.length<3)DAYS.filter(d=>!avail[d]).slice(0,3-availableDays.length).forEach(d=>{avail[d]=SHIFT_TEMPLATES[Math.floor(Math.random()*SHIFT_TEMPLATES.length)];});
-        return avail;
-      };
-      const testEmployees=Array.from({length:n},(_,i)=>{
-        const isCore=i<Math.ceil(n*0.3);
-        return {
-          id:crypto.randomUUID(), name:randomName(), roles:randomRoles(),
-          priority:isCore?100:70+Math.floor(Math.random()*20),
-          palIdx:i%EMP_PALETTE.length,
-          contractType:isCore?'fixed':'hourly',
-          contractPeriod:isCore?'month':'week',
-          wage:isCore?30000+Math.floor(Math.random()*8000):150+Math.floor(Math.random()*30),
-          maxHours:isCore?40+Math.floor(Math.random()*20):15+Math.floor(Math.random()*20),
-          availability:randomAvailability(),
-        };
-      });
-      // A handful of employees get a fake approved vacation/time-off entry
-      // somewhere in the target month, so the generated schedule actually has
-      // to work around real unavailability instead of everyone being free.
-      const monthStart=new Date(displayMonth.y,displayMonth.m,1);
-      const daysInMonth=new Date(displayMonth.y,displayMonth.m+1,0).getDate();
-      const fakeTimeOff=[];
-      testEmployees.forEach((e,i)=>{
-        if(Math.random()<0.25){
-          const span=1+Math.floor(Math.random()*4);
-          const startOffset=Math.floor(Math.random()*Math.max(1,daysInMonth-span));
-          const start=new Date(monthStart); start.setDate(1+startOffset);
-          const end=new Date(start); end.setDate(start.getDate()+span-1);
-          fakeTimeOff.push({id:crypto.randomUUID(), empId:e.id, startDate:dateToISO(start), endDate:dateToISO(end), type:TIMEOFF_TYPES[Math.floor(Math.random()*TIMEOFF_TYPES.length)], note:'', status:'Approved'});
-        }
-      });
-      const updates={};
-      getMonthOffsets(displayMonth).forEach(off=>{
-        const wd=getWeekDates(off);
-        // Jitter priority per week so a different mix of same-tier staff gets
-        // picked each week — otherwise buildSchedule is deterministic and every
-        // week ends up identical.
-        const weekEmployees=testEmployees.map(e=>({...e,priority:e.priority+Math.floor(Math.random()*30)}));
-        const{schedule:s,total,noMgr}=buildSchedule(weekEmployees,blocks,wd,fakeTimeOff,allRoles);
-        const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
-        const warnings=noMgr.map(({day,block})=>'! '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
-        updates[weekKey(off)]={schedule:s,notes,warnings};
-      });
-      // Update local state directly (not the debounced setters) so the two
-      // saves below can be strictly ordered — time_off.employee_id has a
-      // foreign-key constraint on employees.id, so the employees insert must
-      // land in the DB before the time-off insert that references it. Firing
-      // both through the independent per-field debounces races them instead.
-      setEmpRaw(testEmployees);
-      setTORaw(fakeTimeOff);
-      setSchedules(p=>({...p,...updates}));
-      setCalMode('month');
-      setGenerating(false);
-      const runSeedSync=()=>{
-        setSavingCount(c=>c+1);
-        (async()=>{
-          try{
-            await syncEmployees(orgId,testEmployees);
-            await syncTimeOff(orgId,fakeTimeOff);
-            setSaveError(e=>(e&&e.label==='seed')?null:e);
-          }catch(err){
-            console.error('Seed sync failed:',err);
-            setSaveError({label:'seed',message:err?.message||t('save.failedGeneric'),retry:runSeedSync});
-          }finally{
-            setSavingCount(c=>Math.max(0,c-1));
-          }
-        })();
-      };
-      runSeedSync();
     },100);
   };
 
@@ -1077,7 +967,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
   const weekRoleCosts=mkRoleCosts(costData),monthRoleCosts=mkRoleCosts(monthCostData);
-  const toMoney=u=>{if(hasWages){return `kr ${Math.round(u).toLocaleString('da-DK')}`;}const val=u*hourlyRate.amount;return `${hourlyRate.currency} ${Math.round(val).toLocaleString('da-DK')}`;};
+  const toMoney=u=>{if(hasWages){return `${hourlyRate.currency} ${Math.round(u).toLocaleString(LOCALE)}`;}const val=u*hourlyRate.amount;return `${hourlyRate.currency} ${Math.round(val).toLocaleString(LOCALE)}`;};
   // Same conversion toMoney does (costUnits -> a real money figure), but
   // returning the raw number instead of a formatted string — needed to do
   // math (labor cost % of revenue) rather than just display it.
@@ -1175,7 +1065,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         <span style={{marginRight:8}}><NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
         <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
-        {isOwner&&<span style={{marginLeft:8,display:'inline-block'}}><Btn onClick={seedTestDataAndGenerateMonth} disabled={generating} variant="secondary">Test: full month</Btn></span>}
         {/* Previously missing entirely on the admin side — a manager had to
             go back to the org picker first to sign out. Mirrors the
             employee header's own logout button (same style, same final
@@ -1196,7 +1085,6 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
-          {isOwner&&<div style={{marginTop:6}}><Btn onClick={()=>{setMobileMenuOpen(false);seedTestDataAndGenerateMonth();}} disabled={generating} variant="secondary">Test: full month</Btn></div>}
           <div style={{marginTop:6}}><Btn onClick={()=>supabase.auth.signOut()} variant="ghost">{t('common.logout')}</Btn></div>
         </div>
       )}
@@ -1228,7 +1116,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
             <button onClick={()=>setShiftModalMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-            <span style={{fontSize:12,fontWeight:500,color:T.text,minWidth:120,textAlign:'center',padding:'0 2px'}}>{new Date(shiftModalMonth.y,shiftModalMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'})}</span>
+            <span style={{fontSize:12,fontWeight:500,color:T.text,minWidth:120,textAlign:'center',padding:'0 2px'}}>{new Date(shiftModalMonth.y,shiftModalMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})}</span>
             <button onClick={()=>setShiftModalMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
           </div>
           <button onClick={()=>{const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
@@ -1421,7 +1309,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           setWeekOffset(weekOffsetFromDate(d));
           if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
         }}
-        trigger={<span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
+        trigger={<span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
       />
       <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
     </div>
@@ -1482,6 +1370,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     pickerSortBy={pickerSortBy} setPickerSortBy={setPickerSortBy} pickerSearch={pickerSearch} setPickerSearch={setPickerSearch} candidatesForSlot={candidatesForSlot}
     addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
     removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy}
+    currency={hourlyRate.currency}
     s={s} t={t}
   />
 )}
@@ -1498,7 +1387,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     onOpenCompose={openCompose}
     onOpenKiosk={openKiosk}
     myId={myId}
-    orgId={orgId} orgName={orgName} isOwner={isOwner} uploaderLabel={myEmail} s={s} t={t}
+    orgId={orgId} orgName={orgName} isOwner={isOwner} uploaderLabel={myEmail} currency={hourlyRate.currency} s={s} t={t}
   />
 )}
 

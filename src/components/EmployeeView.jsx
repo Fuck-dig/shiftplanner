@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
-import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale } from '../lib/dates';
+import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
 import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
@@ -677,7 +677,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 setWeekOffset(weekOffsetFromDate(d));
                 if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
               }}
-              trigger={<span style={{fontSize:14,fontWeight:500,minWidth:isMobile?130:160,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString('en-GB',{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
+              trigger={<span style={{fontSize:14,fontWeight:500,minWidth:isMobile?130:160,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
             />
             <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>›</button>
           </div>
@@ -809,7 +809,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
                 return(<button key={day} onClick={()=>{setDayFilter(day);setCalMode('week');}} title={t('week.isolateDay')} style={{padding:isMobile?'12px 6px':'14px 12px',textAlign:'center',borderTop:'none',borderLeft:'none',borderBottom:isToday?`2px solid ${T.accent}`:'none',borderRight:i<6?`1px solid ${T.border}`:'none',background:isToday?T.accentLight:'transparent',cursor:'pointer',fontFamily:'inherit',width:'100%',boxSizing:'border-box',outline:'none'}} onMouseEnter={e=>{e.currentTarget.style.background=isToday?T.accentLight:T.surface;}} onMouseLeave={e=>{e.currentTarget.style.background=isToday?T.accentLight:'transparent';}}>
                   <div style={{fontSize:13,fontWeight:600,color:isToday?T.accent:T.text}}>{t('day.'+day)}</div>
-                  <div style={{fontSize:11,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString('en-GB',{month:'short'})}</div>
+                  <div style={{fontSize:11,color:isToday?T.accent:T.text3,marginTop:1}}>{date.getDate()} {date.toLocaleDateString(LOCALE,{month:'short'})}</div>
                 </button>);
               })}
             </div>
