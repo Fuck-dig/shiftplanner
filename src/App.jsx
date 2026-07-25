@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, TIMEOFF_TYPES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale } from './lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict } from './lib/schedule';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
 import ComposeMessageModal from './components/ComposeMessageModal';
 import MessageThreadModal from './components/MessageThreadModal';
 import { migrateEmployee, load, save } from './lib/storage';
@@ -389,6 +389,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const saveMyPhone=(phone)=>updateEmp(myId,'phone',phone);
   const saveMyAvailability=(availability)=>updateEmp(myId,'availability',availability);
   const saveMyEmailNotifications=(emailNotifications)=>updateEmp(myId,'emailNotifications',emailNotifications);
+  const saveMyPushPrefs=(pushPrefs)=>updateEmp(myId,'pushPrefs',pushPrefs);
 
   const weekDates  =getWeekDates(weekOffset);
   const wKey       =weekKey(weekOffset);
@@ -557,12 +558,24 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // companion reusing the exact same translated text. Shared by every
   // manager-side notification site below instead of repeating the
   // lookup+send pair at each call.
+  // Which push-toggle category a given notif.* key falls under — mirrors
+  // the same events surfaced in Profile's push settings. Unmapped keys
+  // (there are none currently, but future notif.* additions might not be
+  // categorized yet) simply don't push, matching how email already only
+  // fires for known conditions above.
+  const pushEventForKey=(messageKey)=>{
+    if(messageKey==='notif.schedulePublished') return 'shiftChanges';
+    if(messageKey.startsWith('notif.timeOff')||messageKey.startsWith('notif.swap')) return 'timeOffSwap';
+    return null;
+  };
   const notify=(empId,messageKey,messageVars={})=>{
     createNotification(orgId,empId,{type:messageKey.replace('notif.',''),messageKey,messageVars}).catch(err=>console.error('Notify failed:',err));
     const target=employees.find(e=>e.id===empId);
     // emailNotifications defaults to true for anyone who hasn't touched the
     // toggle yet (opt-out, not opt-in) — only skip when it's explicitly false.
     if(target?.email && target.emailNotifications!==false){ const text=t(messageKey,messageVars); sendNotificationEmail({to:target.email,subject:text,body:text}); }
+    const pushEvent=pushEventForKey(messageKey);
+    if(pushEvent){ const text=t(messageKey,messageVars); notifyPush([empId],pushEvent,{title:'Rorota',body:text,url:'/'}); }
   };
 
   // Direct messages — opens ComposeMessageModal, optionally pre-selecting
@@ -579,7 +592,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const submitCompose=({recipientEmpIds,subject,body,allowReplies})=>{
     setComposeBusy(true);
     sendMessage(orgId,recipientEmpIds,{senderLabel,subject,body,allowReplies})
-      .then(()=>setComposeModal(null))
+      .then(()=>{
+        setComposeModal(null);
+        notifyPush(recipientEmpIds,'messages',{title:subject||senderLabel,body,url:'/'});
+      })
       .catch(err=>alert(err.message||'Failed to send'))
       .finally(()=>setComposeBusy(false));
   };
@@ -844,6 +860,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       if(isOnTimeOff(e.id,date,timeOff))r.push('leave');
       if(working.has(e.id))r.push('working');
       if(empHours(e.id)+bh>e.maxHours)r.push('hours');
+      if(hasRestConflict(e.id,day,blockId,schedule,blocks))r.push('rest');
       if(!coversBlock(e.availability[day],block))r.push('avail');
       return r;
     };
@@ -1283,6 +1300,25 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const emp=employees.find(e=>e.id===entry.empId);
   const empRoles=(emp?.roles||[]).length?emp.roles:allRoles;
   const customized=editTimes.start!==block.start||editTimes.end!==block.end;
+  // Soft warnings only (never block Save) — computed off the SCHEDULED
+  // time being typed here, not clock data, per the "warn while building the
+  // schedule" basis chosen for these. scheduledHoursExcl walks every other
+  // block this employee is on this week (excluding the slot being edited,
+  // since its old contribution shouldn't double-count against the new
+  // custom time being typed).
+  const customTimes={start:editTimes.start,end:editTimes.end};
+  const scheduledHoursExcl=(()=>{
+    let h=0;
+    DAYS.forEach(d=>blocks.forEach(b=>{
+      if(d===day&&b.id===blockId) return;
+      const a=(schedule[d]?.[b.id]||[]).find(x=>x.empId===entry.empId);
+      if(a) h+=assignmentHours(a,b);
+    }));
+    return h;
+  })();
+  const projectedHours=scheduledHoursExcl+assignmentHours(customTimes,block);
+  const overCap=emp&&projectedHours>emp.maxHours;
+  const restConflict=hasRestConflict(entry.empId,day,blockId,schedule,blocks,customTimes);
   return createPortal(
     <div onClick={closeEditSlot} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(380px,100%)',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
@@ -1309,6 +1345,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
           <TimePicker small value={editTimes.end} onChange={v=>setEditTimes(p=>({...p,end:v}))}/>
           {customized&&<button onClick={()=>setEditTimes({start:block.start,end:block.end})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
         </div>
+        {/* Soft, non-blocking heads-up — the manager can always Save anyway. */}
+        {(overCap||restConflict)&&(
+          <div style={{padding:'0 18px 12px',display:'flex',flexDirection:'column',gap:6}}>
+            {overCap&&<div style={{fontSize:11,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{t('week.warnOverHours',{hours:projectedHours.toFixed(1),max:emp.maxHours})}</div>}
+            {restConflict&&<div style={{fontSize:11,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{t('week.warnRestConflict')}</div>}
+          </div>
+        )}
         {/* Only shown for a shift that's already happened (today or
             earlier) — a future shift has nothing to record yet, and
             actualAssignmentHours already falls back to the scheduled time
@@ -1449,7 +1492,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     onOpenCompose={openCompose}
     onOpenKiosk={openKiosk}
     myId={myId}
-    orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}
+    orgId={orgId} orgName={orgName} isOwner={isOwner} uploaderLabel={myEmail} s={s} t={t}
   />
 )}
 
@@ -1490,7 +1533,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} orgId={orgId} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
 )}
 
       </div>

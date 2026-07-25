@@ -348,6 +348,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,emailNotifications}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
+  const saveMyPushPrefs = (pushPrefs) => {
+    updateEmployeeSelfProfile(myId, { pushPrefs })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,pushPrefs}:e)))
+      .catch(err=>alert(err.message||'Failed to save'));
+  };
 
   // Single choke point for every employee-to-employee notification (swap
   // requests, claims, accept/decline) — the in-app row is always created;
@@ -650,7 +655,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} orgId={orgId} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>

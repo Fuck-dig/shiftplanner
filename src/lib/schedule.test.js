@@ -8,6 +8,7 @@ import {
   calcWageCost,
   coversBlock,
   dayCoverage,
+  hasRestConflict,
   WEEKS_PER_MONTH,
 } from './schedule';
 
@@ -109,6 +110,52 @@ describe('actualTimeRange', () => {
 
   it('wraps a real overnight actual span past midnight', () => {
     expect(actualTimeRange({ actualStart: '22:00', actualEnd: '06:00' }, block)).toEqual({ startMin: 22*60, endMin: 24*60+6*60, hasActual: true, ongoing: false });
+  });
+});
+
+describe('hasRestConflict', () => {
+  const blocks = [
+    { id: 'morning', start: '09:00', end: '17:00' },
+    { id: 'evening', start: '18:00', end: '23:00' }, // 6h rest after morning ends
+    { id: 'closeShift', start: '22:00', end: '23:59' },
+    { id: 'earlyNext', start: '08:00', end: '16:00' }, // <11h after closeShift the next day
+    { id: 'lateNext', start: '11:00', end: '19:00' }, // >=11h after closeShift the next day
+  ];
+
+  it('is false when the employee has no other shifts that week', () => {
+    const schedule = { Mon: { morning: [{ empId: 'e1', role: 'Waiter' }] } };
+    expect(hasRestConflict('e1', 'Mon', 'morning', schedule, blocks)).toBe(false);
+  });
+
+  it('is true for a literal same-day overlap', () => {
+    const overlapping = [{ id: 'a', start: '09:00', end: '17:00' }, { id: 'b', start: '15:00', end: '20:00' }];
+    const schedule = { Mon: { a: [{ empId: 'e1' }], b: [{ empId: 'e1' }] } };
+    expect(hasRestConflict('e1', 'Mon', 'b', schedule, overlapping)).toBe(true);
+  });
+
+  it('is true when the gap to the next day\'s shift is under 11h', () => {
+    const schedule = { Mon: { closeShift: [{ empId: 'e1' }] }, Tue: { earlyNext: [{ empId: 'e1' }] } };
+    // closeShift ends 23:59 Mon, earlyNext starts 08:00 Tue — about 8h gap.
+    expect(hasRestConflict('e1', 'Tue', 'earlyNext', schedule, blocks)).toBe(true);
+  });
+
+  it('is false when the gap to the next day\'s shift is 11h or more', () => {
+    const schedule = { Mon: { closeShift: [{ empId: 'e1' }] }, Tue: { lateNext: [{ empId: 'e1' }] } };
+    // closeShift ends 23:59 Mon, lateNext starts 11:00 Tue — well over 11h.
+    expect(hasRestConflict('e1', 'Tue', 'lateNext', schedule, blocks)).toBe(false);
+  });
+
+  it('checks a hypothetical override time instead of the block\'s own nominal time', () => {
+    const schedule = { Mon: { closeShift: [{ empId: 'e1' }] } };
+    // earlyNext isn't assigned to anyone yet — but check as if it were typed
+    // in with a custom, even-earlier start via the override param.
+    expect(hasRestConflict('e1', 'Tue', 'earlyNext', schedule, blocks, { start: '01:00', end: '09:00' })).toBe(true);
+    expect(hasRestConflict('e1', 'Tue', 'earlyNext', schedule, blocks, { start: '12:00', end: '20:00' })).toBe(false);
+  });
+
+  it('ignores the slot being checked against itself', () => {
+    const schedule = { Mon: { morning: [{ empId: 'e1' }] } };
+    expect(hasRestConflict('e1', 'Mon', 'morning', schedule, blocks)).toBe(false);
   });
 });
 

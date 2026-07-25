@@ -18,6 +18,7 @@ const empToRow = (orgId, e) => ({
   pal_idx:         e.palIdx ?? 0,
   email_notifications: e.emailNotifications !== false,
   pin:             (e.pin||'').trim() || null,
+  push_prefs:      e.pushPrefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
 const empFromRow = (r) => ({
@@ -36,6 +37,7 @@ const empFromRow = (r) => ({
   palIdx:         r.pal_idx ?? 0,
   emailNotifications: r.email_notifications ?? true,
   pin:            r.pin || '',
+  pushPrefs:      r.push_prefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
 // ── Employees ────────────────────────────────────────────────────────────────
@@ -405,6 +407,92 @@ export async function sendMessageReply(messageId, { fromEmployee, authorLabel, b
   return replyFromRow(data);
 }
 
+// ── Employee documents (manager-only, see 20260725120000_employee_documents.sql) ──
+const docFromRow = (r) => ({
+  id: r.id, employeeId: r.employee_id, fileName: r.file_name,
+  storagePath: r.storage_path, contentType: r.content_type || '',
+  sizeBytes: r.size_bytes || 0, uploadedBy: r.uploaded_by || '',
+  createdAt: r.created_at,
+});
+
+export async function fetchEmployeeDocuments(employeeId){
+  const { data, error } = await supabase
+    .from('employee_documents').select('*').eq('employee_id', employeeId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(docFromRow);
+}
+
+// Uploads to the private employee-documents bucket, then records its
+// metadata — two calls, not one, since Storage and the Postgres table are
+// separate systems with no single transaction spanning both. If the
+// metadata insert fails after a successful upload, the orphaned storage
+// object is harmless: nothing ever links to it, so it never appears in the
+// UI, it just wastes a little storage quota until manually cleaned up.
+export async function uploadEmployeeDocument(orgId, employeeId, file, uploadedBy){
+  const path = `${orgId}/${employeeId}/${Date.now()}-${file.name}`;
+  const { error: upErr } = await supabase.storage.from('employee-documents').upload(path, file);
+  if (upErr) throw upErr;
+  const { data, error: insErr } = await supabase.from('employee_documents').insert({
+    org_id: orgId, employee_id: employeeId, file_name: file.name,
+    storage_path: path, content_type: file.type || null, size_bytes: file.size || null,
+    uploaded_by: uploadedBy || null,
+  }).select().single();
+  if (insErr) throw insErr;
+  return docFromRow(data);
+}
+
+// Signed URL — the bucket is private, so a plain public URL 404s. Short-
+// lived (5 min) since this is only ever used for an immediate open/download
+// click, never stored or reused later.
+export async function getEmployeeDocumentUrl(storagePath){
+  const { data, error } = await supabase.storage.from('employee-documents')
+    .createSignedUrl(storagePath, 300);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+export async function deleteEmployeeDocument(doc){
+  const { error: rmErr } = await supabase.storage.from('employee-documents').remove([doc.storagePath]);
+  if (rmErr) throw rmErr;
+  const { error: delErr } = await supabase.from('employee_documents').delete().eq('id', doc.id);
+  if (delErr) throw delErr;
+}
+
+// Looks up who among `empIds` has push enabled and wants this event, then
+// asks the send-push edge function to actually deliver it. Never throws —
+// same "fire and forget, log on failure" contract as sendNotificationEmail,
+// since a failed push should never block whatever action triggered it.
+export async function notifyPush(empIds, event, { title, body, url }){
+  try {
+    if (!empIds?.length) return;
+    const { data: emps, error: empErr } = await supabase
+      .from('employees').select('id,push_prefs').in('id', empIds);
+    if (empErr) throw empErr;
+    const wantIds = (emps || [])
+      .filter(e => e.push_prefs?.enabled && e.push_prefs?.[event] !== false)
+      .map(e => e.id);
+    if (!wantIds.length) return;
+    const { data: subs, error: subErr } = await supabase
+      .from('push_subscriptions').select('endpoint,p256dh,auth').in('emp_id', wantIds);
+    if (subErr) throw subErr;
+    if (!subs?.length) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(functionsUrl('send-push'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ subscriptions: subs, payload: { title, body, url } }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (json.error) throw new Error(json.error);
+  } catch (err) {
+    console.error('Push notification failed (non-blocking):', err);
+  }
+}
+
 export async function sendNotificationEmail({ to, subject, body, ctaLabel, ctaUrl }){
   if (!to) return;
   try {
@@ -457,13 +545,14 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability, emailNotifications } = {}){
+export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability, emailNotifications, pushPrefs } = {}){
   const row = {};
   if (name != null)   row.name = name;
   if (palIdx != null)  row.pal_idx = palIdx;
   if (phone != null)  row.phone = phone;
   if (availability != null) row.availability = availability;
   if (emailNotifications != null) row.email_notifications = emailNotifications;
+  if (pushPrefs != null) row.push_prefs = pushPrefs;
   if (Object.keys(row).length === 0) return;
   const { error } = await supabase.from('employees').update(row).eq('id', empId);
   if (error) throw error;

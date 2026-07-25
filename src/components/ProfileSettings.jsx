@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Btn, TimePicker } from './ui';
+import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '../lib/push';
+
+const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true };
 
 // Account-settings tab (its own view, not a modal), used from both Dashboard
 // and EmployeeView. myEmp is the employees row matched to the logged-in
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
+export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, onSavePushPrefs, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
@@ -33,6 +36,42 @@ export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees,
     setAvailSaved(true);
     setTimeout(()=>setAvailSaved(false), 1800);
   };
+  // Real OS/browser push — distinct from the plain emailNotif toggle above.
+  // pushStatus mirrors what THIS browser/device is actually subscribed as
+  // (independent of the saved preference, since a user could enable it here
+  // but then block the permission prompt, or subscribe from one device and
+  // not another) — 'checking' while the initial lookup is in flight.
+  const [pushPrefs, setPushPrefs] = useState(myEmp?.pushPrefs || DEFAULT_PUSH_PREFS);
+  const [pushStatus, setPushStatus] = useState('checking'); // checking | unsupported | denied | subscribed | not-subscribed
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState(null);
+
+  useEffect(() => {
+    if (!myEmp) return;
+    getPushStatus().then(setPushStatus);
+  }, [myEmp?.id]);
+
+  const togglePushEnabled = () => {
+    setPushError(null);
+    setPushBusy(true);
+    const next = !pushPrefs.enabled;
+    (next ? subscribeToPush(orgId, myEmp.id) : unsubscribeFromPush())
+      .then(() => {
+        const nextPrefs = { ...pushPrefs, enabled: next };
+        setPushPrefs(nextPrefs);
+        onSavePushPrefs(nextPrefs);
+        return getPushStatus().then(setPushStatus);
+      })
+      .catch(err => setPushError(err.message || 'Failed to update push notifications'))
+      .finally(() => setPushBusy(false));
+  };
+
+  const togglePushEvent = (key) => {
+    const nextPrefs = { ...pushPrefs, [key]: !pushPrefs[key] };
+    setPushPrefs(nextPrefs);
+    onSavePushPrefs(nextPrefs);
+  };
+
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
   const [pwBusy, setPwBusy] = useState(false);
@@ -125,6 +164,32 @@ export default function ProfileSettings({ role, myEmp, myEmail, onGoToEmployees,
               <button onClick={toggleEmailNotif} aria-label={t('profile.emailNotifTitle')} aria-pressed={emailNotif} style={{width:40,height:22,borderRadius:999,border:'none',cursor:'pointer',padding:2,background:emailNotif?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s'}}>
                 <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:emailNotif?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
               </button>
+            </div>
+          )}
+          {onSavePushPrefs && (
+            <div style={{paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:16}}>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500,color:T.text}}>{t('profile.pushTitle')}</div>
+                  <div style={{fontSize:11,color:T.text3,marginTop:2}}>
+                    {pushStatus==='unsupported'?t('profile.pushUnsupported'):pushStatus==='denied'?t('profile.pushDenied'):t('profile.pushDesc')}
+                  </div>
+                </div>
+                <button onClick={togglePushEnabled} disabled={pushBusy||pushStatus==='unsupported'||pushStatus==='denied'||pushStatus==='checking'} aria-label={t('profile.pushTitle')} aria-pressed={pushPrefs.enabled} style={{width:40,height:22,borderRadius:999,border:'none',cursor:(pushBusy||pushStatus==='unsupported'||pushStatus==='denied')?'default':'pointer',padding:2,background:pushPrefs.enabled?T.accent:T.border,position:'relative',flexShrink:0,transition:'background 0.15s',opacity:(pushStatus==='unsupported'||pushStatus==='denied')?0.5:1}}>
+                  <span style={{display:'block',width:18,height:18,borderRadius:'50%',background:'#fff',transform:pushPrefs.enabled?'translateX(18px)':'translateX(0)',transition:'transform 0.15s'}}/>
+                </button>
+              </div>
+              {pushError && <div style={{fontSize:11,color:T.danger,marginTop:8}}>{pushError}</div>}
+              {pushPrefs.enabled && pushStatus==='subscribed' && (
+                <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:12}}>
+                  {[['shiftChanges',t('profile.pushShiftChanges')],['shiftReminder',t('profile.pushShiftReminder')],['timeOffSwap',t('profile.pushTimeOffSwap')],['messages',t('profile.pushMessages')]].map(([key,label])=>(
+                    <label key={key} style={{display:'flex',alignItems:'center',gap:8,fontSize:12,color:T.text2,cursor:'pointer'}}>
+                      <input type="checkbox" checked={pushPrefs[key]!==false} onChange={()=>togglePushEvent(key)}/>
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </>) : (

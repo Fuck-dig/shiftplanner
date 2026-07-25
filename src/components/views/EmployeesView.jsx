@@ -1,7 +1,15 @@
+import { useState, useEffect } from 'react';
 import { T, DAYS, AVAIL_TEMPLATES, DEFAULT_ROLE_STYLES, pal } from '../../lib/constants';
 import { toMin } from '../../lib/dates';
 import { Avatar, RoleBadge, Btn, SectionLabel, TimePicker } from '../ui';
 import TeamAccess from '../TeamAccess';
+import { fetchEmployeeDocuments, uploadEmployeeDocument, getEmployeeDocumentUrl, deleteEmployeeDocument } from '../../lib/data';
+
+const fmtSize=(bytes)=>{
+  if(!bytes) return '0 KB';
+  if(bytes<1024*1024) return `${Math.max(1,Math.round(bytes/1024))} KB`;
+  return `${(bytes/(1024*1024)).toFixed(1)} MB`;
+};
 
 export default function EmployeesView({
   employees, allRoles, roleStyles,
@@ -9,8 +17,44 @@ export default function EmployeesView({
   updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
   onAddShift, onOpenCompose, onOpenKiosk, myId,
-  orgId, orgName, isOwner, s, t,
+  orgId, orgName, isOwner, uploaderLabel, s, t,
 }){
+  // Documents are manager-only (see 20260725120000_employee_documents.sql)
+  // and only ever needed for whichever single employee panel is expanded —
+  // expandedEmp is one id, not a set, so a flat per-id cache is enough
+  // rather than eagerly loading every employee's documents up front.
+  const [empDocs, setEmpDocs] = useState({});     // empId -> Doc[] | undefined (not yet loaded)
+  const [docBusy, setDocBusy] = useState({});     // empId -> true while an upload is in flight
+  const [docErrors, setDocErrors] = useState({}); // empId -> error message | undefined
+
+  useEffect(() => {
+    if (!expandedEmp || empDocs[expandedEmp] !== undefined) return;
+    fetchEmployeeDocuments(expandedEmp)
+      .then(docs => setEmpDocs(p => ({ ...p, [expandedEmp]: docs })))
+      .catch(err => setDocErrors(p => ({ ...p, [expandedEmp]: err.message || 'Failed to load documents' })));
+  }, [expandedEmp]);
+
+  const handleUploadDoc = (empId, file) => {
+    setDocBusy(p => ({ ...p, [empId]: true }));
+    setDocErrors(p => ({ ...p, [empId]: undefined }));
+    uploadEmployeeDocument(orgId, empId, file, uploaderLabel)
+      .then(doc => setEmpDocs(p => ({ ...p, [empId]: [doc, ...(p[empId] || [])] })))
+      .catch(err => setDocErrors(p => ({ ...p, [empId]: err.message || 'Upload failed' })))
+      .finally(() => setDocBusy(p => ({ ...p, [empId]: false })));
+  };
+
+  const handleOpenDoc = (doc) => {
+    getEmployeeDocumentUrl(doc.storagePath)
+      .then(url => window.open(url, '_blank'))
+      .catch(err => setDocErrors(p => ({ ...p, [doc.employeeId]: err.message || 'Could not open file' })));
+  };
+
+  const handleDeleteDoc = (empId, doc) => {
+    deleteEmployeeDocument(doc)
+      .then(() => setEmpDocs(p => ({ ...p, [empId]: (p[empId] || []).filter(d => d.id !== doc.id) })))
+      .catch(err => setDocErrors(p => ({ ...p, [empId]: err.message || 'Delete failed' })));
+  };
+
   return (<>
   <div style={{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:10}}>
     {onOpenKiosk && <Btn onClick={onOpenKiosk} variant="ghost">{'⏱ '+t('kiosk.openButton')}</Btn>}
@@ -63,6 +107,34 @@ export default function EmployeesView({
             <button onClick={()=>toggleDay(emp.id,day)} style={{width:46,padding:'4px 0',borderRadius:6,fontSize:11,fontWeight:500,cursor:'pointer',background:avail?p.bg:'transparent',color:avail?p.text:T.text3,border:`1px solid ${avail?p.dot+'55':T.border}`,textAlign:'center',fontFamily:'inherit'}}>{t('day.'+day)}</button>
             {avail?(<><span style={{fontSize:11,color:T.text3}}>{t('common.fromCap')}</span><TimePicker value={avail.from} onChange={v=>updateAvail(emp.id,day,'from',v)} small/><span style={{fontSize:11,color:T.text3}}>{t('common.toLower')}</span><TimePicker value={avail.to} onChange={v=>updateAvail(emp.id,day,'to',v)} small/><span style={{fontSize:11,color:T.text3}}>{(()=>{const sv=toMin(avail.from);let ev=toMin(avail.to);if(ev<=sv)ev+=1440;return`${((ev-sv)/60).toFixed(1)}h`;})()}</span></>):<span style={{fontSize:11,color:T.text3}}>{t('emp.notAvailable')}</span>}
           </div>);})}
+        </div>
+        <div style={{marginTop:16,paddingTop:16,borderTop:`1px solid ${T.border}`}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8,gap:8,flexWrap:'wrap'}}>
+            <SectionLabel>{t('emp.documents')}</SectionLabel>
+            <label style={{fontSize:11,fontWeight:600,color:T.accent,cursor:docBusy[emp.id]?'default':'pointer',opacity:docBusy[emp.id]?0.5:1}}>
+              {docBusy[emp.id]?t('emp.docUploading'):('+ '+t('emp.docUpload'))}
+              <input type="file" style={{display:'none'}} disabled={!!docBusy[emp.id]} onChange={e=>{const f=e.target.files?.[0];if(f)handleUploadDoc(emp.id,f);e.target.value='';}}/>
+            </label>
+          </div>
+          {docErrors[emp.id]&&<div style={{fontSize:11,color:T.danger,marginBottom:8}}>{docErrors[emp.id]}</div>}
+          {empDocs[emp.id]===undefined?(
+            <div style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('emp.docLoading')}</div>
+          ):empDocs[emp.id].length===0?(
+            <div style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('emp.noDocuments')}</div>
+          ):(
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {empDocs[emp.id].map(doc=>(
+                <div key={doc.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{doc.fileName}</div>
+                    <div style={{fontSize:10,color:T.text3}}>{fmtSize(doc.sizeBytes)} · {new Date(doc.createdAt).toLocaleDateString()}{doc.uploadedBy?` · ${doc.uploadedBy}`:''}</div>
+                  </div>
+                  <button onClick={()=>handleOpenDoc(doc)} style={{fontSize:11,fontWeight:500,color:T.accent,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>{t('emp.docOpen')}</button>
+                  <button onClick={()=>handleDeleteDoc(emp.id,doc)} style={{fontSize:11,fontWeight:500,color:T.danger,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit'}}>{t('common.remove')}</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>)}
     </div>))}

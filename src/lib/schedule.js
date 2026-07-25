@@ -116,6 +116,49 @@ export function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return 
 // check for at all.
 export const MIN_REST_MINUTES = 11*60;
 
+// A single block's [start,end) as absolute minutes since the start of the
+// week (dayIndex*1440 + local minutes, overnight blocks rolling past
+// midnight the same way blockHours already does). Deliberately uses the
+// block's own nominal start/end, not any assignment's actual/custom
+// override — these manual-editing warnings are about the SCHEDULE you're
+// building, not clocked time, matching the auto-scheduler's own timeline
+// checks below.
+function blockAbsRange(dayIndex,block){
+  const bs=toMin(block.start); let be=toMin(block.end); if(be<=bs) be+=1440;
+  const dayAbs=dayIndex*1440;
+  return { start: dayAbs+bs, end: dayAbs+be };
+}
+
+// True if placing `empId` into (day,blockId) would overlap, or leave less
+// than MIN_REST_MINUTES around, any of their OTHER already-scheduled blocks
+// that week. This is the same check buildSchedule's own conflictsWithRest
+// enforces automatically for auto-generated schedules — exported here so
+// manual edits (the picker, the edit-shift modal) can surface it as a soft
+// warning instead of a hard block. Only checks within the visible week
+// (like buildSchedule), so a Sunday-night shift's rest against next
+// Monday's isn't caught — a known, pre-existing scope limit.
+//
+// `override` (optional {start,end}) lets a caller check a CUSTOM time for
+// the target slot — e.g. the edit-shift modal's free-typed start/end —
+// instead of the block's own nominal window, without needing that custom
+// time to already be saved into `schedule`.
+export function hasRestConflict(empId,day,blockId,schedule,blocks,override){
+  if(!schedule) return false;
+  const targetBlock=blocks.find(b=>b.id===blockId);
+  if(!targetBlock) return false;
+  const dayIdx=DAYS.indexOf(day);
+  const {start:startAbs,end:endAbs}=blockAbsRange(dayIdx,override||targetBlock);
+  return DAYS.some((d,di)=>blocks.some(b=>{
+    if(d===day&&b.id===blockId) return false; // don't compare the slot against itself
+    const assigned=schedule[d]?.[b.id]||[];
+    if(!assigned.some(a=>a.empId===empId)) return false;
+    const {start:s,end:e}=blockAbsRange(di,b);
+    if(startAbs<e && s<endAbs) return true; // literal overlap
+    const gap = startAbs>=e ? startAbs-e : s-endAbs;
+    return gap<MIN_REST_MINUTES;
+  }));
+}
+
 export function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
   const hw={},wd={}; employees.forEach(e=>{ hw[e.id]=0; wd[e.id]=new Set(); });
   const isManager=e=>(e?.roles||[]).includes('Manager');

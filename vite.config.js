@@ -38,6 +38,12 @@ export default defineConfig({
         // employee data while offline would be worse than a clear "you're
         // offline" failure.
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // Pulls push-sw.js (public/push-sw.js, so it's at the dist root
+        // alongside the generated sw.js) into the generated service worker
+        // via importScripts — this is how a real Web Push handler gets
+        // added on top of Workbox's auto-generated precaching SW, without
+        // switching to injectManifest mode just for two event listeners.
+        importScripts: ['push-sw.js'],
       },
     }),
   ],
