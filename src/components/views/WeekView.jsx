@@ -1,7 +1,7 @@
-import { Fragment } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
-import { toMin, fmt } from '../../lib/dates';
+import { toMin, fmt, dateToISO } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
 import { Avatar, RoleBadge, EmpChip, Btn } from '../ui';
 
@@ -19,6 +19,15 @@ export default function WeekView({
   removeFromSlot, gridGroupBy, setGridGroupBy,
   s, t,
 }){
+  // Ticking "now" marker for the day-isolated Gantt view — only matters
+  // when that view is actually showing, but the hook itself has to run
+  // unconditionally (before the empty-schedule early return below) per
+  // the rules of hooks, so it's a cheap 60s interval regardless.
+  const [now,setNow]=useState(()=>new Date());
+  useEffect(()=>{
+    const id=setInterval(()=>setNow(new Date()),60000);
+    return ()=>clearInterval(id);
+  },[]);
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -30,6 +39,9 @@ export default function WeekView({
   </div>);
 
   const effectiveDay=dayFilter;
+  const effectiveDate=effectiveDay?weekDates?.[DAYS.indexOf(effectiveDay)]:null;
+  const isTodayView=!!effectiveDate&&dateToISO(effectiveDate)===dateToISO(now);
+  const nowMin=now.getHours()*60+now.getMinutes();
   // The person currently picked up for a move/swap — if they have more than
   // one role, they should be a valid move target for ANY of their roles, not
   // just whichever role they happened to be filling in their original slot.
@@ -94,6 +106,11 @@ export default function WeekView({
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
+            {isTodayView&&nowMin>=rangeStart&&nowMin<=rangeEnd&&(
+              <div style={{position:'absolute',left:`${(nowMin-rangeStart)/totalMin*100}%`,top:-2,bottom:-2,width:2,zIndex:4,pointerEvents:'none',background:T.danger,borderRadius:1,boxShadow:`0 0 0 2px ${T.danger}22`}}>
+                <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',width:6,height:6,borderRadius:'50%',background:T.danger}}/>
+              </div>
+            )}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayRows.map(row=>{
                 return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6}}>
@@ -282,11 +299,11 @@ export default function WeekView({
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const noAvail=gap>0&&!isTarget&&candidatesForSlot(day,block.id,role).available.length===0;
                         if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
-                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):(noAvail?`! ${t('week.shortCount',{n:gap})}`:t('week.shortCount',{n:gap}))}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
                           {picker}
                         </div>);
                         return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
-                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',minWidth:20,height:20,padding:'0 6px',borderRadius:999,fontSize:isTarget?10:12,fontWeight:isTarget?500:600,lineHeight:1,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):'+'}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 8px',borderRadius:999,fontSize:10,fontWeight:500,lineHeight:1.6,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit',whiteSpace:'nowrap'}}>{isTarget?t('week.moveHere'):`+ ${t('common.add')}`}</button>
                           {picker}
                         </div>);
                       })()}
