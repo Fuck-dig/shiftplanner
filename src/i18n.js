@@ -496,6 +496,10 @@ const STRINGS = {
     'save.failedPrefix':'Save failed:',
     'save.retry':'Retry',
     'save.dismiss':'Dismiss',
+
+    'error.title':'Something went wrong',
+    'error.desc':'Rorota hit an unexpected error. Reloading the page usually fixes it — nothing you had unsaved should be lost, since changes save as you go.',
+    'error.reload':'Reload page',
   },
 
   // ── Dansk ───────────────────────────────────────────────────────────────────
@@ -970,6 +974,10 @@ const STRINGS = {
     'save.failedPrefix':'Kunne ikke gemme:',
     'save.retry':'Prøv igen',
     'save.dismiss':'Afvis',
+
+    'error.title':'Der gik noget galt',
+    'error.desc':'Rorota stødte på en uventet fejl. Det plejer at hjælpe at genindlæse siden — intet ugemt bør gå tabt, da ændringer gemmes løbende.',
+    'error.reload':'Genindlæs siden',
   },
 
   // ── Español ─────────────────────────────────────────────────────────────────
@@ -1444,6 +1452,10 @@ const STRINGS = {
     'save.failedPrefix':'Error al guardar:',
     'save.retry':'Reintentar',
     'save.dismiss':'Descartar',
+
+    'error.title':'Algo salió mal',
+    'error.desc':'Rorota encontró un error inesperado. Recargar la página suele solucionarlo — no deberías perder nada sin guardar, ya que los cambios se guardan sobre la marcha.',
+    'error.reload':'Recargar página',
   },
 
   // ── Deutsch ───────────────────────────────────────────────────────────────
@@ -1918,6 +1930,10 @@ const STRINGS = {
     'save.failedPrefix':'Speichern fehlgeschlagen:',
     'save.retry':'Erneut versuchen',
     'save.dismiss':'Verwerfen',
+
+    'error.title':'Etwas ist schiefgelaufen',
+    'error.desc':'Bei Rorota ist ein unerwarteter Fehler aufgetreten. Die Seite neu zu laden hilft meistens — nichts Ungespeichertes sollte verloren gehen, da Änderungen laufend gespeichert werden.',
+    'error.reload':'Seite neu laden',
   },
 
   // ── Français ──────────────────────────────────────────────────────────────
@@ -2392,6 +2408,10 @@ const STRINGS = {
     'save.failedPrefix':'Échec de l\'enregistrement :',
     'save.retry':'Réessayer',
     'save.dismiss':'Ignorer',
+
+    'error.title':'Une erreur est survenue',
+    'error.desc':'Rorota a rencontré une erreur inattendue. Recharger la page résout généralement le problème — rien de non enregistré ne devrait être perdu, les modifications étant enregistrées au fur et à mesure.',
+    'error.reload':'Recharger la page',
   },
 };
 
