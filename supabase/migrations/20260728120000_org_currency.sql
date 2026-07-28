@@ -1,0 +1,28 @@
+-- ============================================================================
+-- Rorota — per-organization currency
+-- ============================================================================
+-- Run this once in the Supabase SQL editor for your project (or via
+-- `supabase db push`).
+--
+-- Currency used to live only as a per-browser localStorage value shared
+-- across every org open in that browser (a restaurant's own currency choice
+-- didn't actually follow the restaurant — switching orgs on the same device
+-- kept showing whatever currency was last typed, and a different device
+-- saw the hardcoded default regardless). This makes it a real per-org
+-- setting instead, asked for once at restaurant-creation time and editable
+-- later from Costs.
+--
+-- Default 'kr' matches the app's existing hardcoded default exactly, so
+-- every already-existing org (including ones with real data already in
+-- them) keeps behaving exactly as it does today — this only changes what
+-- happens for a BRAND NEW org going forward, and only until its owner
+-- explicitly picks something else.
+--
+-- No new RLS policy needed: this is a column on the existing `organizations`
+-- table, already covered by its existing "org members can update
+-- organizations" policy (see 20260723160000_employee_profile_and_org_settings.sql).
+--
+-- Safe to re-run: column creation is idempotent.
+-- ============================================================================
+
+alter table organizations add column if not exists currency text not null default 'kr';

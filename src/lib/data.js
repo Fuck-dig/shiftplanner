@@ -579,6 +579,22 @@ export async function saveRoleStyles(orgId, styles){
   if (error) throw error;
 }
 
+// ── Currency ──────────────────────────────────────────────────────────────
+// Per-org, not per-browser — a restaurant's currency should follow the
+// restaurant, not whichever device last had it open. Asked for once at
+// creation time (RestaurantPicker); editable afterward from Costs, which
+// writes back here (debounced) the same way role_styles does above.
+export async function fetchOrgCurrency(orgId){
+  const { data, error } = await supabase.from('organizations').select('currency').eq('id', orgId).single();
+  if (error) throw error;
+  return data?.currency || 'kr';
+}
+
+export async function saveOrgCurrency(orgId, currency){
+  const { error } = await supabase.from('organizations').update({ currency }).eq('id', orgId);
+  if (error) throw error;
+}
+
 // ── Daily revenue (Costs tab: revenue vs labor cost) ─────────────────────────
 // One row per org per calendar day, entered by hand from Costs — there's no
 // POS integration, this is just what the manager typed in. Loaded in bulk

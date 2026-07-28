@@ -60,6 +60,16 @@ export default function EmployeesView({
     {onOpenKiosk && <Btn onClick={onOpenKiosk} variant="ghost">{'⏱ '+t('kiosk.openButton')}</Btn>}
     <Btn onClick={()=>onOpenCompose()} variant="secondary">{'✉ '+t('msg.newMessage')}</Btn>
   </div>
+  {employees.length===0 && !showAddEmp && (
+    <div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
+      <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
+      <div style={{position:'relative'}}>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color:T.text,marginBottom:8}}>{t('emp.noneYet')}</div>
+        <div style={{fontSize:13,color:T.text2,marginBottom:28}}>{t('emp.noneYetDesc')}</div>
+        <Btn onClick={()=>setShowAddEmp(true)}>{t('emp.addEmployeeBtn')}</Btn>
+      </div>
+    </div>
+  )}
   <div style={{display:'flex',flexDirection:'column',gap:10}}>
     {employees.map(emp=>(<div key={emp.id} style={s.card}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>

@@ -2,12 +2,19 @@ import { useState } from 'react';
 import { T, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { createOrg } from '../lib/org';
+import { saveOrgCurrency } from '../lib/data';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
+
+// A rough starting guess only — the field right below it is always a plain
+// free-text input (matching how currency is edited everywhere else in the
+// app, e.g. Costs), so this never blocks picking anything else.
+const DEFAULT_CURRENCY_FOR_LANG = { da:'kr', de:'€', en:'$', es:'€', fr:'€' };
 
 export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, toggleTheme }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName]             = useState('');
+  const [currency, setCurrency]     = useState('');
   const [busy, setBusy]             = useState(false);
   const [error, setError]           = useState('');
   const [lang, setLangRaw]          = useState(()=>load('sa2_lang', detectLang()));
@@ -19,7 +26,11 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, tog
     setBusy(true); setError('');
     try {
       const id = await createOrg(name.trim());
-      setName(''); setShowCreate(false);
+      // Best-effort — a failure here shouldn't block getting into the new
+      // restaurant at all, it just means the currency defaults to 'kr'
+      // (same as every existing org) until changed later from Costs.
+      saveOrgCurrency(id, (currency.trim() || DEFAULT_CURRENCY_FOR_LANG[lang] || 'kr')).catch(err=>console.error('Could not save org currency:',err));
+      setName(''); setCurrency(''); setShowCreate(false);
       await onCreated(id);
     } catch(e) {
       setError(e.message || t('picker.createFailed'));
@@ -90,6 +101,10 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, tog
                 <input autoFocus placeholder={t('picker.namePlaceholder')} value={name} onChange={e=>setName(e.target.value)}
                   onKeyDown={e=>e.key==='Enter'&&create()}
                   style={{flex:1,padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}}
+                  disabled={busy}/>
+                <input placeholder={t('picker.currencyLabel')} title={t('picker.currencyLabel')} maxLength={5} value={currency} onChange={e=>setCurrency(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&create()}
+                  style={{width:72,padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}}
                   disabled={busy}/>
                 <button onClick={create} disabled={busy||!name.trim()}
                   style={{padding:'8px 16px',borderRadius:8,background:T.accent,color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:500,opacity:busy||!name.trim()?0.6:1}}>

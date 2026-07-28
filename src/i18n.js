@@ -66,6 +66,7 @@ const STRINGS = {
     'picker.createNew':'Create new restaurant',
     'picker.newRestaurant':'New restaurant',
     'picker.namePlaceholder':'Restaurant name',
+    'picker.currencyLabel':'Currency',
     'picker.createFailed':'Could not create restaurant.',
 
     'emp.published':'Published',
@@ -255,6 +256,8 @@ const STRINGS = {
     'emp.roles':'Roles',
     'emp.addEmployee':'Add employee',
     'emp.addEmployeeBtn':'+ Add employee',
+    'emp.noneYet':'No employees yet',
+    'emp.noneYetDesc':'Add your team to start building the schedule.',
 
     'to.all':'All',
     'to.pending':'Pending',
@@ -544,6 +547,7 @@ const STRINGS = {
     'picker.createNew':'Opret ny restaurant',
     'picker.newRestaurant':'Ny restaurant',
     'picker.namePlaceholder':'Restaurantnavn',
+    'picker.currencyLabel':'Valuta',
     'picker.createFailed':'Kunne ikke oprette restauranten.',
 
     'emp.published':'Udgivet',
@@ -733,6 +737,8 @@ const STRINGS = {
     'emp.roles':'Roller',
     'emp.addEmployee':'Tilføj medarbejder',
     'emp.addEmployeeBtn':'+ Tilføj medarbejder',
+    'emp.noneYet':'Ingen medarbejdere endnu',
+    'emp.noneYetDesc':'Tilføj dit team for at begynde at lave vagtplanen.',
 
     'to.all':'Alle',
     'to.pending':'Afventer',
@@ -1022,6 +1028,7 @@ const STRINGS = {
     'picker.createNew':'Crear nuevo restaurante',
     'picker.newRestaurant':'Nuevo restaurante',
     'picker.namePlaceholder':'Nombre del restaurante',
+    'picker.currencyLabel':'Moneda',
     'picker.createFailed':'No se pudo crear el restaurante.',
 
     'emp.published':'Publicado',
@@ -1211,6 +1218,8 @@ const STRINGS = {
     'emp.roles':'Roles',
     'emp.addEmployee':'Añadir empleado',
     'emp.addEmployeeBtn':'+ Añadir empleado',
+    'emp.noneYet':'Aún no hay empleados',
+    'emp.noneYetDesc':'Añade tu equipo para empezar a crear el horario.',
 
     'to.all':'Todas',
     'to.pending':'Pendiente',
@@ -1500,6 +1509,7 @@ const STRINGS = {
     'picker.createNew':'Neues Restaurant erstellen',
     'picker.newRestaurant':'Neues Restaurant',
     'picker.namePlaceholder':'Restaurantname',
+    'picker.currencyLabel':'Währung',
     'picker.createFailed':'Restaurant konnte nicht erstellt werden.',
 
     'emp.published':'Veröffentlicht',
@@ -1689,6 +1699,8 @@ const STRINGS = {
     'emp.roles':'Rollen',
     'emp.addEmployee':'Mitarbeiter hinzufügen',
     'emp.addEmployeeBtn':'+ Mitarbeiter hinzufügen',
+    'emp.noneYet':'Noch keine Mitarbeiter',
+    'emp.noneYetDesc':'Füge dein Team hinzu, um mit der Dienstplanerstellung zu beginnen.',
 
     'to.all':'Alle',
     'to.pending':'Ausstehend',
@@ -1978,6 +1990,7 @@ const STRINGS = {
     'picker.createNew':'Créer un nouveau restaurant',
     'picker.newRestaurant':'Nouveau restaurant',
     'picker.namePlaceholder':'Nom du restaurant',
+    'picker.currencyLabel':'Devise',
     'picker.createFailed':'Impossible de créer le restaurant.',
 
     'emp.published':'Publié',
@@ -2167,6 +2180,8 @@ const STRINGS = {
     'emp.roles':'Rôles',
     'emp.addEmployee':'Ajouter un employé',
     'emp.addEmployeeBtn':'+ Ajouter un employé',
+    'emp.noneYet':'Aucun employé pour le moment',
+    'emp.noneYetDesc':'Ajoutez votre équipe pour commencer à créer le planning.',
 
     'to.all':'Tous',
     'to.pending':'En attente',

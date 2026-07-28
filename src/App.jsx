@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DEFAULT_EMPLOYEES, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
+import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
 import ComposeMessageModal from './components/ComposeMessageModal';
 import MessageThreadModal from './components/MessageThreadModal';
 import { migrateEmployee, load, save } from './lib/storage';
@@ -165,14 +165,30 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>attempt(args),ms);};
   };
 
+  // Currency now lives on the org row (see fetchOrgCurrency in the load
+  // effect below), not just this browser's localStorage — this pushes any
+  // change back to that row, debounced like every other org-level setting.
+  // Also fires once right after the load effect sets it from the org itself,
+  // which just re-saves the same value — harmless, not worth guarding against.
+  const dCurrency=useCallback(mkDebounce(v=>saveOrgCurrency(orgId,v),'currency'),[orgId]);
+  useEffect(()=>{ if(orgId) dCurrency(hourlyRate.currency); },[hourlyRate.currency,orgId]);
+
   useEffect(()=>{
     let alive=true; setLoading(true);
-    Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId)])
-      .then(([emps,blks,to,scheds])=>{
+    Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId),fetchOrgCurrency(orgId)])
+      .then(([emps,blks,to,scheds,currency])=>{
         if(!alive) return;
-        setEmpRaw((emps.length?emps:DEFAULT_EMPLOYEES).map(migrateEmployee));
+        // No more DEFAULT_EMPLOYEES fallback here — a brand-new org with
+        // zero employees just shows zero (EmployeesView renders its own
+        // empty state for that). Coverage blocks still get a starter
+        // template (DEFAULT_BLOCKS) since an empty block list means the
+        // schedule literally can't do anything yet, unlike an empty roster.
+        setEmpRaw(emps.map(migrateEmployee));
         setBlocksRaw(blks.length?blks:DEFAULT_BLOCKS);
         setTORaw(to); setSchedsRaw(scheds); setLoading(false);
+        // Only the currency field — amount stays whatever this browser had
+        // locally, currency now follows the org itself (see saveOrgCurrency).
+        setHourlyRateRaw(p=>({...p,currency:currency||p.currency}));
       }).catch(err=>{console.error('Load error:',err);if(alive)setLoading(false);});
     return ()=>{alive=false;};
   },[orgId]);
