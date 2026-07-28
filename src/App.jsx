@@ -1551,7 +1551,7 @@ export default function App(){
 
   let content;
   if(session===undefined) content=<LoadingScreen/>;
-  else if(!session) content=<Auth/>;
+  else if(!session) content=<Auth theme={theme} toggleTheme={toggleTheme}/>;
   else if(orgs===undefined) content=<LoadingScreen/>;
   // Show restaurant picker if no active org selected or user has no orgs yet
   else if(!activeOrg||!orgs.find(o=>o.id===activeOrg)){

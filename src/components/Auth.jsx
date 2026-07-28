@@ -1,12 +1,17 @@
 import { useState } from 'react';
-import { T, styles } from '../lib/constants';
+import { T, styles, isDark } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
 
 const linkBtn = { background:'none', border:'none', color:T.accent, cursor:'pointer', fontFamily:'inherit', fontSize:12, padding:0, textDecoration:'underline' };
 
-export default function Auth(){
+// theme/toggleTheme were previously only ever passed to the screens AFTER
+// login (RestaurantPicker, the Dashboard, EmployeeView, KioskView) — this
+// screen just always rendered in whatever theme was already saved, with no
+// way to change it before signing in. Same toggle button/style as
+// RestaurantPicker.jsx for consistency.
+export default function Auth({ theme, toggleTheme }){
   const [mode, setMode]         = useState('login'); // 'login' | 'signup'
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
@@ -41,8 +46,9 @@ export default function Auth(){
   return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,padding:20}}>
       <div style={{...styles.card,width:'min(380px,100%)'}}>
-        <div style={{display:'flex',justifyContent:'center',marginBottom:14}}>
+        <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:14}}>
           <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
+          {toggleTheme && <button onClick={toggleTheme} style={{width:32,height:32,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{isDark()?'☀':'☾'}</button>}
         </div>
         <div style={{textAlign:'center',marginBottom:22}}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:30,fontWeight:600,color:T.text}}>Rorota</div>
