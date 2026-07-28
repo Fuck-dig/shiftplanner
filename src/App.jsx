@@ -1,11 +1,24 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
-import ComposeMessageModal from './components/ComposeMessageModal';
-import MessageThreadModal from './components/MessageThreadModal';
+// Lazy-loaded: each of these four is only ever needed for a subset of
+// sessions (EmployeeView/KioskView are mutually exclusive with the manager
+// Dashboard and with each other — see the isManager/isKiosk branch below —
+// and the two message modals only mount while actually open), so there's no
+// reason for a manager's initial load to also download the staff punch-clock
+// view's code, or for anyone's load to include the compose/thread modal
+// code before they've ever opened a message. Suspense fallback for the two
+// full-screen views reuses the same LoadingScreen already shown while org
+// data loads; the two modals fall back to nothing since their chunks are
+// small and briefly missing a modal's contents for one frame is less
+// jarring than a full-screen flash for what's meant to feel like a popup.
+const ComposeMessageModal = lazy(() => import('./components/ComposeMessageModal'));
+const MessageThreadModal   = lazy(() => import('./components/MessageThreadModal'));
+const EmployeeView         = lazy(() => import('./components/EmployeeView'));
+const KioskView            = lazy(() => import('./components/KioskView'));
 import { migrateEmployee, load, save } from './lib/storage';
 import { escapeHtml } from './lib/html';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
@@ -15,8 +28,6 @@ import { RoleBadge, EmpChip, Btn, TimePicker, WeekPicker } from './components/ui
 import NotificationBell from './components/NotificationBell';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
-import EmployeeView from './components/EmployeeView';
-import KioskView from './components/KioskView';
 import EmployeesView from './components/views/EmployeesView';
 import TimeOffView from './components/views/TimeOffView';
 import CoverageView from './components/views/CoverageView';
@@ -1453,11 +1464,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       // Excludes the sender's own employees row (if the manager happens to
       // be linked to one) — messaging yourself isn't a real use case, and
       // it would otherwise show up under "Everyone"/"By role" too.
-      <ComposeMessageModal employees={employees.filter(e=>e.id!==myId)} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>,
+      <Suspense fallback={null}>
+        <ComposeMessageModal employees={employees.filter(e=>e.id!==myId)} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>
+      </Suspense>,
       document.body
     )}
     {openManagerThread && createPortal(
-      <MessageThreadModal message={openManagerThread} viewerIsManager={true} myLabel={senderLabel} counterpartLabel={employees.find(e=>e.id===openManagerThread.recipientEmpId)?.name||''} onClose={()=>setOpenManagerThread(null)} s={s} t={t}/>,
+      <Suspense fallback={null}>
+        <MessageThreadModal message={openManagerThread} viewerIsManager={true} myLabel={senderLabel} counterpartLabel={employees.find(e=>e.id===openManagerThread.recipientEmpId)?.name||''} onClose={()=>setOpenManagerThread(null)} s={s} t={t}/>
+      </Suspense>,
       document.body
     )}
     </>
@@ -1565,9 +1580,9 @@ export default function App(){
       // kiosk mode at all); a plain employee login ignores the flag and
       // always gets the normal EmployeeView regardless.
       content=!isManager
-        ? <EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>
+        ? <Suspense fallback={<LoadingScreen/>}><EmployeeView orgId={active.id} key={active.id} orgName={active.name} role={active.role||'employee'} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/></Suspense>
         : isKiosk
-        ? <KioskView orgId={active.id} key={active.id+'-kiosk'} orgName={active.name} theme={theme} toggleTheme={toggleTheme} onExitKiosk={()=>{ const url=new URL(window.location.href); url.searchParams.delete('kiosk'); window.location.href=url.toString(); }}/>
+        ? <Suspense fallback={<LoadingScreen/>}><KioskView orgId={active.id} key={active.id+'-kiosk'} orgName={active.name} theme={theme} toggleTheme={toggleTheme} onExitKiosk={()=>{ const url=new URL(window.location.href); url.searchParams.delete('kiosk'); window.location.href=url.toString(); }}/></Suspense>
         : <Dashboard orgId={active.id} key={active.id} orgName={active.name} isOwner={isOwner} role={active.role} theme={theme} toggleTheme={toggleTheme} onBack={()=>setActiveOrg(null)}/>;
     }
   }

@@ -1,6 +1,14 @@
 import { supabase, functionsUrl } from './supabase';
 
 // ── App shape <-> DB row mapping (camelCase <-> snake_case) ──────────────────
+// wage/contractType/contractPeriod are NOT here — they live on the separate
+// employee_wages table (see below and 20260728140000_employee_wages.sql),
+// since that table's RLS is the only way to actually keep them hidden from
+// a plain employee login. fetchEmployees/syncEmployees still read and write
+// them as part of the same employee object as before, so nothing else in
+// the app (schedule.js's cost ranking, EmployeesView, Costs, the shift
+// picker's rate tag) had to change — only where these two functions get the
+// data from.
 const empToRow = (orgId, e) => ({
   id:              e.id,
   org_id:          orgId,
@@ -9,9 +17,6 @@ const empToRow = (orgId, e) => ({
   phone:           (e.phone||'').trim() || null,
   roles:           e.roles || ['Other'],
   priority:        e.priority ?? 100,
-  contract_type:   e.contractType || 'hourly',
-  contract_period: e.contractPeriod || 'week',
-  wage:            e.wage || 0,
   max_hours:       e.maxHours ?? 40,
   target_hours:    e.targetHours ?? null,
   availability:    e.availability || {},
@@ -28,9 +33,6 @@ const empFromRow = (r) => ({
   phone:          r.phone || '',
   roles:          r.roles || ['Other'],
   priority:       r.priority ?? 100,
-  contractType:   r.contract_type || 'hourly',
-  contractPeriod: r.contract_period || 'week',
-  wage:           Number(r.wage) || 0,
   maxHours:       r.max_hours ?? 40,
   targetHours:    r.target_hours ?? null,
   availability:   r.availability || {},
@@ -40,17 +42,37 @@ const empFromRow = (r) => ({
   pushPrefs:      r.push_prefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
+const DEFAULT_WAGE = { wage:0, contractType:'hourly', contractPeriod:'week' };
+const wageFromRow = (r) => ({ wage:Number(r.wage)||0, contractType:r.contract_type||'hourly', contractPeriod:r.contract_period||'week' });
+
+// A plain employee's RLS has zero policies on employee_wages (by design —
+// see the migration), so this comes back empty for them rather than
+// erroring: fetchEmployees below just falls back to DEFAULT_WAGE per
+// employee in that case, which is invisible anyway since no employee-facing
+// screen (EmployeeView, KioskView) ever reads wage/contractType/
+// contractPeriod off an employee object.
+async function fetchEmployeeWages(orgId){
+  const { data, error } = await supabase
+    .from('employee_wages').select('employee_id, wage, contract_type, contract_period')
+    .eq('org_id', orgId);
+  if (error) { console.error('fetchEmployeeWages failed (expected for a non-manager login):', error); return {}; }
+  return Object.fromEntries((data||[]).map(r => [r.employee_id, wageFromRow(r)]));
+}
+
 // ── Employees ────────────────────────────────────────────────────────────────
 export async function fetchEmployees(orgId){
-  const { data, error } = await supabase
-    .from('employees').select('*')
-    .eq('org_id', orgId)
-    .order('created_at', { ascending: true });
+  const [{ data, error }, wages] = await Promise.all([
+    supabase.from('employees').select('*').eq('org_id', orgId).order('created_at', { ascending: true }),
+    fetchEmployeeWages(orgId),
+  ]);
   if (error) throw error;
-  return (data || []).map(empFromRow);
+  return (data || []).map(r => ({ ...empFromRow(r), ...(wages[r.id] || DEFAULT_WAGE) }));
 }
 
 // Push the whole employee list for an org: upsert everything present, delete what's gone.
+// Only ever called from a manager/owner session (a plain employee never
+// reaches the Employees admin screen that calls this), so writing wage data
+// here is safe — RLS would reject it from an employee session anyway.
 export async function syncEmployees(orgId, employees){
   const rows = employees.map(e => empToRow(orgId, e));
   if (rows.length){
@@ -62,6 +84,16 @@ export async function syncEmployees(orgId, employees){
   if (ids.length) del = del.not('id', 'in', `(${ids.join(',')})`);
   const { error: e2 } = await del;
   if (e2) throw e2;
+
+  const wageRows = employees.map(e => ({ employee_id:e.id, org_id:orgId, wage:e.wage||0, contract_type:e.contractType||'hourly', contract_period:e.contractPeriod||'week' }));
+  if (wageRows.length){
+    const { error: e3 } = await supabase.from('employee_wages').upsert(wageRows, { onConflict: 'employee_id' });
+    if (e3) throw e3;
+  }
+  let delWages = supabase.from('employee_wages').delete().eq('org_id', orgId);
+  if (ids.length) delWages = delWages.not('employee_id', 'in', `(${ids.join(',')})`);
+  const { error: e4 } = await delWages;
+  if (e4) throw e4;
 }
 
 // ── Blocks (coverage blocks) ─────────────────────────────────────────────────
