@@ -38,4 +38,17 @@ select
   coalesce((
     select is_nullable = 'YES' from information_schema.columns
     where table_schema = 'public' and table_name = 'shift_swaps' and column_name = 'from_emp_id'
-  ), false) as open_shifts_done;
+  ), false) as open_shifts_done,
+
+  -- 20260803140000_schedule_audit.sql
+  -- Two checks, because the table existing isn't enough: without the insert
+  -- policy every audit write is silently rejected by RLS, and logScheduleEvent
+  -- deliberately swallows that error so nothing surfaces it.
+  exists (
+    select 1 from information_schema.tables
+    where table_schema = 'public' and table_name = 'schedule_audit'
+  ) as schedule_audit_table_created,
+  exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'schedule_audit' and cmd = 'INSERT'
+  ) as schedule_audit_insert_policy_present;
