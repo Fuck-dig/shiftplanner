@@ -12,11 +12,8 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen } from './ui';
 
-function LoadingScreen(){
-  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
-}
 
 export default function EmployeeView({ orgId, orgName, role='employee', theme, toggleTheme }){
   const [loading, setLoading]     = useState(true);
@@ -1294,7 +1291,7 @@ function Directory({ employees, myId, roleStyles, roleColorFor, s, t }){
       </div>
       )}
       {selected && createPortal(
-        <StaffInfoModal emp={selected} isMe={selected.id===myId} roleStyles={roleStyles} roleColorFor={roleColorFor} onClose={()=>setSelected(null)} s={s} t={t}/>,
+        <StaffInfoModal emp={selected} isMe={selected.id===myId} roleStyles={roleStyles} roleColorFor={roleColorFor} onClose={()=>setSelected(null)} t={t}/>,
         document.body
       )}
     </>
@@ -1303,7 +1300,7 @@ function Directory({ employees, myId, roleStyles, roleColorFor, s, t }){
 
 // Small read-only popup with a coworker's contact info — name, roles,
 // phone, email. Opened by clicking their card in the Employees tab.
-function StaffInfoModal({ emp, isMe, roleStyles, roleColorFor, onClose, s, t }){
+function StaffInfoModal({ emp, isMe, roleStyles, roleColorFor, onClose, t }){
   const p = pal(emp);
   return (
     <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>

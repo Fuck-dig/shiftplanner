@@ -2,16 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { T, DAYS, ROLE_COLOR_PALETTE, isDark } from '../lib/constants';
 import { weekKey, fmtLong, todayISO } from '../lib/dates';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchRoleStyles, updateShiftAssignment } from '../lib/data';
-import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
+import {LANGUAGES, makeT, detectLang} from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
-import { Avatar, Btn } from './ui';
+import { Avatar, Btn, LoadingScreen } from './ui';
 import PunchClockView from './views/PunchClockView';
 
 const INACTIVITY_MS = 20000; // return to the shared employee picker after 20s idle, once someone's punched in/out
 
-function LoadingScreen(){
-  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
-}
 
 // Shared-device punch clock. Reached at ?kiosk=1 — only ever rendered once a
 // manager/owner has already signed in through the normal Auth screen (see
@@ -21,7 +18,7 @@ function LoadingScreen(){
 // kiosk mode, a lightweight PIN to say WHO you are once there) is what
 // replaced letting each employee clock in from their own personal session —
 // this is the only place a shift can be clocked in/out from now.
-export default function KioskView({ orgId, orgName, theme, toggleTheme, onExitKiosk }){
+export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const [loading, setLoading]     = useState(true);
   const [employees, setEmployees] = useState([]);
   const [blocks, setBlocks]       = useState([]);

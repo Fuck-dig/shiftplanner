@@ -106,7 +106,7 @@ export default function CostsView({
   costsMode, setCostsMode, costsWeekOffset, setCostsWeekOffset, displayMonth, schedules, schedule, weekDates,
   hourlyRate, setHourlyRate,
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
-  toMoney, toMoneyRaw, hasWages, employees, timeOff, roleStyles, setView, orgName,
+  toMoney, toMoneyRaw, employees, timeOff, roleStyles, setView, orgName,
   revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
   s, t,
 }){

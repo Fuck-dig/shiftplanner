@@ -1,0 +1,1804 @@
+import { useState, useEffect, useMemo, useRef, Suspense, lazy, Fragment } from 'react';
+import { createPortal } from 'react-dom';
+import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
+import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop } from '../lib/schedule';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
+import { migrateEmployee, load, save } from '../lib/storage';
+import { escapeHtml } from '../lib/html';
+import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
+import { supabase } from '../lib/supabase';
+import { RoleBadge, EmpCard, Btn, TimePicker, WeekPicker, LoadingScreen } from './ui';
+import NotificationBell from './NotificationBell';
+import EmployeesView from './views/EmployeesView';
+import TimeOffView from './views/TimeOffView';
+import CoverageView from './views/CoverageView';
+import CostsView from './views/CostsView';
+import MonthView from './views/MonthView';
+import TeamView from './views/TeamView';
+import WeekView from './views/WeekView';
+import ProfileSettings from './ProfileSettings';
+import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
+
+// Lazy — each is only reachable from a manager session, and only once a modal
+// is actually opened.
+const ComposeMessageModal = lazy(() => import('./ComposeMessageModal'));
+const MessageThreadModal  = lazy(() => import('./MessageThreadModal'));
+
+// The whole manager-side app: schedule, employees, coverage, costs, requests,
+// profile. Lifted out of App.jsx, which had grown to ~1900 lines with this
+// making up 1765 of them — the size that let a hook get added below an early
+// return without anyone noticing, white-screening production.
+
+export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', theme, toggleTheme, onBack=()=>{} }) {
+  const [loading,setLoading]         = useState(true);
+  const [view,setView]               = useState('schedule');
+  const [calMode,setCalMode]         = useState('week');
+  // The Team grid's own header row is sticky too, and needs to know exactly
+  // how tall the schedule bar above it (date nav + tabs, now also carrying
+  // the grid's by-name/by-role/compact/search/count controls) actually
+  // renders at, or it sticks at a hardcoded guess and either overlaps
+  // whatever's still on screen above it or leaves an ugly gap. That bar's
+  // real height isn't a constant — it wraps to a second line on a narrower
+  // window, and translated strings (German/French run noticeably longer
+  // than English) can push it to wrap at a wider width than English would.
+  // Measuring it live with ResizeObserver instead of guessing a pixel
+  // number sidesteps all of that.
+  const scheduleBarRef=useRef(null);
+  const [scheduleBarH,setScheduleBarH]=useState(42);
+  useEffect(()=>{
+    const el=scheduleBarRef.current;
+    if(!el) return;
+    const ro=new ResizeObserver(entries=>{
+      const h=entries[0]?.contentRect?.height;
+      if(h) setScheduleBarH(h);
+    });
+    ro.observe(el);
+    return ()=>ro.disconnect();
+  },[view]);
+  const [employees,setEmpRaw]        = useState([]);
+  const [blocks,setBlocksRaw]        = useState([]);
+  const [schedules,setSchedsRaw]     = useState({});
+  const [timeOff,setTORaw]           = useState([]);
+  const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
+  const [unseenMessageReplies,setUnseenMessageReplies]=useState([]); // sent messages with a new reply the manager hasn't opened yet — polled
+  const [composeModal,setComposeModal]=useState(null); // {presetEmpIds} while ComposeMessageModal is open, else null
+  const [composeBusy,setComposeBusy] = useState(false);
+  const [openManagerThread,setOpenManagerThread]=useState(null); // the message shown in MessageThreadModal from the manager's side, or null
+  const [templates,setTemplates]     = useState([]); // saved named snapshots of `blocks`
+  const [revenue,setRevenue]         = useState({}); // {isoDate: amount} — manager-entered daily sales, for Costs' revenue-vs-labor-cost view
+  const [myEmail,setMyEmail]         = useState(''); // this manager's own login email, so we can (optionally) match them to a roster row too
+  const [weekOffset,setWeekOffset]   = useState(0);
+  const [roleStyles,setRoleStylesRaw]= useState(DEFAULT_ROLE_STYLES);
+  // Personal, per-browser role display/group order — deliberately NOT
+  // synced across users: each person (manager or employee) drags their own
+  // Team view into whatever order makes sense to them, scoped per org since
+  // different orgs have different role sets.
+  const [roleOrder,setRoleOrder]     = useState(()=>load('sa2_roleOrder_'+orgId,[]));
+  const [displayMonth,setDisplayMonth]= useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
+  const [editingRole,setEditingRole] = useState(null);
+  const [confirmDelete,setConfirmDelete]=useState(null);
+  const [generating,setGenerating]   = useState(false);
+  const [selected,setSelected]       = useState(null);
+  const [openPicker,setOpenPicker]   = useState(null);
+  const [pickerRoleFilter,setPickerRoleFilter] = useState([]);
+  const [pickerSortBy,setPickerSortBy] = useState('name'); // 'name' | 'avail' — sort for the "All staff" fallback list
+  const [pickerSearch,setPickerSearch] = useState('');
+  const [ganttPreview,setGanttPreview] = useState(null); // live {day,blockId,empId,start,end} while dragging a Gantt bar's edge
+  const ganttDragRef = useRef(null);
+  const ganttJustDraggedRef = useRef(false); // true right after a real (moved) drag, so the trailing click doesn't also open the edit modal
+  const [shiftModalEmp,setShiftModalEmp]         = useState(null); // employee being assigned a shift from the Employees tab
+  const [shiftModalMonth,setShiftModalMonth]     = useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
+  const [shiftModalDaySel,setShiftModalDaySel]   = useState(null); // {date,dayName,weekOff} — a specific calendar day chosen from the month grid
+  const [shiftModalRole,setShiftModalRole]       = useState(null); // which of the employee's roles to add — one row per block instead of one per block×role
+  const [shiftModalTimes,setShiftModalTimes]     = useState({}); // per-blockId custom {start,end} override, defaults to the block's own hours
+  const [editingSlot,setEditingSlot]             = useState(null); // {day,blockId,idx} — an existing assignment being edited from Week/Day view
+  const [editTimes,setEditTimes]                 = useState({start:'',end:''});
+  const [editRole,setEditRole]                   = useState(null);
+  // What actually happened for this shift, edited separately from the
+  // scheduled time above — 'scheduled' means "trust the planned time" (the
+  // default, and all that a future shift ever needs), 'adjusted' records a
+  // different actualStart/actualEnd, 'noshow' zeroes the hours outright.
+  const [editActual,setEditActual]               = useState({mode:'scheduled',start:'',end:''});
+  const [editNotes,setEditNotes]                 = useState({inNote:'',outNote:''}); // manager-editable copies of clockInNote/clockNote — see openEditSlot/saveEditSlot
+  const [expandedEmp,setExpandedEmp] = useState(null);
+  const [showAddEmp,setShowAddEmp]   = useState(false);
+  const [newEmp,setNewEmp]           = useState({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});
+  const [showAddTO,setShowAddTO]     = useState(false);
+  const [newTO,setNewTO]             = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
+  const [toFilter,setToFilter]       = useState('all');
+  const [gridGroupBy,setGridGroupBy] = useState('name');  // 'name' | 'role'
+  const [gridTight,setGridTight]     = useState(false);
+  const [gridSearch,setGridSearch]   = useState('');
+  const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
+  const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
+  const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
+  // A drag-and-drop move that tripped a warning and is waiting on the
+  // manager to confirm or cancel: {src,dst,ns,warnings,name,day,blockId}.
+  // Must live up here with the other hooks — everything below the
+  // `if(loading) return <LoadingScreen/>` guard further down runs on some
+  // renders and not others, and a hook there crashes React.
+  const [pendingDrop,setPendingDrop] = useState(null);
+  const [costsMode,setCostsMode]     = useState('week');
+  const [costsWeekOffset,setCostsWeekOffset]=useState(0); // independent of the Schedule tab's own week
+  const [hourlyRate,setHourlyRateRaw]= useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
+  const [lang,setLangRaw]            = useState(()=>load('sa2_lang',detectLang()));
+  const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
+  const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
+  const [adminMenuOpen,setAdminMenuOpen]=useState(false);
+  const adminMenuRef=useRef(null);
+  useEffect(()=>{
+    const onResize=()=>setIsMobile(window.innerWidth<860);
+    window.addEventListener('resize',onResize);
+    return ()=>window.removeEventListener('resize',onResize);
+  },[]);
+  useEffect(()=>{
+    if(!adminMenuOpen)return;
+    const onDoc=e=>{ if(adminMenuRef.current && !adminMenuRef.current.contains(e.target)) setAdminMenuOpen(false); };
+    const onEsc=e=>{ if(e.key==='Escape') setAdminMenuOpen(false); };
+    document.addEventListener('mousedown',onDoc);
+    document.addEventListener('keydown',onEsc);
+    return ()=>{ document.removeEventListener('mousedown',onDoc); document.removeEventListener('keydown',onEsc); };
+  },[adminMenuOpen]);
+
+  const setLang=v=>{setLangRaw(v);save('sa2_lang',v);};
+  const setHourlyRate=v=>{const val=typeof v==='function'?v(hourlyRate):v;setHourlyRateRaw(val);save('sa2_rate',val);};
+  const t=makeT(lang);
+  // Date formatting (fmt/fmtLong in lib/dates.js) reads a module-level
+  // locale that defaults to en-GB — without this it never actually followed
+  // the selected language, so "23 Jul" would show even with Dansk/Español
+  // selected. setLocale is a plain module-level assignment (not React
+  // state), so this just needs to run whenever lang changes.
+  useEffect(()=>{ setLocale(LOCALES[lang]||'en-GB'); },[lang]);
+  // Display/group order: whatever's been explicitly saved, plus any role
+  // that exists in roleStyles but hasn't been ordered yet (newly added, or
+  // roleOrder just hasn't loaded/been set up for this org) appended at the
+  // end — so a fresh org or a brand-new role always shows up without
+  // needing a manual reorder first. (mergeRoleOrder/reorderRoleList are
+  // shared with EmployeeView.jsx's identical merge — see lib/roles.js.)
+  const allRoles=mergeRoleOrder(roleOrder,Object.keys(roleStyles));
+  // Drag-and-drop reorder (Team view, grouped "By role") — moves
+  // draggedRole to just before targetRole in the display order. Deliberately
+  // NOT exposed in Coverage's role list — reordering only happens by
+  // dragging role groups around in Team. Saved to this browser only (see
+  // roleOrder's init above) — not shared with other users.
+  const reorderRoles=(draggedRole,targetRole)=>{
+    const next=reorderRoleList(allRoles,draggedRole,targetRole);
+    if(next===allRoles)return;
+    setRoleOrder(next);
+    save('sa2_roleOrder_'+orgId,next);
+  };
+
+  // debounce helper — tracks in-flight saves and surfaces failures (with a
+  // retry closure) instead of failing silently to the console.
+  const [savingCount,setSavingCount]=useState(0);
+  const [saveError,setSaveError]   =useState(null); // {label,message,retry} | null
+  const mkDebounce=(fn,label,ms=600)=>{
+    let timer;
+    const attempt=(args)=>{
+      setSavingCount(c=>c+1);
+      fn(...args)
+        .then(()=>{ setSaveError(e=>(e&&e.label===label)?null:e); })
+        .catch(err=>{
+          console.error(`Save failed (${label}):`,err);
+          setSaveError({label,message:err?.message||t('save.failedGeneric'),retry:()=>attempt(args)});
+        })
+        .finally(()=>setSavingCount(c=>Math.max(0,c-1)));
+    };
+    return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>attempt(args),ms);};
+  };
+
+  // Currency now lives on the org row (see fetchOrgCurrency in the load
+  // effect below), not just this browser's localStorage — this pushes any
+  // change back to that row, debounced like every other org-level setting.
+  // Also fires once right after the load effect sets it from the org itself,
+  // which just re-saves the same value — harmless, not worth guarding against.
+  const dCurrency=useMemo(()=>mkDebounce(v=>saveOrgCurrency(orgId,v),'currency'),[orgId]);
+  useEffect(()=>{ if(orgId) dCurrency(hourlyRate.currency); },[hourlyRate.currency,orgId]);
+
+  useEffect(()=>{
+    let alive=true; setLoading(true);
+    Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId),fetchOrgCurrency(orgId)])
+      .then(([emps,blks,to,scheds,currency])=>{
+        if(!alive) return;
+        // No more DEFAULT_EMPLOYEES fallback here — a brand-new org with
+        // zero employees just shows zero (EmployeesView renders its own
+        // empty state for that). Coverage blocks still get a starter
+        // template (DEFAULT_BLOCKS) since an empty block list means the
+        // schedule literally can't do anything yet, unlike an empty roster.
+        const migratedEmps=emps.map(migrateEmployee);
+        setEmpRaw(migratedEmps);
+        setBlocksRaw(blks.length?blks:DEFAULT_BLOCKS);
+        setTORaw(to);
+        // One-off cleanup for shifts left behind by an employee who was
+        // deleted before removeEmp started pruning their assignments itself
+        // — same helper, just run once against whatever's already saved so
+        // existing orgs self-heal instead of staying inconsistent forever.
+        const{schedules:prunedScheds,removed}=pruneOrphanedAssignments(scheds,migratedEmps.map(e=>e.id));
+        setSchedsRaw(prunedScheds);
+        if(removed>0) syncSchedules(orgId,prunedScheds).catch(err=>console.error('Orphaned-shift cleanup save failed:',err));
+        setLoading(false);
+        // Only the currency field — amount stays whatever this browser had
+        // locally, currency now follows the org itself (see saveOrgCurrency).
+        setHourlyRateRaw(p=>({...p,currency:currency||p.currency}));
+      }).catch(err=>{console.error('Load error:',err);if(alive)setLoading(false);});
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // "Has this source returned real data at least once for the CURRENT org?"
+  // The manager-email effects below must not decide what's "new" until the
+  // answer is yes. Without this they seeded their already-seen set from the
+  // initial empty array — which happens before the fetch resolves, since
+  // myEmail comes straight off the auth session — so every existing pending
+  // item then looked brand new and got emailed on every single login.
+  // Reset per org so switching restaurants doesn't inherit the last one's
+  // seen-set (or, worse, email out the new org's whole backlog).
+  const swapsLoaded=useRef(false);
+  const repliesLoaded=useRef(false);
+
+  // Shift swaps are written incrementally by employees in their own
+  // sessions, so there's nothing here to debounce-sync — just poll (no
+  // realtime subscription yet) so newly-claimed swaps show up without a
+  // manual refresh.
+  useEffect(()=>{
+    let alive=true;
+    swapsLoaded.current=false;
+    const loadSwaps=()=>fetchShiftSwaps(orgId).then(v=>{if(alive){swapsLoaded.current=true;setSwaps(v);}}).catch(err=>console.error('Load swaps failed:',err));
+    loadSwaps();
+    const iv=setInterval(loadSwaps,45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Sent messages that got a new reply the manager hasn't seen yet — same
+  // polling pattern as swaps/time off, feeds into pendingItems below so it
+  // shows up in the manager's own bell even without an employees row.
+  useEffect(()=>{
+    let alive=true;
+    repliesLoaded.current=false;
+    const loadReplies=()=>fetchUnseenMessageReplies(orgId).then(v=>{if(alive){repliesLoaded.current=true;setUnseenMessageReplies(v);}}).catch(err=>console.error('Load message replies failed:',err));
+    loadReplies();
+    const iv=setInterval(loadReplies,45000); // fallback in case the realtime subscription below ever drops
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+  // Realtime companion to the poll above — a reply flipping manager_unread
+  // to true (or a manager clearing it by opening the thread) shows up
+  // immediately. Requires `messages` to be in the supabase_realtime
+  // publication (see the direct-messages migration follow-up note).
+  useEffect(()=>{
+    if(!orgId) return;
+    const channel=supabase.channel(`messages-mgr-${orgId}`)
+      .on('postgres_changes',{event:'*',schema:'public',table:'messages',filter:`org_id=eq.${orgId}`},()=>{
+        fetchUnseenMessageReplies(orgId).then(setUnseenMessageReplies).catch(err=>console.error('Load message replies failed:',err));
+      })
+      .subscribe();
+    return ()=>{ supabase.removeChannel(channel); };
+  },[orgId]);
+
+  // Time off can now also be filed directly by an employee (their own
+  // time-off/vacation request form), not just entered here — so, like
+  // shift swaps above, poll it instead of loading once, so a newly
+  // submitted 'Pending' request reaches this attention bell without a
+  // manual refresh. Uses setTORaw directly (not setTimeOff) so polling
+  // never re-triggers the debounced whole-array sync back to Supabase.
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{ fetchTimeOff(orgId).then(v=>{if(alive)setTORaw(v);}).catch(err=>console.error('Poll time off failed:',err)); },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Schedules can now also change from OUTSIDE this session — an employee
+  // clocking in/out via the Kiosk, or another manager's tab — not just from
+  // edits made right here. Same pattern as time off above: poll and write
+  // straight to setSchedsRaw (never setSchedules), so this can't re-trigger
+  // the debounced whole-object sync back to Supabase. Without this, a
+  // manager who opened the Schedule tab before someone clocked in would
+  // never see it until they reloaded the whole page.
+  useEffect(()=>{
+    let alive=true;
+    const iv=setInterval(()=>{ fetchSchedules(orgId).then(v=>{if(alive)setSchedsRaw(v);}).catch(err=>console.error('Poll schedules failed:',err)); },45000);
+    return ()=>{alive=false;clearInterval(iv);};
+  },[orgId]);
+
+  // Manager-facing email notifications for the three "needs your attention"
+  // events (new pending time-off request, newly-claimed swap, new unseen
+  // reply) — piggybacks on the polling/state above rather than adding a
+  // fourth data source. Refs (not state) track which ids have already been
+  // emailed about, so a later 45s poll re-fetching an item that's still
+  // pending doesn't re-send the same email every cycle. The very first
+  // load's already-pending items are recorded as seen without emailing —
+  // only things that show up *after* this session started should ping the
+  // manager; otherwise every login would re-email the whole backlog.
+  // Requires myEmail (the manager's own login email, independent of whether
+  // they have an employees row) and respects nothing else — there's no
+  // per-manager opt-out toggle yet, unlike the employee-facing one.
+  const seenTOIds=useRef(null);
+  const seenSwapIds=useRef(null);
+  const seenReplyIds=useRef(null);
+  // Switching restaurants has to start the "what's new" tracking over —
+  // otherwise the new org's existing backlog is all unseen and gets emailed.
+  // Declared before the three effects below so it resets first on org change.
+  useEffect(()=>{
+    seenTOIds.current=null; seenSwapIds.current=null; seenReplyIds.current=null;
+  },[orgId]);
+
+  useEffect(()=>{
+    // `loading` is the main data load (time off is part of that Promise.all).
+    // Seeding before it finishes is exactly the bug described above.
+    if(!myEmail||loading) return;
+    const pending=timeOff.filter(to=>to.status==='Pending');
+    if(seenTOIds.current===null){ seenTOIds.current=new Set(pending.map(to=>to.id)); return; }
+    pending.forEach(to=>{
+      if(seenTOIds.current.has(to.id)) return;
+      seenTOIds.current.add(to.id);
+      const emp=employees.find(e=>e.id===to.empId);
+      const range=fmtLong(to.startDate)+(to.endDate!==to.startDate?' – '+fmtLong(to.endDate):'');
+      const text=t('notif.mgrTimeOffRequest',{name:emp?.name||'?',type:to.type,range});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[timeOff,employees,myEmail,loading]);
+
+  useEffect(()=>{
+    if(!myEmail||!swapsLoaded.current) return;
+    const pending=swaps.filter(sw=>sw.status==='claimed');
+    if(seenSwapIds.current===null){ seenSwapIds.current=new Set(pending.map(sw=>sw.id)); return; }
+    pending.forEach(sw=>{
+      if(seenSwapIds.current.has(sw.id)) return;
+      seenSwapIds.current.add(sw.id);
+      const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+      const text=t('notif.mgrSwapClaimed',{name:claimant?.name||'?',day:t('day.'+sw.day)});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[swaps,employees,myEmail]);
+
+  useEffect(()=>{
+    if(!myEmail||!repliesLoaded.current) return;
+    if(seenReplyIds.current===null){ seenReplyIds.current=new Set(unseenMessageReplies.map(m=>m.id)); return; }
+    unseenMessageReplies.forEach(m=>{
+      if(seenReplyIds.current.has(m.id)) return;
+      seenReplyIds.current.add(m.id);
+      const recipient=employees.find(e=>e.id===m.recipientEmpId);
+      const text=t('msg.repliedNotif',{name:recipient?.name||'?'});
+      sendNotificationEmail({to:myEmail,subject:text,body:text});
+    });
+  },[unseenMessageReplies,employees,myEmail]);
+
+  // Templates are only ever written from this same Dashboard, so a single
+  // load on mount/org-change is enough — no polling needed.
+  useEffect(()=>{
+    let alive=true;
+    fetchTemplates(orgId).then(v=>{if(alive)setTemplates(v);}).catch(err=>console.error('Load templates failed:',err));
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // Daily revenue — like templates, only ever entered here (Costs), so a
+  // single load on mount/org-change is enough.
+  useEffect(()=>{
+    let alive=true;
+    fetchDailyRevenue(orgId).then(v=>{if(alive)setRevenue(v);}).catch(err=>console.error('Load revenue failed:',err));
+    return ()=>{alive=false;};
+  },[orgId]);
+
+  // Role colours are shared org-wide (unlike order) — load whatever's
+  // saved. An empty result means this org has never saved a role set yet
+  // (brand new), so keep the built-in defaults; otherwise the saved set is
+  // authoritative as-is — it already reflects any roles the manager has
+  // added or removed, so it must NOT be merged back on top of the defaults
+  // (that would resurrect a deliberately-deleted default role like Kitchen).
+  useEffect(()=>{
+    let alive=true;
+    fetchRoleStyles(orgId).then(v=>{
+      if(!alive) return;
+      if(Object.keys(v).length) {
+        setRoleStylesRaw(v);
+      } else {
+        // Nothing saved yet for this org (brand new, or pre-dates this
+        // feature) — push the current (default) colours up now so
+        // employee sessions have something real to read instead of
+        // silently falling back to an approximated colour forever.
+        saveRoleStyles(orgId, roleStyles).catch(err=>console.error('Initial role colour push failed:',err));
+      }
+    }).catch(err=>console.error('Load role colours failed:',err));
+    return ()=>{alive=false;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[orgId]);
+
+  // A manager/owner might ALSO be on the schedule roster (e.g. a working
+  // owner) — used only for the profile page's "my display name/avatar"
+  // section, same self-match EmployeeView does for its own session.
+  useEffect(()=>{
+    let alive=true;
+    supabase.auth.getUser().then(({data})=>{ if(alive) setMyEmail((data?.user?.email||'').toLowerCase()); });
+    return ()=>{alive=false;};
+  },[]);
+
+  // time_off.employee_id has a FK on employees.id, so a time-off save that
+  // races ahead of an in-flight/pending employees save can violate that
+  // constraint (e.g. add an employee, then quickly add their time off).
+  // Track the latest employees-save promise so the time-off sync can wait
+  // for it to settle before writing, regardless of the independent debounce timers.
+  const empSaveRef=useRef(Promise.resolve());
+  // The two eslint-disables below are for false positives, not silenced real
+  // problems: react-hooks/refs fires because the arrow functions are CREATED
+  // inside useMemo (render phase), but empSaveRef.current is only read/written
+  // when the debounced function actually runs — i.e. from a user action, well
+  // after render. There is no render-time ref access here.
+  // eslint-disable-next-line react-hooks/refs
+  const dEmp  =useMemo(()=>mkDebounce(v=>{const p=syncEmployees(orgId,v);empSaveRef.current=p.catch(()=>{});return p;},'employees'),[orgId]);
+  const dBlk  =useMemo(()=>mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
+  // eslint-disable-next-line react-hooks/refs
+  const dTO   =useMemo(()=>mkDebounce(v=>empSaveRef.current.then(()=>syncTimeOff(orgId,v)),'timeoff'),[orgId]);
+  const dSched=useMemo(()=>mkDebounce(v=>syncSchedules(orgId,v),'schedules'),[orgId]);
+  const dRoleStyles=useMemo(()=>mkDebounce(v=>saveRoleStyles(orgId,v),'roleStyles'),[orgId]);
+
+  const setEmployees=v=>{const val=typeof v==='function'?v(employees):v;setEmpRaw(val);dEmp(val);};
+  const setBlocks   =v=>{const val=typeof v==='function'?v(blocks):v;setBlocksRaw(val);dBlk(val);};
+  const setSchedules=v=>{const val=typeof v==='function'?v(schedules):v;setSchedsRaw(val);dSched(val);};
+  const setTimeOff  =v=>{const val=typeof v==='function'?v(timeOff):v;setTORaw(val);dTO(val);};
+  const setRoleStyles=v=>{const val=typeof v==='function'?v(roleStyles):v;setRoleStylesRaw(val);dRoleStyles(val);};
+
+  useEffect(()=>{
+    const s=document.createElement('style');
+    s.textContent=`html,body,#root{width:100%;margin:0;padding:0}*{box-sizing:border-box}body{background:${T.bg}}input,select{font-family:'Hanken Grotesk',sans-serif!important}input:focus,select:focus{outline:2px solid ${T.accent}!important;outline-offset:1px}input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input[type=number]{-moz-appearance:textfield}::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}`;
+    document.head.appendChild(s); document.body.style.background=T.bg;
+    return ()=>{try{document.head.removeChild(s);}catch{}};
+  },[theme]);
+
+  useEffect(()=>{
+    const link=document.createElement('link');
+    link.rel='stylesheet';
+    link.href='https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400&family=Hanken+Grotesk:wght@400;500;600&display=swap';
+    document.head.appendChild(link);
+    return ()=>{try{document.head.removeChild(link);}catch{}};
+  },[]);
+
+  // Safety net: the add-staff modal locks background scroll while open by
+  // setting document.body.style.overflow directly (not React state), so if
+  // this component ever unmounts while it happens to be open, make sure the
+  // lock doesn't outlive it.
+  useEffect(()=>()=>{ document.body.style.overflow=''; },[]);
+
+  if(loading) return <LoadingScreen/>;
+
+  const myId=employees.find(e=>myEmail&&e.email&&e.email.toLowerCase()===myEmail)?.id||null;
+  const me=employees.find(e=>e.id===myId);
+  const saveMyName=(newName)=>updateEmp(myId,'name',newName);
+  const saveMyColor=(palIdx)=>updateEmp(myId,'palIdx',palIdx);
+  const saveMyPhone=(phone)=>updateEmp(myId,'phone',phone);
+  const saveMyAvailability=(availability)=>updateEmp(myId,'availability',availability);
+  const saveMyEmailNotifications=(emailNotifications)=>updateEmp(myId,'emailNotifications',emailNotifications);
+  const saveMyPushPrefs=(pushPrefs)=>updateEmp(myId,'pushPrefs',pushPrefs);
+
+  const weekDates  =getWeekDates(weekOffset);
+  const wKey       =weekKey(weekOffset);
+  const weekData   =schedules[wKey]||null;
+  const schedule   =weekData?.schedule||null;
+  const confirmed  =weekData?.confirmed||false;
+  const monthOff   =getMonthOffsets(calMode==='month'?displayMonth:weekOffset);
+  const pendingCount=timeOff.filter(t=>t.status==='Pending').length;
+  const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
+  const wkISOs=weekDates.map(dateToISO);
+  const shiftDay=(delta)=>{
+    const cur=weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
+    const nd=new Date(cur); nd.setDate(cur.getDate()+delta);
+    const dow=nd.getDay();
+    const mondayOfNd=new Date(nd); mondayOfNd.setDate(nd.getDate()-(dow===0?6:dow-1));
+    const baseMonday=getMondayDate(0);
+    const newOffset=Math.round((mondayOfNd-baseMonday)/(7*86400000));
+    setWeekOffset(newOffset);
+    setDayFilter(DAYS[dow===0?6:dow-1]);
+  };
+
+  const generate=(forOff=weekOffset)=>{
+    setGenerating(true);setSelected(null);
+    setTimeout(()=>{
+      const wd=getWeekDates(forOff);
+      const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
+      const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
+      const warnings=noMgr.map(({day,block})=>'! '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
+      setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,notes,warnings}}));
+      setGenerating(false);
+    },100);
+  };
+
+  const generateMonth=()=>{
+    setGenerating(true);setSelected(null);
+    setTimeout(()=>{
+      const updates={};
+      getMonthOffsets(displayMonth).forEach(off=>{
+        const wd=getWeekDates(off);
+        const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
+        const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
+        const warnings=noMgr.map(({day,block})=>'! '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
+        updates[weekKey(off)]={schedule:s,notes,warnings};
+      });
+      setSchedules(p=>({...p,...updates}));setGenerating(false);
+    },100);
+  };
+
+  // Notify every employee who has a shift this week that the schedule is
+  // live. Fire-and-forget: a failed notification insert shouldn't block
+  // confirming the schedule itself (it's just retried implicitly next time
+  // this employee's bell polls anyway if we ever add retry — for now it's
+  // logged and otherwise ignored).
+  // Creates the in-app notification row (source of truth, always happens)
+  // and, whenever the recipient has an email on file, fires an email
+  // companion reusing the exact same translated text. Shared by every
+  // manager-side notification site below instead of repeating the
+  // lookup+send pair at each call.
+  // Which push-toggle category a given notif.* key falls under — mirrors
+  // the same events surfaced in Profile's push settings. Unmapped keys
+  // (there are none currently, but future notif.* additions might not be
+  // categorized yet) simply don't push, matching how email already only
+  // fires for known conditions above.
+  const pushEventForKey=(messageKey)=>{
+    if(messageKey==='notif.schedulePublished') return 'shiftChanges';
+    if(messageKey.startsWith('notif.timeOff')||messageKey.startsWith('notif.swap')) return 'timeOffSwap';
+    return null;
+  };
+  const notify=(empId,messageKey,messageVars={})=>{
+    // An open shift has no original owner, so callers that notify "whoever
+    // gave this up" now legitimately pass null — nothing to notify, and
+    // notifications.emp_id is NOT NULL, so this would otherwise be a failed
+    // insert logged on every open-shift approval.
+    if(!empId) return;
+    createNotification(orgId,empId,{type:messageKey.replace('notif.',''),messageKey,messageVars}).catch(err=>console.error('Notify failed:',err));
+    const target=employees.find(e=>e.id===empId);
+    // emailNotifications defaults to true for anyone who hasn't touched the
+    // toggle yet (opt-out, not opt-in) — only skip when it's explicitly false.
+    if(target?.email && target.emailNotifications!==false){ const text=t(messageKey,messageVars); sendNotificationEmail({to:target.email,subject:text,body:text}); }
+    const pushEvent=pushEventForKey(messageKey);
+    if(pushEvent){ const text=t(messageKey,messageVars); notifyPush([empId],pushEvent,{title:'Rorota',body:text,url:'/'}); }
+  };
+
+  // Direct messages — opens ComposeMessageModal, optionally pre-selecting
+  // one employee (the per-card "Message" quick action in Employees) rather
+  // than defaulting to "everyone" every time.
+  const openCompose=(presetEmpIds)=>setComposeModal({presetEmpIds:presetEmpIds||[]});
+  // Opens Kiosk mode (see KioskView.jsx) in a new tab, so this manager tab
+  // stays on the normal Dashboard. On a shared on-site device, a manager
+  // instead just visits this same URL with ?kiosk=1 directly and signs in —
+  // this button is really only for trying it out or re-launching it from
+  // the same device you're already managing from.
+  const openKiosk=()=>{ const url=new URL(window.location.href); url.searchParams.set('kiosk','1'); window.open(url.toString(), '_blank'); };
+  const senderLabel=me?.name||orgName||'Management';
+  const submitCompose=({recipientEmpIds,subject,body,allowReplies})=>{
+    setComposeBusy(true);
+    sendMessage(orgId,recipientEmpIds,{senderLabel,subject,body,allowReplies})
+      .then(()=>{
+        setComposeModal(null);
+        notifyPush(recipientEmpIds,'messages',{title:subject||senderLabel,body,url:'/'});
+      })
+      .catch(err=>alert(err.message||'Failed to send'))
+      .finally(()=>setComposeBusy(false));
+  };
+
+  const notifySchedulePublished=()=>{
+    if(!schedule)return;
+    const empIds=new Set();
+    DAYS.forEach(day=>blocks.forEach(b=>(schedule[day]?.[b.id]||[]).forEach(a=>empIds.add(a.empId))));
+    const week=`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
+    empIds.forEach(empId=>notify(empId,'notif.schedulePublished',{week}));
+  };
+  const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();};
+  const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
+  const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);};
+  const deleteMonth       =()=>{const offs=getMonthOffsets(displayMonth);setSchedules(p=>{const n={...p};offs.forEach(off=>delete n[weekKey(off)]);return n;});};
+
+  // Opens a standalone, unstyled-by-the-app HTML page in a new tab and
+  // triggers the browser's print dialog on it — a clean printout (e.g. for
+  // a break-room board) is much easier to get right in its own document
+  // than by fighting the live app's layout/print CSS.
+  const printSchedule = () => {
+    if (!schedule) return;
+    const empById = new Map(employees.map(e=>[e.id,e]));
+    const rangeLabel = `${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
+    const dayHeaders = DAYS.map((day,i)=>`<th>${escapeHtml(t('day.'+day))}<br><span class="date">${escapeHtml(fmt(weekDates[i]))}</span></th>`).join('');
+    const rows = blocks.map(b=>{
+      const cells = DAYS.map(day=>{
+        const assigned = schedule[day]?.[b.id] || [];
+        if (!assigned.length) return '<td class="empty">—</td>';
+        const shifts = assigned.map(a=>{
+          const name = empById.get(a.empId)?.name || a.name || '?';
+          return `<div class="shift"><span class="name">${escapeHtml(name)}</span><span class="role">${escapeHtml(a.role)}</span></div>`;
+        }).join('');
+        return `<td>${shifts}</td>`;
+      }).join('');
+      return `<tr><th class="blockName">${escapeHtml(b.name)}<br><span class="time">${escapeHtml(b.start)}–${escapeHtml(b.end)}</span></th>${cells}</tr>`;
+    }).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(orgName)} — ${escapeHtml(rangeLabel)}</title><style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#211b15;padding:24px;}
+      h1{font-size:18px;margin:0 0 2px;}
+      .sub{font-size:12px;color:#6b625a;margin-bottom:18px;}
+      table{width:100%;border-collapse:collapse;}
+      th,td{border:1px solid #d8d1c8;padding:6px 8px;font-size:11px;vertical-align:top;text-align:left;}
+      thead th{background:#f4efe8;text-align:center;}
+      th.blockName{background:#f4efe8;white-space:nowrap;}
+      .time,.date{font-weight:400;color:#6b625a;font-size:10px;}
+      td.empty{text-align:center;color:#b3aa9f;}
+      .shift{margin-bottom:4px;}
+      .name{display:block;font-weight:600;}
+      .role{display:block;font-size:9px;color:#6b625a;}
+      @media print{ body{padding:0;} }
+    </style></head><body>
+      <h1>${escapeHtml(orgName)}</h1>
+      <div class="sub">${escapeHtml(rangeLabel)}</div>
+      <table><thead><tr><th></th>${dayHeaders}</tr></thead><tbody>${rows}</tbody></table>
+      <script>window.onload=()=>window.print();<\/script>
+    </body></html>`;
+    const blob = new Blob([html], { type:'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  };
+
+  // Only ever called while a move is already armed (via the edit modal's
+  // "Move" button) — clicking a chip with nothing armed opens the edit
+  // modal instead (see the EmpCard onClick in the Week/Day table).
+  const handleSlotClick=(day,blockId,idx)=>{
+    if(!schedule||!selected)return;closePicker();
+    if(selected.day===day&&selected.blockId===blockId&&selected.idx===idx){setSelected(null);return;}
+    const ns=JSON.parse(JSON.stringify(schedule));
+    const src=ns[selected.day][selected.blockId],dst=ns[day][blockId];
+    const se=src[selected.idx],de=dst[idx];
+    src[selected.idx]={...de,role:se.role};dst[idx]={...se,role:de.role};
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+  };
+
+  const handleEmptySlotClick=(day,blockId,role)=>{
+    if(!selected||!schedule)return;
+    const ns=JSON.parse(JSON.stringify(schedule));
+    const entry=ns[selected.day][selected.blockId].splice(selected.idx,1)[0];
+    ns[day][blockId]=[...(ns[day][blockId]||[]),{...entry,role}];
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+  };
+
+  // Drag-and-drop equivalent of the two click handlers above. Those both
+  // depend on `selected` (the click-to-pick-up flow) and read the source
+  // from it; a drag knows its own source and target explicitly, so this
+  // takes both and doesn't touch `selected` state at all — the two ways of
+  // moving someone coexist rather than one being reimplemented on the other.
+  //
+  //   src = {day, blockId, idx}
+  //   dst = {day, blockId, role}          -> move into that role's slot
+  //   dst = {day, blockId, role, idx}     -> swap with the person already there
+  //
+  // Matching the existing click behaviour: a swap has each person take over
+  // the ROLE of the slot they land in (so dropping a waiter onto a manager
+  // slot makes them the manager there), and a plain move likewise adopts the
+  // destination role.
+  // The actual move/swap maths lives in lib/schedule.js (applyAssignmentDrop,
+  // unit-tested there); this just wires it to state. A null return means the
+  // drop was a no-op or referred to something stale — do nothing rather than
+  // writing an unchanged schedule and needlessly un-confirming it.
+  //
+  // Dropping someone somewhere they shouldn't be (on leave, not available,
+  // over their hours, too little rest) is allowed, but not silently — it
+  // routes through a confirm dialog first. Same six checks the staff picker
+  // already labels people with, so the drag and the picker can never
+  // disagree about what counts as a problem.
+  const applyDrop=(src,dst,ns)=>{
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    setSelected(null);
+    setPendingDrop(null);
+  };
+  const dropAssignment=(src,dst)=>{
+    const ns=applyAssignmentDrop(schedule,src,dst);
+    if(!ns)return;
+    // Warnings are evaluated against the schedule AS IT WOULD BE after the
+    // move, not the current one — otherwise someone moving between two slots
+    // on the same day flags as "already working today" against their own
+    // outgoing assignment, and hours/rest would be computed off stale data.
+    //
+    // A swap moves TWO people, so both get checked: the person dragged, and
+    // whoever they displaced into the source slot. Checking only the dragged
+    // one would wave through half of every swap.
+    const nameOf=id=>employees.find(e=>e.id===id)?.name||'';
+    const groups=[];
+    const dragged=dropWarningsFor(ns,src.empId,dst.day,dst.blockId,dst.role);
+    if(dragged.length)groups.push({empId:src.empId,name:nameOf(src.empId),codes:dragged,day:dst.day,blockId:dst.blockId,role:dst.role});
+    if(dst.idx!=null){
+      const displaced=schedule?.[dst.day]?.[dst.blockId]?.[dst.idx];
+      const srcRole=schedule?.[src.day]?.[src.blockId]?.[src.idx]?.role;
+      if(displaced?.empId){
+        const codes=dropWarningsFor(ns,displaced.empId,src.day,src.blockId,srcRole);
+        if(codes.length)groups.push({empId:displaced.empId,name:nameOf(displaced.empId),codes,day:src.day,blockId:src.blockId,role:srcRole});
+      }
+    }
+    if(groups.length===0){ applyDrop(src,dst,ns); return; }
+    setPendingDrop({src,dst,ns,groups});
+  };
+
+  // Editing an existing assignment in place — separate from the move/swap
+  // click on the chip itself, so opening the editor never triggers a swap.
+  const openEditSlot=(day,blockId,idx)=>{
+    const entry=schedule?.[day]?.[blockId]?.[idx];
+    const block=blocks.find(b=>b.id===blockId);
+    if(!entry||!block)return;
+    setEditingSlot({day,blockId,idx});
+    setEditTimes({start:entry.start||block.start,end:entry.end||block.end});
+    setEditRole(entry.role);
+    setEditActual({
+      mode:entry.noShow?'noshow':(entry.actualStart||entry.actualEnd)?'adjusted':'scheduled',
+      start:entry.actualStart||entry.start||block.start,
+      end:entry.actualEnd||entry.end||block.end,
+    });
+    setEditNotes({inNote:entry.clockInNote||'',outNote:entry.clockNote||''});
+    document.body.style.overflow='hidden';
+  };
+  const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
+  const saveEditSlot=()=>{
+    if(!editingSlot||!schedule)return;
+    const{day,blockId,idx}=editingSlot;
+    const block=blocks.find(b=>b.id===blockId);
+    if(!block)return;
+    const ns=JSON.parse(JSON.stringify(schedule));
+    const entry=ns[day]?.[blockId]?.[idx];if(!entry)return;
+    entry.role=editRole;
+    if(editTimes.start===block.start&&editTimes.end===block.end){delete entry.start;delete entry.end;}
+    else{entry.start=editTimes.start;entry.end=editTimes.end;}
+    if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    else if(editActual.mode==='adjusted'){
+      delete entry.noShow; entry.actualStart=editActual.start; entry.actualEnd=editActual.end;
+      // Manager-editable copies of whatever the punch clock/kiosk recorded —
+      // trimmed-empty clears the note entirely rather than storing ''.
+      if(editNotes.inNote.trim()) entry.clockInNote=editNotes.inNote.trim(); else delete entry.clockInNote;
+      if(editNotes.outNote.trim()) entry.clockNote=editNotes.outNote.trim(); else delete entry.clockNote;
+    }
+    else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    closeEditSlot();
+  };
+  const removeEditSlot=()=>{
+    if(!editingSlot)return;
+    removeFromSlot(editingSlot.day,editingSlot.blockId,editingSlot.idx);
+    closeEditSlot();
+  };
+  const moveEditSlot=()=>{
+    if(!editingSlot||!schedule)return;
+    const{day,blockId,idx}=editingSlot;
+    const entry=schedule[day]?.[blockId]?.[idx];
+    if(!entry)return;
+    setSelected({...entry,day,blockId,idx});
+    closeEditSlot();
+  };
+
+  // Pull one person off a shift outright — e.g. they've called in sick.
+  // No confirmation: it's a single click to remove, a single click to re-add.
+  function removeFromSlot(day,blockId,idx){
+    if(!schedule)return;
+    const ns=JSON.parse(JSON.stringify(schedule));
+    ns[day][blockId].splice(idx,1);
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    if(selected&&selected.day===day&&selected.blockId===blockId&&selected.idx===idx)setSelected(null);
+  };
+
+  // The add-staff picker is a proper centered modal (not an anchored popover
+  // tied to the trigger's on-screen position) — that approach kept breaking:
+  // the page could still scroll behind/away from it, leaving it looking
+  // disconnected from whatever it was supposed to be next to. A modal with a
+  // scroll-locked backdrop sidesteps the whole problem.
+  const openPickerFor=(day,blockId,role)=>{
+    setOpenPicker(p=>{
+      if(p&&p.day===day&&p.blockId===blockId&&p.role===role){ document.body.style.overflow=''; return null; }
+      document.body.style.overflow='hidden';
+      return{day,blockId,role};
+    });
+    setPickerRoleFilter([]);
+    setPickerSortBy('name');
+    setPickerSearch('');
+  };
+  const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); setPickerSearch(''); };
+
+  // assignmentHours (assignments can carry an optional per-person start/end
+  // override, set by dragging their bar in the Gantt view) now lives in
+  // lib/schedule.js, shared with EmployeeView.jsx instead of being redefined
+  // identically in both places.
+
+  // "Hours worked" — actual hours where recorded (post-shift corrections,
+  // no-shows), scheduled hours everywhere else (i.e. every future/unedited
+  // shift, since actualAssignmentHours falls back to the scheduled time).
+  const empHoursMap=employees.reduce((acc,e)=>{
+    if(!schedule){acc[e.id]=0;return acc;}
+    let h=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a)h+=actualAssignmentHours(a,b);}));
+    acc[e.id]=h;return acc;
+  },{});
+  const empHours=id=>empHoursMap[id]||0;
+
+  // What's wrong with putting this person in this slot, evaluated against a
+  // GIVEN schedule (so a drag can ask about the post-move world rather than
+  // the current one). Returns the same reason codes the staff picker uses —
+  // 'role' | 'leave' | 'avail' | 'rest' | 'hours' — which already have
+  // translated labels under week.reason*. Deliberately no 'working' code:
+  // hasRestConflict already covers a genuine same-day clash, whereas
+  // "already working today" on its own is normal for a split shift and isn't
+  // worth interrupting a drag over.
+  const dropWarningsFor=(sched,empId,day,blockId,role)=>{
+    const emp=employees.find(e=>e.id===empId);
+    const block=blocks.find(b=>b.id===blockId);
+    if(!emp||!block||!sched)return[];
+    const date=weekDates[DAYS.indexOf(day)];
+    const w=[];
+    if(!(emp.roles||[]).includes(role))w.push('role');
+    if(isOnTimeOff(emp.id,date,timeOff))w.push('leave');
+    if(!coversBlock(emp.availability?.[day],block))w.push('avail');
+    if(hasRestConflict(emp.id,day,blockId,sched,blocks))w.push('rest');
+    let h=0;DAYS.forEach(d=>blocks.forEach(b=>{const a=(sched[d]?.[b.id]||[]).find(x=>x.empId===emp.id);if(a)h+=assignmentHours(a,b);}));
+    if(h>emp.maxHours)w.push('hours');
+    return w;
+  };
+
+  // Parallel map counting how many of those hours came from a clocked/
+  // corrected shift rather than a bare schedule estimate — same "is this
+  // figure trustworthy as an actual, or just the plan" flag used in Costs.
+  const empCorrectedMap=employees.reduce((acc,e)=>{
+    if(!schedule){acc[e.id]=0;return acc;}
+    let c=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a&&(a.noShow||a.actualStart||a.actualEnd))c++;}));
+    acc[e.id]=c;return acc;
+  },{});
+
+  // Month-to-date hours for whichever employee row the logged-in manager is
+  // themselves matched to (owner-operators who also work shifts) — same
+  // calculation EmployeeView.jsx uses for its own "Hours worked" card, so
+  // the Profile tab shows the same thing regardless of which side you're
+  // on. Walks every loaded week rather than just the one currently open in
+  // the Schedule tab, since "this month" shouldn't depend on what the
+  // manager happens to be looking at.
+  const myMonthHours = myId ? (() => {
+    let total = 0;
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endISO = todayISO();
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id] || []).find(x => x.empId === myId);
+          if (a) total += actualAssignmentHours(a, b);
+        });
+      });
+    });
+    return total;
+  })() : 0;
+
+  // Same month-to-date walk, counting clocked/corrected shifts instead of
+  // summing hours — feeds the "N corrected" hint on the Profile tab's
+  // hours-worked card, same as empCorrectedMap does for the week view.
+  const myMonthCorrected = myId ? (() => {
+    let count = 0;
+    const now = new Date();
+    const startISO = dateToISO(new Date(now.getFullYear(), now.getMonth(), 1));
+    const endISO = todayISO();
+    Object.entries(schedules).forEach(([wk, entry]) => {
+      const sched = entry?.schedule;
+      if (!sched) return;
+      const monday = weekKeyToMonday(wk);
+      DAYS.forEach((day, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i);
+        const iso = dateToISO(d);
+        if (iso < startISO || iso > endISO) return;
+        blocks.forEach(b => {
+          const a = (sched[day]?.[b.id] || []).find(x => x.empId === myId);
+          if (a && (a.noShow || a.actualStart || a.actualEnd)) count++;
+        });
+      });
+    });
+    return count;
+  })() : 0;
+
+  // Two groups: a recommended list (right role, available, not on leave,
+  // under their hour cap), and a true "everyone else" roster with no
+  // filtering at all — a deliberate full-override escape hatch so a manager
+  // can add literally anyone, for whatever real-world reason isn't captured
+  // by role/availability/hours. Only exclusion in the second group: someone
+  // already assigned to this exact shift (that'd just be a no-op duplicate).
+  const candidatesForSlot=(day,blockId,role)=>{
+    if(!schedule)return{available:[],unavailable:[]};
+    const block=blocks.find(b=>b.id===blockId);if(!block)return{available:[],unavailable:[]};
+    const bh=blockHours(block),date=weekDates[DAYS.indexOf(day)];
+    const alreadyHere=new Set((schedule[day]?.[blockId]||[]).map(a=>a.empId));
+    const working=new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)));
+    // Same checks as the recommended filter, but itemized — so the "All
+    // staff" fallback list can tell a manager exactly why each person isn't
+    // in the recommended group, instead of just dumping everyone unlabeled.
+    const reasonsFor=e=>{
+      const r=[];
+      if(!(e.roles||[]).includes(role))r.push('role');
+      if(isOnTimeOff(e.id,date,timeOff))r.push('leave');
+      if(working.has(e.id))r.push('working');
+      if(empHours(e.id)+bh>e.maxHours)r.push('hours');
+      if(hasRestConflict(e.id,day,blockId,schedule,blocks))r.push('rest');
+      if(!coversBlock(e.availability[day],block))r.push('avail');
+      return r;
+    };
+    const recommended=employees.filter(e=>reasonsFor(e).length===0).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    const recommendedIds=new Set(recommended.map(e=>e.id));
+    const everyoneElse=employees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>({...e,_reasons:reasonsFor(e)}));
+    return{available:recommended,unavailable:everyoneElse};
+  };
+
+  const addToSlot=(day,blockId,role,emp)=>{
+    const ns=JSON.parse(JSON.stringify(schedule));
+    ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
+  };
+
+  // Lets a manager assign someone a shift straight from the Employees tab,
+  // without having to first go find the right cell in the Schedule grid.
+  // The day picker inside the modal spans the whole month (not just one
+  // week) so a manager can jump straight to any day without paging week by
+  // week — each day still resolves back to its own week's schedule blob.
+  const openShiftModalFor=(emp,weekOff=null,day=null)=>{
+    setShiftModalEmp(emp);
+    if(weekOff!=null&&day){
+      const date=getWeekDates(weekOff)[DAYS.indexOf(day)];
+      setShiftModalMonth({y:date.getFullYear(),m:date.getMonth()});
+      setShiftModalDaySel({date,dayName:day,weekOff});
+    }else{
+      const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});
+      setShiftModalDaySel(null);
+    }
+    setShiftModalRole((emp.roles||[])[0]||allRoles[0]||null);
+    setShiftModalTimes({});
+    document.body.style.overflow='hidden';
+  };
+  const closeShiftModal=()=>{ document.body.style.overflow=''; setShiftModalEmp(null); setShiftModalDaySel(null); };
+  const shiftModalDays=getMonthOffsets(shiftModalMonth).flatMap(off=>getWeekDates(off).map((d,di)=>({date:d,dayName:DAYS[di],weekOff:off})).filter(x=>x.date.getMonth()===shiftModalMonth.m&&x.date.getFullYear()===shiftModalMonth.y));
+  const shiftModalSchedule=shiftModalDaySel?(schedules[weekKey(shiftModalDaySel.weekOff)]?.schedule||null):null;
+  const addShiftForEmployee=(day,blockId,role,emp,customStart,customEnd)=>{
+    if(!shiftModalDaySel)return;
+    const wKeyD=weekKey(shiftModalDaySel.weekOff);
+    const block=blocks.find(b=>b.id===blockId);
+    setSchedules(p=>{
+      const wd=p[wKeyD];if(!wd||!wd.schedule)return p;
+      const ns=JSON.parse(JSON.stringify(wd.schedule));
+      const entry={empId:emp.id,name:emp.name,role};
+      if(block&&customStart&&customEnd&&(customStart!==block.start||customEnd!==block.end)){entry.start=customStart;entry.end=customEnd;}
+      ns[day][blockId]=[...(ns[day][blockId]||[]),entry];
+      return{...p,[wKeyD]:{...wd,schedule:ns,confirmed:false}};
+    });
+  };
+
+  // Dragging a Gantt bar's edge sets a per-person start/end override on that
+  // one assignment for that one day, so someone's actual worked time for a
+  // shift can differ from the block's nominal window (e.g. covering half of
+  // Lunch instead of the whole thing).
+  const minToHHMM=m=>{m=((Math.round(m)%1440)+1440)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');};
+  const applyGanttResize=(day,blockId,empId,startMin,endMin)=>{
+    const block=blocks.find(b=>b.id===blockId);if(!block)return;
+    const newStart=minToHHMM(startMin),newEnd=minToHHMM(endMin);
+    setSchedules(p=>{
+      const wd=p[wKey];if(!wd)return p;
+      const ns=JSON.parse(JSON.stringify(wd.schedule));
+      const arr=ns[day]?.[blockId];if(!arr)return p;
+      const idx=arr.findIndex(a=>a.empId===empId);if(idx<0)return p;
+      if(newStart===block.start&&newEnd===block.end){ delete arr[idx].start; delete arr[idx].end; }
+      else { arr[idx]={...arr[idx],start:newStart,end:newEnd}; }
+      return{...p,[wKey]:{...wd,schedule:ns,confirmed:false}};
+    });
+  };
+  const beginGanttDrag=(e,{day,blockId,empId,edge,origStart,origEnd,railEl,rangeStart,totalMin})=>{
+    e.preventDefault();e.stopPropagation();
+    const SNAP=15;
+    const rect=railEl.getBoundingClientRect();
+    const state={day,blockId,empId,edge,rect,rangeStart,totalMin,live:{start:origStart,end:origEnd},moved:false};
+    ganttDragRef.current=state;
+    setGanttPreview({day,blockId,empId,start:origStart,end:origEnd});
+    const clientXOf=ev=>ev.touches?ev.touches[0].clientX:ev.clientX;
+    const onMove=ev=>{
+      const st=ganttDragRef.current;if(!st)return;
+      if(ev.cancelable)ev.preventDefault();
+      const x=clientXOf(ev);
+      const pct=Math.min(1,Math.max(0,(x-st.rect.left)/st.rect.width));
+      let mins=st.rangeStart+pct*st.totalMin;
+      mins=Math.round(mins/SNAP)*SNAP;
+      let{start,end}=st.live;
+      if(st.edge==='start') start=Math.min(mins,end-SNAP);
+      else end=Math.max(mins,start+SNAP);
+      if(start!==st.live.start||end!==st.live.end)st.moved=true;
+      st.live={start,end};
+      setGanttPreview({day:st.day,blockId:st.blockId,empId:st.empId,start,end});
+    };
+    const onUp=()=>{
+      window.removeEventListener('mousemove',onMove);
+      window.removeEventListener('mouseup',onUp);
+      window.removeEventListener('touchmove',onMove);
+      window.removeEventListener('touchend',onUp);
+      const st=ganttDragRef.current;
+      ganttDragRef.current=null;
+      setGanttPreview(null);
+      if(st&&st.moved){
+        applyGanttResize(st.day,st.blockId,st.empId,st.live.start,st.live.end);
+        ganttJustDraggedRef.current=true;
+        setTimeout(()=>{ganttJustDraggedRef.current=false;},0);
+      }
+    };
+    window.addEventListener('mousemove',onMove);
+    window.addEventListener('mouseup',onUp);
+    window.addEventListener('touchmove',onMove,{passive:false});
+    window.addEventListener('touchend',onUp);
+  };
+
+  const updateEmp   =(id,f,v)=>setEmployees(p=>p.map(e=>e.id===id?{...e,[f]:v}:e));
+  const updateAvail =(id,day,f,v)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day]||{from:'10:00',to:'18:00'};return{...e,availability:{...e.availability,[day]:{...cur,[f]:v}}};}));
+  const toggleDay   =(id,day)=>setEmployees(p=>p.map(e=>{if(e.id!==id)return e;const cur=e.availability[day];return{...e,availability:{...e.availability,[day]:cur?null:{from:'10:00',to:'18:00'}}};}));
+  const applyTemplate=(id,tpl)=>{const tmpl=AVAIL_TEMPLATES[tpl];if(tmpl)setEmployees(p=>p.map(e=>e.id===id?{...e,availability:JSON.parse(JSON.stringify(tmpl))}:e));};
+  // Cloning an employee deliberately drops email — two roster rows sharing
+  // one login email would make "which one am I" ambiguous in EmployeeView.
+  const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length}]);
+  // Removing someone from the roster also strips their existing assignments
+  // out of every week's schedule — otherwise those shifts turn into orphans
+  // that the Team grid silently drops (it only matches against current
+  // employees) while the Week grid keeps showing them under a frozen name
+  // and a generic fallback color, which is exactly the kind of "shifts here
+  // but not there" mismatch that's confusing to spot. See
+  // pruneOrphanedAssignments in lib/schedule.js.
+  const removeEmp   =id=>{
+    const remainingIds=employees.filter(e=>e.id!==id).map(e=>e.id);
+    setEmployees(p=>p.filter(e=>e.id!==id));
+    setSchedules(p=>pruneOrphanedAssignments(p,remainingIds).schedules);
+    if(expandedEmp===id)setExpandedEmp(null);
+  };
+  const addEmployee =()=>{
+    if(!newEmp.name.trim())return;
+    setEmployees(p=>[...p,{...newEmp,id:crypto.randomUUID(),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]);
+    setNewEmp({name:'',email:'',roles:['Manager'],priority:100,contractType:'hourly',contractPeriod:'week',wage:0,maxHours:40,targetHours:40});setShowAddEmp(false);
+  };
+
+  const addTO         =()=>{if(!newTO.empId)return;setTimeOff(p=>[...p,{...newTO,id:crypto.randomUUID()}]);setNewTO({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});setShowAddTO(false);};
+  // Approving/rejecting a time-off request previously left the employee to
+  // discover the outcome by re-opening the app themselves — there was no
+  // notification of any kind. Now fires both the in-app row and (when they
+  // have an email on file) the email companion via the shared notify()
+  // helper above.
+  const updateTOStatus=(id,status)=>{
+    setTimeOff(p=>p.map(t=>t.id===id?{...t,status}:t));
+    if(status==='Approved'||status==='Rejected'){
+      const to=timeOff.find(t=>t.id===id);
+      if(!to) return;
+      const range=fmtLong(to.startDate)+(to.endDate!==to.startDate?' – '+fmtLong(to.endDate):'');
+      notify(to.empId, status==='Approved'?'notif.timeOffApproved':'notif.timeOffRejected', {type:to.type,range});
+    }
+  };
+  const removeTO      =id=>setTimeOff(p=>p.filter(t=>t.id!==id));
+
+  // " 07 Aug" for a swap, or '' if its weekKey is unparseable — a swap
+  // references a week by key rather than the currently-viewed offset, so the
+  // date has to be derived rather than read off weekDates.
+  const swapDateLabel=(sw)=>{
+    try{ const mon=weekKeyToMonday(sw.weekKey); const d=new Date(mon); d.setDate(mon.getDate()+DAYS.indexOf(sw.day)); return ' '+fmt(d); }
+    catch{ return ''; }
+  };
+
+  const reloadSwaps=()=>fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err));
+  const pendingSwaps=swaps.filter(sw=>sw.status==='claimed');
+
+  // Move the assignment on the real schedule from whoever offered the shift
+  // to whoever claimed it, then mark the swap approved and let both sides
+  // know. The swap may reference a week other than the one currently being
+  // viewed, so it's looked up by weekKey rather than assumed to be `schedule`.
+  const approveSwap=(sw)=>{
+    const weekEntry=schedules[sw.weekKey];
+    const list=weekEntry?.schedule?.[sw.day]?.[sw.blockId];
+    const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+    if(!claimant){alert(t('swap.approveFailed'));return;}
+    // An open shift (no fromEmpId) has nobody to swap OUT — approving it just
+    // adds the claimant to that block. A normal swap still replaces the
+    // original owner's assignment in place, keeping any custom start/end
+    // times that were set on it.
+    const isOpenShift=!sw.fromEmpId;
+    const idx=list?list.findIndex(a=>a.empId===sw.fromEmpId&&a.role===sw.role):-1;
+    if(!isOpenShift&&(idx==null||idx<0)){alert(t('swap.approveFailed'));return;}
+    if(isOpenShift&&!weekEntry?.schedule?.[sw.day]){alert(t('swap.approveFailed'));return;}
+    const ns=JSON.parse(JSON.stringify(schedules));
+    if(isOpenShift){
+      const dayMap=ns[sw.weekKey].schedule[sw.day];
+      dayMap[sw.blockId]=[...(dayMap[sw.blockId]||[]),{empId:claimant.id,name:claimant.name,role:sw.role}];
+    }else{
+      const entry=ns[sw.weekKey].schedule[sw.day][sw.blockId][idx];
+      ns[sw.weekKey].schedule[sw.day][sw.blockId][idx]={...entry,empId:claimant.id,name:claimant.name};
+    }
+    setSchedules(ns);
+    updateShiftSwap(sw.id,{status:'approved'}).catch(err=>console.error(err));
+    const day=t('day.'+sw.day);
+    notify(sw.fromEmpId,'notif.swapApproved',{day});
+    notify(sw.claimedByEmpId,'notif.swapApproved',{day});
+    reloadSwaps();
+  };
+
+  // Post an unfilled slot as an OPEN shift — a shift_swaps row with no
+  // fromEmpId, which every eligible employee then sees in their own app and
+  // can claim. Deliberately reuses the swap pipeline rather than inventing a
+  // parallel one: claiming, the manager approval queue, and the notification
+  // flow are all identical, the only difference being that approving adds the
+  // claimant instead of replacing someone (see approveSwap above).
+  const postOpenShift=(day,blockId,role)=>{
+    createShiftSwap(orgId,{weekKey:wKey,day,blockId,role,fromEmpId:null,toEmpId:null,status:'open'})
+      .then(()=>{
+        reloadSwaps();
+        // Everyone who could actually take it — same eligibility test the
+        // employee's own "open to anyone" list applies, so nobody gets
+        // pinged about a shift their app won't offer them.
+        const date=weekDates[DAYS.indexOf(day)];
+        const eligible=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
+        const blockName=blocks.find(b=>b.id===blockId)?.name||'';
+        // The date goes INSIDE the existing {day} var rather than as a new
+        // {date} placeholder — a notification's vars are frozen at send time,
+        // so adding a placeholder would make every already-sent notification
+        // render a literal "{date}". This way old ones keep working.
+        const whenLabel=`${t('day.'+day)} ${fmt(date)}`;
+        eligible.forEach(e=>notify(e.id,'notif.openShiftPosted',{role,day:whenLabel,block:blockName}));
+      })
+      .catch(err=>{console.error('Post open shift failed:',err);alert(t('save.failedGeneric'));});
+  };
+  const cancelOpenShift=(sw)=>{
+    deleteShiftSwap(sw.id).then(reloadSwaps).catch(err=>{console.error('Cancel open shift failed:',err);alert(t('save.failedGeneric'));});
+  };
+  // Open shifts still live for a given slot in the week being viewed —
+  // 'approved' and 'declined' ones are done with and shouldn't keep
+  // occupying a cell. Identified by having no fromEmpId, which is what
+  // distinguishes a manager-posted open shift from a released one.
+  //
+  // Deliberately a plain function, NOT useCallback: everything from here
+  // down sits after the `if(loading) return <LoadingScreen/>` early return
+  // near the top of this component, so any hook added below that line runs
+  // on the loaded render but not the loading one — which React rejects with
+  // "rendered more hooks than during the previous render". Filtering a
+  // short array per cell is cheap; memoizing it is not worth a hook here.
+  const openShiftsFor=(day,blockId,role)=>
+    swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&sw.blockId===blockId&&sw.role===role&&(sw.status==='open'||sw.status==='claimed'));
+
+  const declineSwapManager=(sw)=>{
+    updateShiftSwap(sw.id,{status:'declined'}).catch(err=>console.error(err));
+    const day=t('day.'+sw.day);
+    notify(sw.fromEmpId,'notif.swapDeclined',{day});
+    if(sw.claimedByEmpId) notify(sw.claimedByEmpId,'notif.swapDeclined',{day});
+    reloadSwaps();
+  };
+
+  const saveCurrentAsTemplate=(name)=>{
+    saveTemplate(orgId,name,blocks).then(tpl=>setTemplates(p=>[tpl,...p])).catch(err=>{console.error(err);alert(t('save.failedGeneric'));});
+  };
+  const applyTemplateBlocks=(tpl)=>{
+    if(!confirm(t('tmpl.applyConfirm',{name:tpl.name})))return;
+    setBlocks(tpl.blocks);
+  };
+  const deleteTemplateById=(id)=>{
+    deleteTemplate(id).then(()=>setTemplates(p=>p.filter(x=>x.id!==id))).catch(err=>{console.error(err);alert(t('save.failedGeneric'));});
+  };
+
+  const hasWages=employees.some(e=>e.wage>0);
+  // Costs tab has its own week selector, independent of whatever week the
+  // Schedule tab is currently showing.
+  const costsWeekDates=getWeekDates(costsWeekOffset);
+  const costsWKey=weekKey(costsWeekOffset);
+  const costsSchedule=schedules[costsWKey]?.schedule||null;
+  // Costs is specifically about real money spent, so it uses actual hours
+  // (falls back to scheduled for anything not yet corrected) rather than
+  // the plain scheduled-hours assignmentHours used for planning/coverage.
+  // Alongside the hours total, also count how many of the assignments it's
+  // built from have actually been touched by the punch clock/kiosk or a
+  // manager's correction (noShow, or an actualStart/actualEnd recorded) —
+  // so the Costs tab can flag "this figure includes N corrected shift(s)"
+  // instead of a plain hours number that looks purely scheduled either way.
+  const hoursForSchedule=(ws,empId)=>{
+    if(!ws) return {hours:0,corrected:0};
+    let h=0,corrected=0;
+    DAYS.forEach(day=>blocks.forEach(b=>{
+      const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId);
+      if(a){ h+=actualAssignmentHours(a,b); if(a.noShow||a.actualStart||a.actualEnd) corrected++; }
+    }));
+    return {hours:h,corrected};
+  };
+  const costData=employees.map(e=>{const{hours,corrected}=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,corrected,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
+  const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
+  const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
+  const monthCostData=employees.map(e=>{let h=0,corrected=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a){h+=actualAssignmentHours(a,b);if(a.noShow||a.actualStart||a.actualEnd)corrected++;}}));});return{emp:e,hours:h,corrected,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
+  const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
+  const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
+  const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
+  const weekRoleCosts=mkRoleCosts(costData),monthRoleCosts=mkRoleCosts(monthCostData);
+  const toMoney=u=>{if(hasWages){return `${hourlyRate.currency} ${Math.round(u).toLocaleString(LOCALE)}`;}const val=u*hourlyRate.amount;return `${hourlyRate.currency} ${Math.round(val).toLocaleString(LOCALE)}`;};
+  // Same conversion toMoney does (costUnits -> a real money figure), but
+  // returning the raw number instead of a formatted string — needed to do
+  // math (labor cost % of revenue) rather than just display it.
+  const toMoneyRaw=u=>hasWages?u:u*hourlyRate.amount;
+
+  // Per-day labor cost for the Costs tab's own selected week — every
+  // assignment scheduled that day, summed the same way costData sums a
+  // whole week per employee. Feeds the revenue-vs-labor-cost comparison
+  // below (each day's actual sales vs what staffing that day cost).
+  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; const hrs=actualAssignmentHours(a,b); h+=hasWages?calcWageCost(emp,hrs):parseFloat((hrs*(emp.priority||100)/100).toFixed(2)); }); }); return h; };
+  const dailyLaborCostByDate=Object.fromEntries(DAYS.map((day,i)=>[dateToISO(costsWeekDates[i]),toMoneyRaw(dailyCostUnits(day))]));
+
+  // Revenue is entered by hand (no POS integration) — one number per
+  // calendar day, kept in the `revenue` map ({isoDate:amount}) and persisted
+  // immediately on blur. Optimistic: the input reflects the typed value
+  // right away, the Supabase write happens in the background.
+  const saveRevenueForDate=(iso,amount)=>{
+    setRevenue(p=>({...p,[iso]:amount}));
+    saveDailyRevenue(orgId,iso,amount).catch(err=>console.error('Save revenue failed:',err));
+  };
+  // Whole calendar month's revenue, independent of which weeks actually got
+  // scheduled/generated — "how much did we make this month" shouldn't
+  // silently exclude days that just don't have a published schedule yet.
+  const monthRevenueTotal=(()=>{ const{y,m}=displayMonth; const days=new Date(y,m+1,0).getDate(); let total=0; for(let d=1;d<=days;d++){ total+=revenue[dateToISO(new Date(y,m,d))]||0; } return total; })();
+
+  const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
+  const stats=totalStats();
+  const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const attentionCount=pendingCount+pendingSwaps.length;
+  // Feeds the header notification bell's "needs your attention" section —
+  // same underlying data as the attentionCount badge above, just formatted
+  // into readable rows. Both resolve in the Time Off tab, so clicking either
+  // kind of row just jumps there rather than trying to deep-link to the
+  // exact request.
+  const pendingItems=[
+    ...timeOff.filter(to=>to.status==='Pending').map(to=>{
+      const emp=employees.find(e=>e.id===to.empId);
+      return{ id:'to-'+to.id, label:`${emp?.name||'?'} · ${to.type} · ${fmtLong(to.startDate)}${to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}`, onClick:()=>setView('timeoff') };
+    }),
+    ...pendingSwaps.map(sw=>{
+      // An open shift has no original owner — label it as the posted shift
+      // being claimed rather than "? → someone". Includes the real date: a
+      // bare "Fri" is ambiguous once a request has sat in the bell a while.
+      const from=sw.fromEmpId?employees.find(e=>e.id===sw.fromEmpId):null,claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+      const fromLabel=sw.fromEmpId?(from?.name||'?'):t('open.posted');
+      const when=`${t('day.'+sw.day)}${swapDateLabel(sw)}`;
+      return{ id:'sw-'+sw.id, label:`${fromLabel} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${when}`, onClick:()=>setView('timeoff') };
+    }),
+    ...unseenMessageReplies.map(m=>{
+      const recipient=employees.find(e=>e.id===m.recipientEmpId);
+      return{ id:'msgreply-'+m.id, label:t('msg.repliedNotif',{name:recipient?.name||'?'}), onClick:()=>setOpenManagerThread(m) };
+    }),
+  ];
+  // Time Off / Coverage / Costs are grouped behind a single "Admin" dropdown
+  // in the desktop nav (see adminNavItems below) rather than each getting
+  // their own top-level tab — Schedule/Employees/Profile are the tabs
+  // someone reaches for constantly, the other three are periodic
+  // admin/reporting tasks. The mobile menu keeps them as a flat list (with a
+  // small section label) since everything there is already behind the
+  // hamburger, so a second layer of nesting would just add taps.
+  const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'profile',l:t('nav.profile')}];
+  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const mobileNavItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},...adminNavItems,{k:'profile',l:t('nav.profile')}];
+  const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
+
+  const s=styles;
+
+  return (<>
+    <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
+      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginRight:isMobile?'auto':36,minWidth:0,overflow:'hidden'}}>
+          <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
+          <div style={{display:'flex',alignItems:'baseline',gap:7,minWidth:0,overflow:'hidden'}}>
+            {/* Logo doubles as a home button — back to the main Schedule tab
+                with no day isolated, same "click the logo" convention as
+                most web apps. Doesn't touch which week you're on, just the
+                view/drill-down state. */}
+            <button onClick={()=>{setView('schedule');setCalMode('week');setDayFilter(null);}} title={t('nav.schedule')} style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0,background:'none',border:'none',padding:0,cursor:'pointer',opacity:1,transition:'opacity 0.15s'}} onMouseEnter={e=>e.currentTarget.style.opacity=0.7} onMouseLeave={e=>e.currentTarget.style.opacity=1}>Rorota</button>
+            <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
+          </div>
+        </div>
+        {!isMobile&&(<>
+        <div style={{display:'flex',alignItems:'center',flex:1}}>
+          {[navItems[0],navItems[1]].map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})}
+          <div ref={adminMenuRef} style={{position:'relative',height:56,display:'flex',alignItems:'center'}}>
+            {(()=>{const adminActive=adminNavItems.some(i=>i.k===view);return(
+              <button onClick={()=>setAdminMenuOpen(p=>!p)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:adminActive?500:400,color:adminActive?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap',display:'flex',alignItems:'center',gap:4}}>
+                {t('nav.admin')}<span style={{fontSize:9,transform:adminMenuOpen?'rotate(180deg)':'none',transition:'transform 0.15s'}}>▾</span>
+                {adminActive&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}
+              </button>
+            );})()}
+            {adminMenuOpen && (
+              <div style={{position:'absolute',top:'calc(100% - 6px)',left:8,zIndex:200,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 50px -14px rgba(0,0,0,0.4)',padding:6,minWidth:180}}>
+                {adminNavItems.map(({k,l})=>{const active=view===k;return(
+                  <button key={k} onClick={()=>{setView(k);setAdminMenuOpen(false);}} style={{display:'block',width:'100%',textAlign:'left',fontFamily:'inherit',padding:'9px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>
+                );})}
+              </div>
+            )}
+          </div>
+          {(()=>{const {k,l}=navItems[2];const active=view===k;return(<button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:16,right:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>);})()}
+        </div>
+        {(()=>{const rc=MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee;return(<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:isDark()?rc.text+'22':rc.bg,color:rc.text,border:`1px solid ${isDark()?rc.text+'44':rc.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>);})()}
+        <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:8,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
+        <span style={{marginRight:8}}><NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/></span>
+        <button onClick={toggleTheme} style={{width:34,height:34,marginRight:8,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
+        <Btn onClick={()=>calMode==='month'?generateMonth():generate()} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn>
+        {/* Previously missing entirely on the admin side — a manager had to
+            go back to the org picker first to sign out. Mirrors the
+            employee header's own logout button (same style, same final
+            position in the row) rather than inventing a new pattern. */}
+        <button onClick={()=>supabase.auth.signOut()} style={{marginLeft:8,padding:'6px 14px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:12,fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap'}}>{t('common.logout')}</button>
+        </>)}
+        {isMobile&&(
+          <button onClick={()=>setMobileMenuOpen(p=>!p)} aria-label="Menu" style={{width:36,height:36,marginLeft:8,borderRadius:8,border:`1px solid ${T.border}`,background:mobileMenuOpen?T.surfaceWarm:T.surface,color:T.text,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{mobileMenuOpen?'✕':'☰'}</button>
+        )}
+      </div>
+
+      {isMobile&&mobileMenuOpen&&(
+        <div style={{position:'fixed',top:56,left:0,right:0,background:T.surface,borderBottom:`1px solid ${T.border}`,boxShadow:'0 12px 30px -12px rgba(33,27,21,0.35)',zIndex:99,padding:'8px 16px 16px',display:'flex',flexDirection:'column',gap:4,maxHeight:'calc(100vh - 56px)',overflowY:'auto'}}>
+          {mobileNavItems.map(({k,l})=>{const active=view===k;return(<button key={k} onClick={()=>{setView(k);setMobileMenuOpen(false);}} style={{fontFamily:'inherit',textAlign:'left',padding:'11px 12px',borderRadius:8,background:active?T.surfaceWarm:'transparent',border:'none',cursor:'pointer',fontSize:14,fontWeight:active?600:400,color:active?T.text:T.text2}}>{l}</button>);})}
+          <div style={{display:'flex',gap:8,marginTop:8,alignItems:'center'}}>
+            <select value={lang} onChange={e=>setLang(e.target.value)} style={{flex:1,fontFamily:'inherit',fontSize:13,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:'8px 10px',cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
+            <NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setMobileMenuOpen(false);setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/>
+            <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
+          </div>
+          <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
+          <div style={{marginTop:6}}><Btn onClick={()=>supabase.auth.signOut()} variant="ghost">{t('common.logout')}</Btn></div>
+        </div>
+      )}
+
+      {saveError?(
+        <div style={{position:'fixed',bottom:20,left:isMobile?14:'auto',right:20,maxWidth:isMobile?'calc(100% - 28px)':360,zIndex:200,background:T.surface,border:`1px solid ${T.danger}55`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'flex-start',gap:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)'}}>
+          <span style={{fontSize:13,fontWeight:700,color:T.danger}}>!</span>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12,color:T.danger,fontWeight:500,marginBottom:8}}>{t('save.failedPrefix')} {saveError.message}</div>
+            <div style={{display:'flex',gap:6}}>
+              <Btn small variant="danger" onClick={saveError.retry}>{t('save.retry')}</Btn>
+              <Btn small variant="ghost" onClick={()=>setSaveError(null)}>{t('save.dismiss')}</Btn>
+            </div>
+          </div>
+        </div>
+      ):savingCount>0&&(
+        <div style={{position:'fixed',bottom:20,left:isMobile?14:'auto',right:20,zIndex:200,background:T.surface,border:`1px solid ${T.border}`,borderRadius:999,padding:'6px 14px',fontSize:12,color:T.text3,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
+          {t('save.saving')}
+        </div>
+      )}
+
+      <div style={{maxWidth:1600,margin:'0 auto',padding:isMobile?'20px 14px':'24px 32px'}}>
+
+{shiftModalEmp&&createPortal(
+  <div onClick={closeShiftModal} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'16px 18px 10px',flexShrink:0}}>
+        <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}}>{t('emp.addShiftFor',{name:shiftModalEmp.name})}</div>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+          <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+            <button onClick={()=>setShiftModalMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+            <span style={{fontSize:12,fontWeight:500,color:T.text,minWidth:120,textAlign:'center',padding:'0 2px'}}>{new Date(shiftModalMonth.y,shiftModalMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})}</span>
+            <button onClick={()=>setShiftModalMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+          </div>
+          <button onClick={()=>{const n=new Date();setShiftModalMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+        </div>
+      </div>
+      <div style={{padding:'0 18px 10px',flexShrink:0}}>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+          {shiftModalDays.map((d,i)=>{
+            const wsExists=!!schedules[weekKey(d.weekOff)]?.schedule;
+            const isSel=shiftModalDaySel&&shiftModalDaySel.weekOff===d.weekOff&&shiftModalDaySel.dayName===d.dayName;
+            const isToday=dateToISO(d.date)===dateToISO(new Date());
+            return(<button key={i} onClick={()=>setShiftModalDaySel(d)} title={!wsExists?t('grid.noScheduleThatWeek'):undefined} style={{padding:'5px 8px',borderRadius:8,fontSize:11,fontWeight:600,border:`1px solid ${isSel?T.accent:isToday?T.accent+'55':T.border}`,background:isSel?T.accentLight:'transparent',color:isSel?T.accent:wsExists?T.text2:T.text3,opacity:wsExists?1:0.45,cursor:'pointer',fontFamily:'inherit',minWidth:40,textAlign:'center'}}>
+              <div>{t('day.'+d.dayName).slice(0,2)}</div>
+              <div style={{fontWeight:400,opacity:0.8}}>{d.date.getDate()}</div>
+            </button>);
+          })}
+        </div>
+      </div>
+      {(()=>{
+        const empRoles=(shiftModalEmp.roles||[]).length?shiftModalEmp.roles:allRoles;
+        if(empRoles.length<=1)return null;
+        return(<div style={{padding:'0 18px 10px',flexShrink:0}}>
+          <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+            {empRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=(shiftModalRole||empRoles[0])===r;return(<button key={r} onClick={()=>setShiftModalRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
+          </div>
+        </div>);
+      })()}
+      <div style={{overflowY:'auto',padding:'0 10px 6px',flex:1,minHeight:0}}>
+        {shiftModalDaySel&&!shiftModalSchedule&&<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('emp.noScheduleForWeek')}</div>}
+        {shiftModalSchedule&&shiftModalDaySel&&(()=>{
+          const dayName=shiftModalDaySel.dayName;
+          const empRoles=(shiftModalEmp.roles||[]).length?shiftModalEmp.roles:allRoles;
+          const role=shiftModalRole||empRoles[0];
+          if(!role)return <div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('week.noneAvailable')}</div>;
+          const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
+          const rows=blocks.map(block=>{
+            const already=(shiftModalSchedule[dayName]?.[block.id]||[]).some(a=>a.empId===shiftModalEmp.id);
+            return(<div key={block.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:T.text}}>{block.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{block.start}–{block.end}</span></div>
+                <div style={{marginTop:3}}><RoleBadge role={role} rs={rs}/></div>
+              </div>
+              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,block.id,role,shiftModalEmp,block.start,block.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+            </div>);
+          });
+          const homeBlock=blocks[0];
+          if(homeBlock){
+            const already=(shiftModalSchedule[dayName]?.[homeBlock.id]||[]).some(a=>a.empId===shiftModalEmp.id);
+            const times=shiftModalTimes.custom||{start:homeBlock.start,end:homeBlock.end};
+            const setTime=(field,val)=>setShiftModalTimes(p=>({...p,custom:{...(p.custom||{start:homeBlock.start,end:homeBlock.end}),[field]:val}}));
+            rows.push(<div key="custom" style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8,opacity:already?0.55:1}}>
+              <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:13,fontWeight:500,color:T.text}}>{t('emp.customTime')}</span>
+                <TimePicker small value={times.start} onChange={v=>setTime('start',v)}/>
+                <span style={{fontSize:11,color:T.text3}}>–</span>
+                <TimePicker small value={times.end} onChange={v=>setTime('end',v)}/>
+              </div>
+              <Btn small variant={already?'ghost':'secondary'} disabled={already} onClick={()=>addShiftForEmployee(dayName,homeBlock.id,role,shiftModalEmp,times.start,times.end)}>{already?t('emp.alreadyOnShift'):t('emp.addShiftBtn')}</Btn>
+            </div>);
+          }
+          return rows;
+        })()}
+        {!shiftModalDaySel&&<div style={{fontSize:12,color:T.text3,padding:'10px 8px',fontStyle:'italic'}}>{t('emp.pickADay')}</div>}
+      </div>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0}}><Btn variant="ghost" onClick={closeShiftModal}>{t('common.done')}</Btn></div>
+    </div>
+  </div>
+,document.body)}
+
+{editingSlot&&schedule&&(()=>{
+  const{day,blockId,idx}=editingSlot;
+  const entry=schedule[day]?.[blockId]?.[idx];
+  const block=blocks.find(b=>b.id===blockId);
+  if(!entry||!block)return null;
+  const emp=employees.find(e=>e.id===entry.empId);
+  const empRoles=(emp?.roles||[]).length?emp.roles:allRoles;
+  const customized=editTimes.start!==block.start||editTimes.end!==block.end;
+  // Soft warnings only (never block Save) — computed off the SCHEDULED
+  // time being typed here, not clock data, per the "warn while building the
+  // schedule" basis chosen for these. scheduledHoursExcl walks every other
+  // block this employee is on this week (excluding the slot being edited,
+  // since its old contribution shouldn't double-count against the new
+  // custom time being typed).
+  const customTimes={start:editTimes.start,end:editTimes.end};
+  const scheduledHoursExcl=(()=>{
+    let h=0;
+    DAYS.forEach(d=>blocks.forEach(b=>{
+      if(d===day&&b.id===blockId) return;
+      const a=(schedule[d]?.[b.id]||[]).find(x=>x.empId===entry.empId);
+      if(a) h+=assignmentHours(a,b);
+    }));
+    return h;
+  })();
+  const projectedHours=scheduledHoursExcl+assignmentHours(customTimes,block);
+  const overCap=emp&&projectedHours>emp.maxHours;
+  const restConflict=hasRestConflict(entry.empId,day,blockId,schedule,blocks,customTimes);
+  return createPortal(
+    <div onClick={closeEditSlot} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(380px,100%)',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+        <div style={{padding:'16px 18px 12px'}}>
+          <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>{t('week.editShift')}</div>
+          <div style={{fontSize:15,fontWeight:600,color:T.text}}>{emp?.name||entry.name}</div>
+          <div style={{fontSize:12,color:T.text3,marginTop:2}}>{block.name} · {t('day.'+day)}</div>
+        </div>
+        {/* Flag a shift the employee added themselves via the kiosk (no
+            manager ever scheduled it) — informational only; any clock-in/out
+            note is edited below, alongside the actual times it belongs to. */}
+        {entry.selfAdded&&(
+          <div style={{padding:'0 18px 12px'}}>
+            <div style={{fontSize:11,color:T.accentText}}>{t('emp.selfAddedNotice')}</div>
+          </div>
+        )}
+        {empRoles.length>1&&<div style={{padding:'0 18px 12px',display:'flex',gap:4,flexWrap:'wrap'}}>
+          {empRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=editRole===r;return(<button key={r} onClick={()=>setEditRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
+        </div>}
+        <div style={{padding:'0 18px 16px',display:'flex',alignItems:'center',gap:6}}>
+          <span style={{fontSize:11,color:T.text3}}>{t('emp.customTime')}</span>
+          <TimePicker small value={editTimes.start} onChange={v=>setEditTimes(p=>({...p,start:v}))}/>
+          <span style={{fontSize:11,color:T.text3}}>–</span>
+          <TimePicker small value={editTimes.end} onChange={v=>setEditTimes(p=>({...p,end:v}))}/>
+          {customized&&<button onClick={()=>setEditTimes({start:block.start,end:block.end})} style={{fontSize:10,color:T.accent,background:'none',border:'none',cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>{t('common.reset')}</button>}
+        </div>
+        {/* Soft, non-blocking heads-up — the manager can always Save anyway. */}
+        {(overCap||restConflict)&&(
+          <div style={{padding:'0 18px 12px',display:'flex',flexDirection:'column',gap:6}}>
+            {overCap&&<div style={{fontSize:11,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{t('week.warnOverHours',{hours:projectedHours.toFixed(1),max:emp.maxHours})}</div>}
+            {restConflict&&<div style={{fontSize:11,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{t('week.warnRestConflict')}</div>}
+          </div>
+        )}
+        {/* Only shown for a shift that's already happened (today or
+            earlier) — a future shift has nothing to record yet, and
+            actualAssignmentHours already falls back to the scheduled time
+            whenever this is left alone. */}
+        {dateToISO(weekDates[DAYS.indexOf(day)])<=todayISO() && (
+          <div style={{padding:'0 18px 16px',borderTop:`1px solid ${T.border}`,paddingTop:14}}>
+            <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('emp.actualHours')}</div>
+            <div style={{display:'flex',gap:4,marginBottom:editActual.mode==='adjusted'?10:0,flexWrap:'wrap'}}>
+              {[['scheduled',t('emp.actualAsScheduled')],['adjusted',t('emp.actualAdjust')],['noshow',t('emp.actualNoShow')]].map(([mode,label])=>{
+                const active=editActual.mode===mode,isDanger=mode==='noshow';
+                return (
+                  <button key={mode} onClick={()=>setEditActual(p=>({mode,start:p.start||editTimes.start,end:p.end||editTimes.end}))} style={{padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,cursor:'pointer',fontFamily:'inherit',background:active?(isDanger?T.dangerLight:T.accentLight):'transparent',color:active?(isDanger?T.danger:T.accent):T.text3,border:`1px solid ${active?(isDanger?T.danger+'55':T.accent+'55'):T.border}`}}>{label}</button>
+                );
+              })}
+            </div>
+            {editActual.mode==='adjusted'&&(<>
+              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:10}}>
+                <TimePicker small value={editActual.start} onChange={v=>setEditActual(p=>({...p,start:v}))}/>
+                <span style={{fontSize:11,color:T.text3}}>–</span>
+                <TimePicker small value={editActual.end} onChange={v=>setEditActual(p=>({...p,end:v}))}/>
+              </div>
+              {/* Editable copies of whatever the punch clock/kiosk recorded —
+                  a manager can correct or clear either note here, not just
+                  view them; empty clears it on save (see saveEditSlot). */}
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div>
+                  <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{t('clock.inNoteLabel')}</div>
+                  <input value={editNotes.inNote} onChange={e=>setEditNotes(p=>({...p,inNote:e.target.value}))} placeholder={t('clock.notePlaceholder')} style={s.input}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{t('clock.outNoteLabel')}</div>
+                  <input value={editNotes.outNote} onChange={e=>setEditNotes(p=>({...p,outNote:e.target.value}))} placeholder={t('clock.notePlaceholder')} style={s.input}/>
+                </div>
+              </div>
+            </>)}
+          </div>
+        )}
+        <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',flexWrap:'wrap',gap:6}}>
+          <Btn small onClick={saveEditSlot}>{t('common.save')}</Btn>
+          <Btn small variant="secondary" onClick={moveEditSlot}>{t('week.move')}</Btn>
+          <Btn small variant="danger" onClick={removeEditSlot}>{t('common.remove')}</Btn>
+          <span style={{flex:1}}/>
+          <Btn small variant="ghost" onClick={closeEditSlot}>{t('common.cancel')}</Btn>
+        </div>
+      </div>
+    </div>
+  ,document.body);
+})()}
+
+{/* DRAG-DROP WARNING CONFIRM — only appears when a drag would put someone
+    somewhere that trips one of the availability/hours/rest checks. The move
+    is already computed at this point (pendingDrop.ns); confirming just
+    commits it, cancelling discards it untouched. */}
+{pendingDrop&&createPortal(
+  <div onClick={()=>setPendingDrop(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'16px 18px 6px',fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text}}>
+        {t('drop.warnTitle',{name:pendingDrop.groups.map(g=>(g.name||'').split(' ')[0]).join(' & ')})}
+      </div>
+      <div style={{padding:'0 18px 14px'}}>
+        <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('drop.warnDesc')}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {pendingDrop.groups.map(g=>(
+            <div key={g.empId}>
+              <div style={{fontSize:12,fontWeight:600,color:T.text,marginBottom:2}}>{g.name}</div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:6}}>{t('day.'+g.day)} · {blocks.find(b=>b.id===g.blockId)?.name||''} · {g.role}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {g.codes.map(code=>{
+                  const label={role:t('week.reasonRole',{role:g.role}),leave:t('week.reasonLeave'),working:t('week.reasonWorking'),hours:t('week.reasonHours'),rest:t('week.reasonRest'),avail:t('week.reasonAvail')}[code];
+                  return <div key={code} style={{fontSize:12,fontWeight:500,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{label}</div>;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',gap:6}}>
+        <Btn small variant="warning" onClick={()=>applyDrop(pendingDrop.src,pendingDrop.dst,pendingDrop.ns)}>{t('drop.moveAnyway')}</Btn>
+        <span style={{flex:1}}/>
+        <Btn small variant="ghost" onClick={()=>setPendingDrop(null)}>{t('common.cancel')}</Btn>
+      </div>
+    </div>
+  </div>
+,document.body)}
+
+{/* SCHEDULE */}
+{view==='schedule'&&(<div>
+  <div ref={scheduleBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
+    <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+      <WeekPicker
+        value={calMode==='month'?new Date(displayMonth.y,displayMonth.m,1):weekDates[0]}
+        highlightStart={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[0])}
+        highlightEnd={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[6])}
+        onPick={d=>{
+          if(calMode==='month'){ setDisplayMonth({y:d.getFullYear(),m:d.getMonth()}); return; }
+          setWeekOffset(weekOffsetFromDate(d));
+          if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
+        }}
+        trigger={<span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
+      />
+      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+    </div>
+    {/* "Today" now actually lands you on today, not just today's week — it
+        switches to the Week tab isolated to the current day. Month is the one
+        exception: there "today" sensibly means the current month, and yanking
+        someone out of a month overview into a single day would be a bigger
+        jump than they asked for. */}
+    <button onClick={()=>{
+      const n=new Date();
+      setWeekOffset(0);
+      setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});
+      if(calMode!=='month'){
+        const jsDay=n.getDay();
+        setCalMode('week');
+        setDayFilter(DAYS[jsDay===0?6:jsDay-1]);
+      }
+    }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+    <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+      {[['week',t('sched.week')],['month',t('sched.month')],['grid',t('sched.team')]].map(([k,l])=><button key={k} onClick={()=>{setDayFilter(null);setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+    </div>
+    {/* Team grid's own controls — used to live in TeamView's own separate
+        sticky bar directly below this one, which meant two stacked toolbars
+        eating vertical space before you reached a single row of the actual
+        schedule. Folded into this same flex-wrap row instead: on a wide
+        enough screen everything sits side by side on one line, and it only
+        wraps to a second line when the viewport is genuinely too narrow —
+        either way it's one bar's worth of padding/border instead of two. */}
+    {calMode==='grid'&&(<>
+      <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+        {[['name',t('grid.byName')],['role',t('grid.byRole')]].map(([k,l])=><button key={k} onClick={()=>setGridGroupBy(k)} style={{padding:'4px 12px',borderRadius:6,background:gridGroupBy===k?T.bg:'transparent',border:gridGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:gridGroupBy===k?500:400,color:gridGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+      </div>
+      <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
+        {gridTight?t('grid.compact'):t('grid.comfortable')}
+      </button>
+      <span style={{fontSize:12,color:T.text3}}>{t('grid.scheduledOfTotal',{n:employees.filter(e=>schedule&&Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length,total:employees.length})}</span>
+    </>)}
+    {/* One search box shared by Team and Week rather than one per view — the
+        same question ("where is this person this week?") in both, so keeping
+        the term when you switch views is the useful behaviour. Team filters
+        its rows down; Week can't (rows are roles, not people) so it dims
+        everyone else instead, which also keeps the shape of the week intact
+        while you look. */}
+    {(calMode==='grid'||calMode==='week')&&(
+      <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+        <input value={gridSearch} onChange={e=>setGridSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:150,padding:'5px 26px 5px 10px',fontSize:12}}/>
+        {gridSearch&&<button onClick={()=>setGridSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
+      </span>
+    )}
+    {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
+    {calMode==='week'&&dayFilter&&(()=>{const offDate=weekDates[DAYS.indexOf(dayFilter)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
+      <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>{t('week.offToday',{n:off.length})}</span>
+    );})()}
+    {calMode==='week'&&schedule&&(<div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+      <span style={{fontSize:12,color:T.text2}}>{stats?.filled||0} slots</span>
+      {stats?.missing>0&&<span style={{fontSize:12,color:T.danger,fontWeight:500,background:T.dangerLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.danger}33`}}>{stats.missing} missing</span>}
+      {stats?.missing===0&&<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>{t('sched.fullCoverage')} ✓</span>}
+      <div style={{width:1,height:16,background:T.border}}/>
+      {confirmed?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('sched.confirmed')}</span>:<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>}
+      {confirmed?<Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn>:<Btn small variant="success" onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
+      <Btn small variant="ghost" onClick={printSchedule}>{t('sched.print')}</Btn>
+      <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
+    </div>)}
+  </div>
+  {/* Leave / coverage notes / warnings used to be three separate full-width
+      banners stacked on top of each other, each with its own border, padding
+      and margin — roughly 130px of chrome for three short lines of text,
+      pushing the actual schedule below the fold. Merged into one strip: each
+      is a segment that wraps only when the window is genuinely too narrow,
+      with the warnings kept visually loud (they're the part you must not
+      miss) and the rest quiet. */}
+  {(() => {
+    const warnList=warnings.filter(w=>w.startsWith('!'));
+    const showLeave=offThisWeek.length>0&&calMode!=='month';
+    if(!showLeave&&!notes&&warnList.length===0) return null;
+    const divider=<span style={{width:1,alignSelf:'stretch',background:T.border,flexShrink:0}}/>;
+    const segs=[];
+    if(showLeave) segs.push(
+      <span key="leave" style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+        <span style={{fontSize:12,fontWeight:500,color:T.warning,whiteSpace:'nowrap'}}>{t('sched.onLeaveWeek')}</span>
+        {offThisWeek.map(e=><EmpCard key={e.id} emp={e} inline title={e.name}/>)}
+      </span>
+    );
+    if(notes) segs.push(<span key="notes" style={{fontSize:12,color:T.text2}}>{notes}</span>);
+    warnList.forEach((w,i)=>segs.push(
+      <span key={'w'+i} style={{fontSize:12,fontWeight:500,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:999,padding:'2px 10px',whiteSpace:'nowrap'}}>{w.replace(/^!\s*/,'')}</span>
+    ));
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'7px 12px',marginBottom:10,borderRadius:10,background:T.surface,border:`1px solid ${T.border}`}}>
+        {segs.map((seg,i)=><Fragment key={i}>{i>0&&divider}{seg}</Fragment>)}
+      </div>
+    );
+  })()}
+  {selected&&(<div style={{background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:10,padding:'7px 12px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b>{t('sched.swapHintTail')}</span><button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.cancel')}</button></div>)}
+  {confirmed&&calMode!=='month'&&(<div style={{background:T.successLight,border:`1px solid ${T.success}44`,borderRadius:10,padding:'7px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:12,fontWeight:700,color:T.success}}>✓</span><span style={{flex:1,fontSize:12,fontWeight:600,color:T.success}}>{t('sched.confirmedBanner')}.</span><Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn></div>)}
+
+{/* MONTH VIEW */}
+{calMode==='month'&&(
+  <MonthView
+    monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth}
+    blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={generate} deleteMonth={deleteMonth}
+    s={s} t={t}
+  />
+)}
+
+{/* GRID VIEW — Planday-style: employees as rows, days as columns */}
+{calMode==='grid'&&(
+  <TeamView
+    schedule={schedule} employees={employees} blocks={blocks} roleStyles={roleStyles} weekDates={weekDates} weekOffset={weekOffset} timeOff={timeOff} allRoles={allRoles}
+    gridGroupBy={gridGroupBy} gridTight={gridTight} gridSearch={gridSearch}
+    empHours={empHours} assignmentHours={assignmentHours} actualAssignmentHours={actualAssignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
+    generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
+    onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
+    stickyTop={56+scheduleBarH}
+    s={s} t={t}
+  />
+)}
+
+{/* WEEK VIEW */}
+{calMode==='week'&&(
+  <WeekView
+    schedule={schedule} blocks={blocks} employees={employees} offThisWeek={offThisWeek} generate={generate} generateMonth={generateMonth}
+    dayFilter={dayFilter} setDayFilter={setDayFilter} selected={selected} setSelected={setSelected} dayGroupBy={dayGroupBy} setDayGroupBy={setDayGroupBy}
+    roleStyles={roleStyles} isMobile={isMobile} ganttPreview={ganttPreview} ganttJustDraggedRef={ganttJustDraggedRef} openEditSlot={openEditSlot}
+    beginGanttDrag={beginGanttDrag} minToHHMM={minToHHMM} collapsedBlocks={collapsedBlocks} setCollapsedBlocks={setCollapsedBlocks} warnings={warnings}
+    weekDates={weekDates} handleSlotClick={handleSlotClick} openPicker={openPicker} pickerRoleFilter={pickerRoleFilter} setPickerRoleFilter={setPickerRoleFilter}
+    pickerSortBy={pickerSortBy} setPickerSortBy={setPickerSortBy} pickerSearch={pickerSearch} setPickerSearch={setPickerSearch} candidatesForSlot={candidatesForSlot}
+    addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
+    removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} search={gridSearch}
+    currency={hourlyRate.currency}
+    openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
+    dropAssignment={dropAssignment}
+    s={s} t={t}
+  />
+)}
+</div>)}
+
+{/* EMPLOYEES */}
+{view==='employees'&&(
+  <EmployeesView
+    employees={employees} allRoles={allRoles} roleStyles={roleStyles}
+    expandedEmp={expandedEmp} setExpandedEmp={setExpandedEmp}
+    updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp}
+    showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
+    onAddShift={openShiftModalFor}
+    onOpenCompose={openCompose}
+    onOpenKiosk={openKiosk}
+    myId={myId}
+    orgId={orgId} orgName={orgName} isOwner={isOwner} uploaderLabel={myEmail} currency={hourlyRate.currency} s={s} t={t}
+  />
+)}
+
+{/* TIME OFF */}
+{view==='timeoff'&&(
+  <TimeOffView
+    offThisWeek={offThisWeek} weekDates={weekDates}
+    toFilter={toFilter} setToFilter={setToFilter}
+    showAddTO={showAddTO} setShowAddTO={setShowAddTO} newTO={newTO} setNewTO={setNewTO} addTO={addTO}
+    employees={employees} filteredTO={filteredTO} updateTOStatus={updateTOStatus} removeTO={removeTO}
+    pendingSwaps={pendingSwaps} blocks={blocks} approveSwap={approveSwap} declineSwapManager={declineSwapManager}
+    s={s} t={t}
+  />
+)}
+
+{/* COVERAGE */}
+{view==='coverage'&&(
+  <CoverageView
+    allRoles={allRoles} roleStyles={roleStyles} setRoleStyles={setRoleStyles}
+    editingRole={editingRole} setEditingRole={setEditingRole} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
+    setEmployees={setEmployees} blocks={blocks} setBlocks={setBlocks}
+    templates={templates} saveCurrentAsTemplate={saveCurrentAsTemplate} applyTemplateBlocks={applyTemplateBlocks} deleteTemplateById={deleteTemplateById}
+    s={s} t={t}
+  />
+)}
+
+{/* COSTS */}
+{view==='costs'&&(
+  <CostsView
+    costsMode={costsMode} setCostsMode={setCostsMode} costsWeekOffset={costsWeekOffset} setCostsWeekOffset={setCostsWeekOffset} displayMonth={displayMonth} schedules={schedules} schedule={costsSchedule} weekDates={costsWeekDates}
+    hourlyRate={hourlyRate} setHourlyRate={setHourlyRate}
+    monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
+    toMoney={toMoney} toMoneyRaw={toMoneyRaw} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView} orgName={orgName}
+    revenue={revenue} onSaveRevenue={saveRevenueForDate} dailyLaborCostByDate={dailyLaborCostByDate} monthRevenueTotal={monthRevenueTotal}
+    s={s} t={t}
+  />
+)}
+
+{/* PROFILE */}
+{view==='profile'&&(
+  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} orgId={orgId} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
+)}
+
+      </div>
+    </div>
+    {composeModal && createPortal(
+      // Excludes the sender's own employees row (if the manager happens to
+      // be linked to one) — messaging yourself isn't a real use case, and
+      // it would otherwise show up under "Everyone"/"By role" too.
+      <Suspense fallback={null}>
+        <ComposeMessageModal employees={employees.filter(e=>e.id!==myId)} allRoles={allRoles} roleStyles={roleStyles} presetEmpIds={composeModal.presetEmpIds} busy={composeBusy} onCancel={()=>setComposeModal(null)} onSubmit={submitCompose} s={s} t={t}/>
+      </Suspense>,
+      document.body
+    )}
+    {openManagerThread && createPortal(
+      <Suspense fallback={null}>
+        <MessageThreadModal message={openManagerThread} viewerIsManager={true} myLabel={senderLabel} counterpartLabel={employees.find(e=>e.id===openManagerThread.recipientEmpId)?.name||''} onClose={()=>setOpenManagerThread(null)} s={s} t={t}/>
+      </Suspense>,
+      document.body
+    )}
+    </>
+  );
+}

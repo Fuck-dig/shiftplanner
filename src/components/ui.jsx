@@ -5,6 +5,12 @@ import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants"
 import { dateToISO, LOCALE } from "../lib/dates";
 
 
+// Full-screen "loading" splash. Was copy-pasted identically into App.jsx,
+// EmployeeView.jsx and KioskView.jsx; one definition now.
+export function LoadingScreen() {
+  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
+}
+
 export function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
 
 // Drag-handle affordance drawn from plain dots rather than a unicode glyph —
@@ -107,8 +113,16 @@ export function TimePicker({value,onChange,small}){
   const [open,setOpen]=useState(false);
   const hourRef=useRef(null),minRef=useRef(null);
   const [hh,mm]=(value||'00:00').split(':');
-  const [text,setText]=useState(`${hh}:${mm}`);
-  useEffect(()=>{ setText(`${hh}:${mm}`); },[hh,mm]);
+  // `text` is genuinely local state (you can type a partial time into the
+  // field), but it has to reset whenever the value prop changes from outside.
+  // That was an effect, which meant rendering the stale text once and
+  // correcting it on a second pass. This is React's documented
+  // "adjusting state when a prop changes" pattern: compare against the last
+  // prop value during render and correct immediately, no extra pass.
+  const incoming=`${hh}:${mm}`;
+  const [text,setText]=useState(incoming);
+  const [lastValue,setLastValue]=useState(incoming);
+  if(lastValue!==incoming){ setLastValue(incoming); setText(incoming); }
   const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
   const minutes=['00','05','10','15','20','25','30','35','40','45','50','55'];
   useEffect(()=>{
@@ -171,10 +185,11 @@ export function WeekPicker({trigger,value,onPick,highlightStart,highlightEnd}){
   const [viewY,setViewY]=useState(()=>value.getFullYear());
   const [viewM,setViewM]=useState(()=>value.getMonth());
   const ref=useRef(null);
-  useEffect(()=>{
-    if(open){ setViewY(value.getFullYear()); setViewM(value.getMonth()); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[open]);
+  // Opening the picker should always start on the selected date's month. This
+  // used to be an effect keyed on `open`, which meant rendering the wrong month
+  // first and correcting it immediately after; doing it in the opening click
+  // is the same result in one pass.
+  const openPicker=()=>{ setViewY(value.getFullYear()); setViewM(value.getMonth()); setOpen(true); };
   useEffect(()=>{
     if(!open)return;
     const onDoc=e=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -194,7 +209,7 @@ export function WeekPicker({trigger,value,onPick,highlightStart,highlightEnd}){
   const navBtn={padding:'4px 8px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:12};
   return (
     <div ref={ref} style={{position:'relative',display:'inline-block'}}>
-      <div onClick={()=>setOpen(o=>!o)} style={{cursor:'pointer'}}>{trigger}</div>
+      <div onClick={()=>open?setOpen(false):openPicker()} style={{cursor:'pointer'}}>{trigger}</div>
       {open && (
         <div style={{position:'absolute',top:'calc(100% + 6px)',left:'50%',transform:'translateX(-50%)',zIndex:500,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,boxShadow:'0 20px 50px -14px rgba(0,0,0,0.4)',padding:10,width:220}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>

@@ -11,7 +11,7 @@ const linkBtn = { background:'none', border:'none', color:T.accent, cursor:'poin
 // screen just always rendered in whatever theme was already saved, with no
 // way to change it before signing in. Same toggle button/style as
 // RestaurantPicker.jsx for consistency.
-export default function Auth({ theme, toggleTheme }){
+export default function Auth({ toggleTheme }){
   const [mode, setMode]         = useState('login'); // 'login' | 'signup'
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');

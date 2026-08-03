@@ -7,8 +7,8 @@ import { RoleBadge, Btn, GripDots } from '../ui';
 // Planday-style grid — employees as rows, days as columns.
 export default function TeamView({
   schedule, employees, blocks, roleStyles, weekDates, weekOffset, timeOff, allRoles,
-  gridGroupBy, setGridGroupBy, gridTight, setGridTight, gridSearch, setGridSearch,
-  empHours, assignmentHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
+  gridGroupBy, gridTight, gridSearch,
+  empHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
   stickyTop,
   s, t,

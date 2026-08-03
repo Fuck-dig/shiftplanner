@@ -11,7 +11,7 @@ import { load, save } from '../lib/storage';
 // app, e.g. Costs), so this never blocks picking anything else.
 const DEFAULT_CURRENCY_FOR_LANG = { da:'kr', de:'€', en:'$', es:'€', fr:'€' };
 
-export default function RestaurantPicker({ orgs, onSelect, onCreated, theme, toggleTheme }) {
+export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleTheme }) {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName]             = useState('');
   const [currency, setCurrency]     = useState('');

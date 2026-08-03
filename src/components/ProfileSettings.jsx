@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES, isDark } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { Btn, TimePicker, Toggle } from './ui';
-import { pushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush } from '../lib/push';
+import {getPushStatus, subscribeToPush, unsubscribeFromPush} from '../lib/push';
 
 const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true };
 
