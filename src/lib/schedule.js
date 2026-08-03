@@ -186,6 +186,23 @@ export function calcWageCost(e,hours){
 // day/week grid clearly shows them working as a Waiter that day — confusing
 // since the same person's shift is visibly filed under a role they don't
 // appear grouped under.
+// Everyone still on the team.
+//
+// Archiving is deliberately NOT deletion: an archived person stays in the
+// `employees` array because historical assignments reference them by id, so
+// every name lookup, every past week's cost, and pruneOrphanedAssignments all
+// need them present. The rule is therefore a split, not a removal:
+//
+//   activeOnly(employees) -> anything FORWARD-looking (rosters, pickers,
+//                            directories, headcounts, who-can-I-give-a-shift-to)
+//   employees             -> anything HISTORICAL (name/colour lookups by id)
+//
+// This lives here, named once, because the same filter had been written
+// inline in six places under three different names — and was simply absent
+// from the staff and kiosk views, so staff kept seeing colleagues the
+// manager had already archived.
+export function activeOnly(employees){ return (employees||[]).filter(e=>!e.archived); }
+
 export function effectiveRolesFor(emp,schedule,blocks){
   const roles=new Set(emp.roles||[]);
   if(schedule) DAYS.forEach(day=>blocks.forEach(b=>(schedule[day]?.[b.id]||[]).forEach(a=>{ if(a.empId===emp.id) roles.add(a.role); })));

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, Suspense, lazy, Fragment } from '
 import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments } from '../lib/schedule';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly } from '../lib/schedule';
 import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
@@ -497,7 +497,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // week's cost, and the orphaned-assignment cleanup needs them present — but
   // they must never appear in anything FORWARD-looking. Use activeEmployees
   // for scheduling; use employees for history.
-  const activeEmployees=employees.filter(e=>!e.archived);
+  const activeEmployees=activeOnly(employees);
   const offThisWeek=activeEmployees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
   const shiftDay=(delta)=>{

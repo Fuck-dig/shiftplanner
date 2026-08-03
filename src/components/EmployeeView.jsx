@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -230,6 +230,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // row also gets pinned in a sticky "Your Shifts" strip above the list
   // (see the Team tab JSX below) instead of being sorted to the top here —
   // that way the full list stays in its normal order.
+  // Everyone still on the team. Archived people stay in `employees` on purpose
+  // — a past shift has to keep rendering with their real name and colour, and
+  // every .find() lookup below needs them — but they must never appear in
+  // anything FORWARD-looking. Mirrors Dashboard's split exactly; the staff
+  // side simply never got it, so staff carried on seeing colleagues the
+  // manager had already archived.
+  const activeEmployees = activeOnly(employees);
+
   const effRoles = new Map(employees.map(e=>[e.id, effectiveRolesFor(e,schedule,blocks)]));
   const primaryRoleFor = new Map(employees.map(e=>{
     const eff=effRoles.get(e.id);
@@ -237,9 +245,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     return [e.id, first||null];
   }));
   const gridRows = gridGroupBy==='role'
-    ? allRoles.filter(role=>employees.some(e=>primaryRoleFor.get(e.id)===role))
-        .flatMap(role=>[...employees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
-    : [...employees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
+    ? allRoles.filter(role=>activeEmployees.some(e=>primaryRoleFor.get(e.id)===role))
+        .flatMap(role=>[...activeEmployees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    : [...activeEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // roleStyles (the manager's real, Supabase-synced colours) covers most
   // roles, but a role can exist here before it's ever been styled in
@@ -856,7 +864,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       {view==='profile' ? (
         <ProfileSettings role={role} myEmp={me} orgId={orgId} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
       ) : view==='employees' ? (
-        <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
+        <Directory employees={activeEmployees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : view==='requests' ? (
         <>
           {/* Page header. "Request time off" belongs up here beside the title,
@@ -1109,7 +1117,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               <div style={{padding:isMobile?'10px 12px':'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
               {DAYS.map((day,di)=>{
                 const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
-                const onLeave=employees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
+                const onLeave=activeEmployees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
                 return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
                   <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
                   <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
@@ -1123,7 +1131,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       </>)}
       </div>
     </div>
-    {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={employees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
+    {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={activeEmployees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
     {/* Taking a shift that clashes with something — being on leave that day
         being the common one. Never blocks the claim, just makes sure it's a
         deliberate choice rather than something noticed later. */}

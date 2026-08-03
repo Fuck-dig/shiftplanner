@@ -12,8 +12,7 @@ import {
   pruneOrphanedAssignments,
   applyAssignmentDrop,
   removeUpcomingAssignments,
-  WEEKS_PER_MONTH,
-} from './schedule';
+  WEEKS_PER_MONTH, activeOnly } from './schedule';
 
 // These are the functions that ultimately decide how many hours an employee
 // is credited with and how much that costs — bugs here show up as a wrong
@@ -469,5 +468,38 @@ describe('removeUpcomingAssignments', () => {
     const r = removeUpcomingAssignments(base(), 'a', '2026-08-03', mondayOf, DAYS_);
     expect(r.schedules['2026-07-27'].confirmed).toBe(true);
     expect(r.schedules['2026-08-03'].confirmed).toBe(false);
+  });
+});
+
+describe('activeOnly', () => {
+  const roster=[
+    {id:'a',name:'Henrik'},
+    {id:'b',name:'Lars',archived:true},
+    {id:'c',name:'Sofie',archived:false},
+  ];
+
+  it('drops archived people from forward-looking lists', () => {
+    expect(activeOnly(roster).map(e=>e.id)).toEqual(['a','c']);
+  });
+
+  it('treats a missing archived flag as still on the team', () => {
+    // Rows written before the employees.archived column existed have no
+    // flag at all. Defaulting those to "archived" would silently empty an
+    // entire roster on first load after the migration.
+    expect(activeOnly([{id:'a'}])).toHaveLength(1);
+  });
+
+  it('leaves the caller\'s array untouched so history still resolves', () => {
+    // The whole point of archiving over deleting: `employees` keeps everyone
+    // so a past shift can still find its owner's name and colour by id.
+    const before=[...roster];
+    activeOnly(roster);
+    expect(roster).toEqual(before);
+    expect(roster.find(e=>e.id==='b').name).toBe('Lars');
+  });
+
+  it('survives a null roster rather than throwing mid-render', () => {
+    expect(activeOnly(null)).toEqual([]);
+    expect(activeOnly(undefined)).toEqual([]);
   });
 });

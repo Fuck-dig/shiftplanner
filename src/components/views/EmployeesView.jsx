@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { activeOnly } from '../../lib/schedule';
 import { T, DAYS, AVAIL_TEMPLATES, DEFAULT_ROLE_STYLES, pal, isDark } from '../../lib/constants';
 import { toMin, LOCALE } from '../../lib/dates';
 import { Avatar, RoleBadge, Btn, SectionLabel, TimePicker } from '../ui';
@@ -72,7 +73,7 @@ export default function EmployeesView({
     </div>
   )}
   <div style={{display:'flex',flexDirection:'column',gap:10}}>
-    {employees.filter(e=>!e.archived).map(emp=>(<div key={emp.id} style={s.card}>
+    {activeOnly(employees).map(emp=>(<div key={emp.id} style={s.card}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
         <Avatar emp={emp} size={40}/>
         <div style={{flex:1}}>

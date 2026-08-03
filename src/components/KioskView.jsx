@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { activeOnly } from '../lib/schedule';
 import { T, DAYS, ROLE_COLOR_PALETTE, isDark } from '../lib/constants';
 import { weekKey, fmtLong, todayISO } from '../lib/dates';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchRoleStyles, updateShiftAssignment } from '../lib/data';
@@ -155,7 +156,10 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
             <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,fontWeight:500,color:T.text,marginBottom:4,textAlign:'center'}}>{t('kiosk.selectYourName')}</div>
             <div style={{fontSize:13,color:T.text3,marginBottom:24,textAlign:'center'}}>{fmtLong(todayISO())}</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:12}}>
-              {employees.map(emp=>(
+              {/* Archived people must not be offered a punch-in tile — they
+                  have left, and the kiosk is the one screen anyone walking
+                  past can use. */}
+              {activeOnly(employees).map(emp=>(
                 <button key={emp.id} onClick={()=>selectEmployee(emp)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:'16px 8px',borderRadius:12,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontFamily:'inherit'}}>
                   <Avatar emp={emp} size={44}/>
                   <span style={{fontSize:12,fontWeight:500,color:T.text,textAlign:'center'}}>{emp.name}</span>
