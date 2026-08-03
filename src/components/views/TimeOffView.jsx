@@ -1,5 +1,5 @@
-import { T, TIMEOFF_TYPES } from '../../lib/constants';
-import { fmt, fmtLong } from '../../lib/dates';
+import { T, TIMEOFF_TYPES, DAYS } from '../../lib/constants';
+import { fmt, fmtLong, weekKeyToMonday } from '../../lib/dates';
 import { Avatar, StatusBadge, Btn, SectionLabel, EmpChip } from '../ui';
 
 export default function TimeOffView({
@@ -15,14 +15,40 @@ export default function TimeOffView({
       <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:12}}>{t('swap.pendingApprovals')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
         {pendingSwaps.map(sw=>{
-          // No fromEmpId = an open shift the manager posted themselves, now
-          // claimed — there's no "from" person to name, so it reads as the
-          // open shift being taken rather than "? → someone".
+          // Two different things land in this queue and they shouldn't read
+          // the same: a SWAP hands a shift from one person to another, while
+          // an OPEN SHIFT (no fromEmpId) was posted by a manager and nobody
+          // held it — calling that a "swap" is just wrong, and there's no
+          // "from" person to name either. A type badge says which it is up
+          // front, and the "from X" line only appears when there is one.
           const isOpenShift=!sw.fromEmpId;
-          const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId),block=blocks.find(b=>b.id===sw.blockId);
-          return(<div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',borderRadius:10,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`,background:isOpenShift?T.accentLight:T.surfaceWarm}}>
-            <span style={{fontSize:12,color:T.text,flex:1,minWidth:200}}>{isOpenShift?<><b>{t('open.posted')}</b> {t('swap.to',{name:claimant?.name||'?'})}</>:<><b>{from?.name||'?'}</b> {t('swap.to',{name:claimant?.name||'?'})}</>} · {block?.name||''} · {sw.role} · {t('day.'+sw.day)}</span>
-            <Btn small variant="success" onClick={()=>approveSwap(sw)}>{t('swap.approve')}</Btn>
+          const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
+          const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+          const block=blocks.find(b=>b.id===sw.blockId);
+          // Which actual date this is — a bare "Thu" is ambiguous once a
+          // request has been sitting in the queue for a while.
+          let dateLabel='';
+          try{ const mon=weekKeyToMonday(sw.weekKey); const d=new Date(mon); d.setDate(mon.getDate()+DAYS.indexOf(sw.day)); dateLabel=fmt(d); }catch{ /* malformed weekKey — day name alone still reads fine */ }
+          return(<div key={sw.id} style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',padding:'12px 14px',borderRadius:12,border:`1px solid ${isOpenShift?T.accent+'44':T.border}`,background:isOpenShift?T.accentLight:T.surface}}>
+            {claimant
+              ? <Avatar emp={claimant} size={34}/>
+              : <div style={{width:34,height:34,borderRadius:'50%',flexShrink:0,background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:15,fontWeight:700}}>?</div>}
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap',marginBottom:3}}>
+                <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',padding:'2px 8px',borderRadius:999,color:isOpenShift?T.accent:T.text2,background:isOpenShift?T.accent+'1E':T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'44':T.border}`}}>
+                  {isOpenShift?t('swap.badgeOpen'):t('swap.badgeSwap')}
+                </span>
+                <span style={{fontSize:13,fontWeight:600,color:T.text}}>{claimant?.name||'?'}</span>
+                {!isOpenShift&&<span style={{fontSize:11,color:T.text3}}>{t('swap.handover',{name:from?.name||'?'})}</span>}
+              </div>
+              <div style={{fontSize:11,color:T.text3}}>
+                {block?.name||''} · {sw.role} · {t('day.'+sw.day)}{dateLabel?` ${dateLabel}`:''}
+              </div>
+            </div>
+            {/* Plain "Approve"/"Reject" rather than "Approve swap" — the
+                badge above already says what kind of request this is, and
+                "Approve swap" was flatly wrong on an open shift. */}
+            <Btn small variant="success" onClick={()=>approveSwap(sw)}>{t('to.approve')}</Btn>
             <Btn small variant="danger" onClick={()=>declineSwapManager(sw)}>{t('to.reject')}</Btn>
           </div>);
         })}
