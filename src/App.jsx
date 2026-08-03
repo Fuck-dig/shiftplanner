@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
@@ -1638,11 +1638,37 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
     </div>)}
   </div>
-  {offThisWeek.length>0&&calMode!=='month'&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'7px 12px',marginBottom:8,display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}><span style={{fontSize:12,fontWeight:500,color:T.warning}}>{t('sched.onLeaveWeek')}</span><div style={{display:'flex',gap:5,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div></div>)}
+  {/* Leave / coverage notes / warnings used to be three separate full-width
+      banners stacked on top of each other, each with its own border, padding
+      and margin — roughly 130px of chrome for three short lines of text,
+      pushing the actual schedule below the fold. Merged into one strip: each
+      is a segment that wraps only when the window is genuinely too narrow,
+      with the warnings kept visually loud (they're the part you must not
+      miss) and the rest quiet. */}
+  {(() => {
+    const warnList=warnings.filter(w=>w.startsWith('!'));
+    const showLeave=offThisWeek.length>0&&calMode!=='month';
+    if(!showLeave&&!notes&&warnList.length===0) return null;
+    const divider=<span style={{width:1,alignSelf:'stretch',background:T.border,flexShrink:0}}/>;
+    const segs=[];
+    if(showLeave) segs.push(
+      <span key="leave" style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+        <span style={{fontSize:12,fontWeight:500,color:T.warning,whiteSpace:'nowrap'}}>{t('sched.onLeaveWeek')}</span>
+        {offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}
+      </span>
+    );
+    if(notes) segs.push(<span key="notes" style={{fontSize:12,color:T.text2}}>{notes}</span>);
+    warnList.forEach((w,i)=>segs.push(
+      <span key={'w'+i} style={{fontSize:12,fontWeight:500,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:999,padding:'2px 10px',whiteSpace:'nowrap'}}>{w.replace(/^!\s*/,'')}</span>
+    ));
+    return (
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'7px 12px',marginBottom:10,borderRadius:10,background:T.surface,border:`1px solid ${T.border}`}}>
+        {segs.map((seg,i)=><Fragment key={i}>{i>0&&divider}{seg}</Fragment>)}
+      </div>
+    );
+  })()}
   {selected&&(<div style={{background:T.accentLight,border:`1px solid ${T.accent}44`,borderRadius:10,padding:'7px 12px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:12,color:T.accentText}}><b>{selected.name}</b>{t('sched.swapHintTail')}</span><button onClick={()=>setSelected(null)} style={{marginLeft:'auto',padding:'4px 10px',borderRadius:6,background:'transparent',border:`1px solid ${T.accent}55`,color:T.accent,cursor:'pointer',fontSize:12,fontFamily:'inherit'}}>{t('common.cancel')}</button></div>)}
   {confirmed&&calMode!=='month'&&(<div style={{background:T.successLight,border:`1px solid ${T.success}44`,borderRadius:10,padding:'7px 14px',marginBottom:8,display:'flex',alignItems:'center',gap:10}}><span style={{fontSize:12,fontWeight:700,color:T.success}}>✓</span><span style={{flex:1,fontSize:12,fontWeight:600,color:T.success}}>{t('sched.confirmedBanner')}.</span><Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn></div>)}
-  {notes&&<div style={{fontSize:12,color:T.text2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:10,padding:'7px 12px',marginBottom:8,display:'flex',gap:8}}><span>{notes}</span></div>}
-  {warnings.filter(w=>w.startsWith('!')).map((w,i)=><div key={i} style={{fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:10,padding:'6px 12px',marginBottom:6}}>{w}</div>)}
 
 {/* MONTH VIEW */}
 {calMode==='month'&&(
