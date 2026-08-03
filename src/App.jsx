@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict, pruneOrphanedAssignments } from './lib/schedule';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
 // Lazy-loaded: each of these four is only ever needed for a subset of
 // sessions (EmployeeView/KioskView are mutually exclusive with the manager
@@ -631,6 +631,31 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     const entry=ns[selected.day][selected.blockId].splice(selected.idx,1)[0];
     ns[day][blockId]=[...(ns[day][blockId]||[]),{...entry,role}];
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+  };
+
+  // Drag-and-drop equivalent of the two click handlers above. Those both
+  // depend on `selected` (the click-to-pick-up flow) and read the source
+  // from it; a drag knows its own source and target explicitly, so this
+  // takes both and doesn't touch `selected` state at all — the two ways of
+  // moving someone coexist rather than one being reimplemented on the other.
+  //
+  //   src = {day, blockId, idx}
+  //   dst = {day, blockId, role}          -> move into that role's slot
+  //   dst = {day, blockId, role, idx}     -> swap with the person already there
+  //
+  // Matching the existing click behaviour: a swap has each person take over
+  // the ROLE of the slot they land in (so dropping a waiter onto a manager
+  // slot makes them the manager there), and a plain move likewise adopts the
+  // destination role.
+  // The actual move/swap maths lives in lib/schedule.js (applyAssignmentDrop,
+  // unit-tested there); this just wires it to state. A null return means the
+  // drop was a no-op or referred to something stale — do nothing rather than
+  // writing an unchanged schedule and needlessly un-confirming it.
+  const dropAssignment=(src,dst)=>{
+    const ns=applyAssignmentDrop(schedule,src,dst);
+    if(!ns)return;
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    setSelected(null);
   };
 
   // Editing an existing assignment in place — separate from the move/swap
@@ -1521,6 +1546,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight}
     currency={hourlyRate.currency}
     openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
+    dropAssignment={dropAssignment}
     s={s} t={t}
   />
 )}

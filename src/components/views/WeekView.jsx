@@ -17,7 +17,7 @@ export default function WeekView({
   pickerSortBy, setPickerSortBy, pickerSearch, setPickerSearch, candidatesForSlot,
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
-  currency, openShiftsFor, postOpenShift, cancelOpenShift,
+  currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment,
   s, t,
 }){
   // Ticking "now" marker for the day-isolated Gantt view — only matters
@@ -34,6 +34,14 @@ export default function WeekView({
   // grid this dense still reads as separate day "cards" rather than one flat
   // sheet. Only one column at a time, so a single piece of state is enough.
   const [hoverDay,setHoverDay]=useState(null);
+  // Drag-to-move state. dragSrc is the assignment currently being dragged
+  // ({day,blockId,idx,empId}); dropKey is whichever slot is under the cursor
+  // right now, purely for the highlight. Both cleared on drop/dragend so a
+  // cancelled drag (Esc, or released over nothing) leaves no stale
+  // highlight behind.
+  const [dragSrc,setDragSrc]=useState(null);
+  const [dropKey,setDropKey]=useState(null);
+  const endDrag=()=>{setDragSrc(null);setDropKey(null);};
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -236,6 +244,12 @@ export default function WeekView({
         <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>{t('week.managerEnforced')}</span>
       </div>
       {!isCollapsed&&<div style={{overflowX:'auto'}}>
+        {/* Drag-to-move isn't self-evident, so say it once per block rather
+            than leaving people to discover it by accident. Only shown when
+            there's actually someone to drag. */}
+        {dropAssignment&&!effectiveDay&&blocks.length>0&&(
+          <div style={{fontSize:10,color:T.text3,padding:'6px 20px 0'}}>{t('week.dragToMove')}</div>
+        )}
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
@@ -256,13 +270,40 @@ export default function WeekView({
                   // separate day "cards" side by side instead of one flat
                   // sheet of cells.
                   const dayHover=hoverDay===day;
-                  return(<td key={day} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:dayHover?T.surfaceWarm:T.surface,boxShadow:dayHover?`inset 0 0 0 1px ${T.border}`:'none',transition:'background 0.12s'}}>
+                  // Dropping onto empty space in this cell moves whoever is
+                  // being dragged into this role/day/block. Dropping onto a
+                  // person instead swaps the two (handled per-card below,
+                  // which stops propagation so it doesn't also fire this).
+                  const cellKey=`${day}|${block.id}|${role}`;
+                  const isDropCell=!!dragSrc&&dropKey===cellKey;
+                  const onCellDragOver=e=>{ if(!dragSrc)return; e.preventDefault(); e.dataTransfer.dropEffect='move'; if(dropKey!==cellKey)setDropKey(cellKey); };
+                  const onCellDrop=e=>{ if(!dragSrc)return; e.preventDefault(); dropAssignment&&dropAssignment(dragSrc,{day,blockId:block.id,role}); endDrag(); };
+                  return(<td key={day} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)}
+                    onDragOver={onCellDragOver} onDrop={onCellDrop}
+                    onDragLeave={()=>{if(dropKey===cellKey)setDropKey(null);}}
+                    style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:dayHover?`inset 0 0 0 1px ${T.border}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{
                         const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;
                         const clocked=a.noShow||a.actualStart||a.actualEnd;
                         const statusInfo=clocked?{text:a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`,tone:a.noShow?'bad':'good'}:null;
                         const onClick=()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}};
+                        // Drag handlers live on a wrapper rather than on
+                        // EmpChip/EmpCard themselves — those render a
+                        // <button>, and a draggable button swallows the drag
+                        // in some browsers. The wrapper also gives the
+                        // swap-target highlight something to sit on.
+                        const meKey=`${day}|${block.id}|${realIdx}`;
+                        const isBeingDragged=dragSrc&&dragSrc.day===day&&dragSrc.blockId===block.id&&dragSrc.idx===realIdx;
+                        const isSwapTarget=!!dragSrc&&!isBeingDragged&&dropKey===meKey;
+                        const dragProps={
+                          draggable:!!dropAssignment,
+                          onDragStart:e=>{ setDragSrc({day,blockId:block.id,idx:realIdx,empId:a.empId}); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',a.empId||''); },
+                          onDragEnd:endDrag,
+                          onDragOver:e=>{ if(!dragSrc||isBeingDragged)return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect='move'; if(dropKey!==meKey)setDropKey(meKey); },
+                          onDrop:e=>{ if(!dragSrc)return; e.preventDefault(); e.stopPropagation(); if(!isBeingDragged&&dropAssignment)dropAssignment(dragSrc,{day,blockId:block.id,role,idx:realIdx}); endDrag(); },
+                          style:{opacity:isBeingDragged?0.35:1,borderRadius:9,cursor:dropAssignment?'grab':'default',boxShadow:isSwapTarget?`0 0 0 2px ${T.accent}`:'none',transition:'opacity 0.12s,box-shadow 0.12s'},
+                        };
                         // Isolated-day view keeps the compact chip (it lays
                         // people out in a horizontal row, where a full-width
                         // card would look wrong); the 7-day grid uses the
@@ -270,17 +311,19 @@ export default function WeekView({
                         // clocked status inline instead of as loose text
                         // hanging under a pill.
                         if(effectiveDay) return(
-                          <div key={idx}>
+                          <div key={idx} {...dragProps}>
                             <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}/>
                             <div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>
                             {statusInfo&&<div style={{fontSize:9,color:statusInfo.tone==='bad'?T.danger:T.success,marginLeft:2,marginTop:1}}>{statusInfo.text}</div>}
                           </div>
                         );
                         return(
-                          <EmpCard key={idx} emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}
-                            title={emp?.name||a.name}
-                            time={`${a.start||block.start}–${a.end||block.end}`}
-                            status={statusInfo}/>
+                          <div key={idx} {...dragProps}>
+                            <EmpCard emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}
+                              title={emp?.name||a.name}
+                              time={`${a.start||block.start}–${a.end||block.end}`}
+                              status={statusInfo}/>
+                          </div>
                         );
                       })}
                       {/* Open shifts posted for this exact slot — a shift
@@ -346,21 +389,29 @@ export default function WeekView({
                         ,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const noAvail=gap>0&&!isTarget&&candidatesForSlot(day,block.id,role).available.length===0;
-                        // An unfilled slot can either be filled directly (the
-                        // "-N short" button opens the staff picker) or thrown
-                        // open to the team — the second button posts it as an
-                        // open shift anyone eligible can claim. Only offered
-                        // when there isn't already one posted for this slot,
-                        // and never mid-move, when the whole cell means
-                        // "drop here" instead.
+                        // A slot can always be thrown open to the team, not
+                        // just when it's short — a fully-staffed day might
+                        // still want an extra pair of hands, and there's no
+                        // reason "post an open shift" should require first
+                        // creating a gap. Suppressed only when one is already
+                        // posted for this exact slot, or mid-move, when the
+                        // whole cell means "drop here" instead.
                         const alreadyOpen=openShiftsFor?openShiftsFor(day,block.id,role).length>0:false;
+                        const canPostOpen=postOpenShift&&!selected&&!alreadyOpen;
+                        const openBtn=(label)=><button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{label}</button>;
                         if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
-                          {postOpenShift&&!selected&&!alreadyOpen&&<button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{t('open.post')}</button>}
+                          {canPostOpen&&openBtn(t('open.post'))}
                           {picker}
                         </div>);
-                        return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
+                        return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexWrap:'wrap',gap:3,alignItems:'center'}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 8px',borderRadius:999,fontSize:10,fontWeight:500,lineHeight:1.6,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit',whiteSpace:'nowrap'}}>{isTarget?t('week.moveHere'):`+ ${t('common.add')}`}</button>
+                          {/* Short label here — a fully-staffed cell is the
+                              common case, so this button appears in most
+                              cells and the full "Post as open shift" wording
+                              would dominate the grid. Full text is the
+                              tooltip. */}
+                          {canPostOpen&&openBtn(t('open.postShort'))}
                           {picker}
                         </div>);
                       })()}

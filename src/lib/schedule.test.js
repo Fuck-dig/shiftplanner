@@ -10,6 +10,7 @@ import {
   dayCoverage,
   hasRestConflict,
   pruneOrphanedAssignments,
+  applyAssignmentDrop,
   WEEKS_PER_MONTH,
 } from './schedule';
 
@@ -318,5 +319,66 @@ describe('pruneOrphanedAssignments', () => {
 
   it('handles an empty schedules object', () => {
     expect(pruneOrphanedAssignments({}, ['alive-1'])).toEqual({ schedules: {}, removed: 0 });
+  });
+});
+
+describe('applyAssignmentDrop', () => {
+  // Drag-and-drop reassignment. The invariant that actually matters: nobody
+  // is duplicated and nobody vanishes — a move keeps the headcount the same
+  // across the whole schedule, and a swap keeps both people present.
+  const base = () => ({
+    Mon: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }, { empId: 'b', name: 'Bo', role: 'Manager' }], dinner: [] },
+    Tue: { lunch: [{ empId: 'c', name: 'Cy', role: 'Kitchen' }], dinner: [] },
+  });
+  const countPeople = sch => Object.values(sch).flatMap(day => Object.values(day).flat()).length;
+
+  it('moves someone to another day, adopting the destination role', () => {
+    const out = applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Tue', blockId: 'lunch', role: 'Kitchen' });
+    expect(out.Mon.lunch.map(a => a.empId)).toEqual(['b']);
+    expect(out.Tue.lunch.map(a => a.empId)).toEqual(['c', 'a']);
+    expect(out.Tue.lunch[1].role).toBe('Kitchen'); // took the destination's role
+    expect(countPeople(out)).toBe(countPeople(base())); // nobody gained or lost
+  });
+
+  it('moves someone to a different block on the same day', () => {
+    const out = applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 1 }, { day: 'Mon', blockId: 'dinner', role: 'Manager' });
+    expect(out.Mon.lunch.map(a => a.empId)).toEqual(['a']);
+    expect(out.Mon.dinner.map(a => a.empId)).toEqual(['b']);
+    expect(countPeople(out)).toBe(countPeople(base()));
+  });
+
+  it('swaps two people when dropped onto an occupied slot, exchanging roles', () => {
+    const out = applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Tue', blockId: 'lunch', role: 'Kitchen', idx: 0 });
+    expect(out.Mon.lunch[0].empId).toBe('c');
+    expect(out.Mon.lunch[0].role).toBe('Waiter');  // c takes the slot a vacated
+    expect(out.Tue.lunch[0].empId).toBe('a');
+    expect(out.Tue.lunch[0].role).toBe('Kitchen'); // a takes the slot c vacated
+    expect(countPeople(out)).toBe(countPeople(base()));
+  });
+
+  it('preserves custom times and clocked data on a moved assignment', () => {
+    const sch = base();
+    sch.Mon.lunch[0] = { ...sch.Mon.lunch[0], start: '11:00', end: '15:00', actualStart: '11:05' };
+    const out = applyAssignmentDrop(sch, { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Tue', blockId: 'dinner', role: 'Waiter' });
+    expect(out.Tue.dinner[0]).toMatchObject({ empId: 'a', start: '11:00', end: '15:00', actualStart: '11:05' });
+  });
+
+  it('returns null when dropped on itself', () => {
+    expect(applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'lunch', role: 'Waiter', idx: 0 })).toBeNull();
+  });
+
+  it('returns null for a stale source index rather than corrupting the schedule', () => {
+    expect(applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 9 }, { day: 'Tue', blockId: 'lunch', role: 'Kitchen' })).toBeNull();
+  });
+
+  it('returns null for an unknown destination day or a stale swap target', () => {
+    expect(applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Sat', blockId: 'lunch', role: 'Waiter' })).toBeNull();
+    expect(applyAssignmentDrop(base(), { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Tue', blockId: 'lunch', role: 'Kitchen', idx: 7 })).toBeNull();
+  });
+
+  it('does not mutate the schedule it was given', () => {
+    const sch = base();
+    applyAssignmentDrop(sch, { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Tue', blockId: 'lunch', role: 'Kitchen' });
+    expect(sch.Mon.lunch.map(a => a.empId)).toEqual(['a', 'b']); // original untouched
   });
 });

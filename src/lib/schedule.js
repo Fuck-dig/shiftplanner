@@ -68,6 +68,45 @@ const prio=e=>e.priority??e.salaryPct??100;
 // block, so every view agrees again. Used both right after a delete (so it
 // takes effect immediately) and once on load (to clean up anything a delete
 // from before this existed already left behind).
+// The pure core of drag-and-drop reassignment, kept out of App.jsx so it can
+// actually be tested — getting this wrong duplicates or silently drops
+// somebody's shift, which is the kind of bug you find out about when a person
+// doesn't turn up.
+//
+//   src = {day, blockId, idx}
+//   dst = {day, blockId, role}        -> move into that role's slot
+//   dst = {day, blockId, role, idx}   -> swap with whoever is already there
+//
+// Returns a NEW schedule object, or null when the drop is a no-op or refers
+// to something that isn't there (dropped on itself, stale index after a
+// concurrent edit, unknown day/block). Callers should treat null as "do
+// nothing" rather than as an error.
+//
+// Convention, matching the pre-existing click-to-move behaviour: whoever
+// lands in a slot takes on THAT slot's role. So dropping a waiter onto a
+// manager slot makes them the manager there, and in a swap the two people
+// exchange roles along with positions.
+export function applyAssignmentDrop(schedule, src, dst) {
+  if (!schedule || !src || !dst) return null;
+  if (src.day === dst.day && src.blockId === dst.blockId && src.idx === dst.idx) return null;
+  const ns = JSON.parse(JSON.stringify(schedule));
+  const srcList = ns[src.day]?.[src.blockId];
+  const srcEntry = srcList?.[src.idx];
+  if (!srcEntry) return null;
+  if (dst.idx != null) {
+    const dstList = ns[dst.day]?.[dst.blockId];
+    const dstEntry = dstList?.[dst.idx];
+    if (!dstEntry) return null;
+    srcList[src.idx] = { ...dstEntry, role: srcEntry.role };
+    dstList[dst.idx] = { ...srcEntry, role: dstEntry.role };
+  } else {
+    if (!ns[dst.day]) return null;
+    const moved = srcList.splice(src.idx, 1)[0];
+    ns[dst.day][dst.blockId] = [...(ns[dst.day][dst.blockId] || []), { ...moved, role: dst.role }];
+  }
+  return ns;
+}
+
 export function pruneOrphanedAssignments(schedulesByWeek, validEmpIds) {
   const valid = validEmpIds instanceof Set ? validEmpIds : new Set(validEmpIds);
   let removed = 0;
