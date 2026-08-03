@@ -86,7 +86,11 @@ export default function WeekView({
     const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
-    const ganttSideW=isMobile?76:112,ganttRowH=isMobile?20:24;
+    // Row height was tight enough (20/24px) that the time label inside a bar
+    // was the smallest text on the page — bumped taller while keeping the
+    // same gap between rows, so the view stays just as compact (same number
+    // of people visible per screen) but each bar itself reads more clearly.
+    const ganttSideW=isMobile?76:112,ganttRowH=isMobile?28:34;
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
@@ -103,7 +107,7 @@ export default function WeekView({
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:5,fontSize:isMobile?11:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:7,height:7,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:isMobile?12:13,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -155,7 +159,7 @@ export default function WeekView({
                     // ("No se presentó" is the longest case across locales),
                     // instead of letting the bar and its text both collapse
                     // to an unreadable dot.
-                    const barMinPx=isMobile?84:104;
+                    const barMinPx=isMobile?92:116;
                     const label=dragging?`${minToHHMM(rawStart)}–${minToHHMM(rawEnd)}`
                       :isNoShow?t('emp.noShow')
                       :hasActual?`${realA.actualStart||seg.startStr}–${realA.actualEnd||'…'}${actOngoing?' ●':' ✓'}`
@@ -179,7 +183,7 @@ export default function WeekView({
                     return(<Fragment key={si}>
                       {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${rs.dot}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
                       <div onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`max(${widthPct}%, ${barMinPx}px)`,top:0,bottom:0,background:isDark()?barColor+'40':barColor+'30',border:`1.5px solid ${barColor}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
-                        <span style={{fontSize:isMobile?9:10,fontWeight:600,color:isDark()?barColor:isNoShow?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                        <span style={{fontSize:isMobile?11:13,fontWeight:600,color:isDark()?barColor:isNoShow?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                       </div>
