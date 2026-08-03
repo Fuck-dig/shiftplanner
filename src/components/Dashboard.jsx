@@ -66,6 +66,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const serverSchedRef               = useRef({});
   // Change-history panel: null = closed, [] = open and loading/empty.
   const [auditLog,setAuditLog]       = useState(null);
+  // Last reversible schedule edit: {id, weekKey, prevWeek, label}. Holds the
+  // week's PREVIOUS entry so undo can put exactly that back. Cleared on a
+  // timer, so it can't sit around offering to undo something from ten minutes
+  // ago that later edits have since built on.
+  const [undoEntry,setUndoEntry]     = useState(null);
+  const undoTimerRef                 = useRef(null);
+  const undoSeqRef                   = useRef(0); // monotonic id; avoids Date.now()/Math.random() during a handler
   const [timeOff,setTORaw]           = useState([]);
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
   const [unseenMessageReplies,setUnseenMessageReplies]=useState([]); // sent messages with a new reply the manager hasn't opened yet — polled
@@ -600,6 +607,35 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const empName=id=>employees.find(e=>e.id===id)?.name||'?';
   const blockName=id=>blocks.find(b=>b.id===id)?.name||'?';
 
+  // Call BEFORE mutating: captures the current week so the change can be put
+  // back. Deliberately scoped to the one affected week rather than snapshotting
+  // the whole map — restoring everything would also revert a different week a
+  // colleague edited in the meantime, which is a worse outcome than the misclick
+  // being undone.
+  const armUndo=(labelKey,vars={})=>{
+    const prevWeek=schedules[wKey];
+    const id=++undoSeqRef.current;
+    setUndoEntry({id,weekKey:wKey,prevWeek,label:t(labelKey,vars)});
+    clearTimeout(undoTimerRef.current);
+    undoTimerRef.current=setTimeout(()=>setUndoEntry(u=>(u&&u.id===id)?null:u),8000);
+  };
+  const runUndo=()=>{
+    if(!undoEntry)return;
+    const {weekKey:k,prevWeek}=undoEntry;
+    setSchedules(p=>{
+      const n={...p};
+      // prevWeek undefined means the week didn't exist before this edit
+      // created it — undoing that removes it again rather than writing
+      // `undefined` into the map.
+      if(prevWeek===undefined) delete n[k]; else n[k]=prevWeek;
+      return n;
+    });
+    setUndoEntry(null);
+    clearTimeout(undoTimerRef.current);
+    setSelected(null);
+    audit('undone',{},k);
+  };
+
   const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();audit('confirmed');};
   const unconfirmSchedule =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));audit('unconfirmed');};
   const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);audit('week_deleted');};
@@ -662,7 +698,12 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const src=ns[selected.day][selected.blockId],dst=ns[day][blockId];
     const se=src[selected.idx],de=dst[idx];
     src[selected.idx]={...de,role:se.role};dst[idx]={...se,role:de.role};
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+    armUndo('undo.swapped',{who:empName(se.empId)});
+    // Swapping by click marks the week a draft again, matching the drag path
+    // and every other edit — this was the last one that silently left a
+    // published week looking published after changing it.
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setSelected(null);
+    audit('swapped',{who:empName(se.empId),with:empName(de.empId),day,block:blockName(blockId)});
   };
 
   // Moving someone into an empty slot by CLICK. Now goes through the same
@@ -677,8 +718,10 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const handleEmptySlotClick=(day,blockId,role)=>{
     if(!selected||!schedule)return;
     const ns=applyAssignmentDrop(schedule,{day:selected.day,blockId:selected.blockId,idx:selected.idx},{day,blockId,role});
+    const movedName=empName(selected.empId);
     setSelected(null);
     if(!ns)return;
+    armUndo('undo.moved',{who:movedName});
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
   };
 
@@ -707,6 +750,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // already labels people with, so the drag and the picker can never
   // disagree about what counts as a problem.
   const applyDrop=(src,dst,ns)=>{
+    armUndo(dst.idx!=null?'undo.swapped':'undo.moved',{who:empName(schedule?.[src.day]?.[src.blockId]?.[src.idx]?.empId)});
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     setSelected(null);
     setPendingDrop(null);
@@ -817,6 +861,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // to name in the log, and "someone was removed" isn't much of an answer.
     const gone=schedule[day]?.[blockId]?.[idx];
     ns[day][blockId].splice(idx,1);
+    armUndo('undo.removed',{who:empName(gone?.empId)});
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     if(selected&&selected.day===day&&selected.blockId===blockId&&selected.idx===idx)setSelected(null);
     audit('removed',{who:empName(gone?.empId),day,block:blockName(blockId),role:gone?.role});
@@ -837,6 +882,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setPickerSortBy('name');
     setPickerSearch('');
   };
+  // Same scroll-lock false positive as closeEditSlot — `document` isn't
+  // component state, and this runs from a click, not during render.
+  // eslint-disable-next-line react-hooks/immutability
   const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); setPickerSearch(''); };
 
   // assignmentHours (assignments can carry an optional per-person start/end
@@ -978,6 +1026,11 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // guard so the invariant holds no matter which path calls this.
     if((ns[day]?.[blockId]||[]).some(a=>a.empId===emp.id)){setOpenPicker(null);return;}
     ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
+    // armUndo BEFORE setSchedules, like every other edit path. It reads
+    // `schedules` to capture the week's previous state, and while that would
+    // still be the pre-change value afterwards (state doesn't update until the
+    // next render), relying on that is a trap for whoever edits this next.
+    armUndo('undo.assigned',{who:emp.name});
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
     audit('assigned',{who:emp.name,day,block:blockName(blockId),role});
   };
@@ -1605,6 +1658,18 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     somewhere that trips one of the availability/hours/rest checks. The move
     is already computed at this point (pendingDrop.ns); confirming just
     commits it, cancelling discards it untouched. */}
+{/* UNDO TOAST — bottom-CENTRE deliberately: the move/swap "picked up
+    someone" card already occupies bottom-left, and these two can be on
+    screen together. Auto-dismisses after 8s (see armUndo) so it can't
+    linger offering to revert something later edits have built on. */}
+{undoEntry&&createPortal(
+  <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',zIndex:260,display:'flex',alignItems:'center',gap:12,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:'10px 14px',boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)',fontFamily:"'Hanken Grotesk',sans-serif",maxWidth:'calc(100vw - 32px)'}}>
+    <span style={{fontSize:12,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{undoEntry.label}</span>
+    <Btn small variant="secondary" onClick={runUndo}>{t('undo.action')}</Btn>
+    <button onClick={()=>setUndoEntry(null)} title={t('common.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>
+  </div>
+,document.body)}
+
 {/* CHANGE HISTORY — append-only audit of who changed this week's schedule.
     Read-only by design: the log exists to be trusted, so nothing here can
     edit or clear it (there are no update/delete RLS policies either). */}
