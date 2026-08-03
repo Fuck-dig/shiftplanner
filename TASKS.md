@@ -8,7 +8,6 @@
 
 - [ ] **Re-test archive now the migration is applied (#7, #8)** - severity 4/10 - archive/restore never persisted before because employees.archived didn't exist, which is the whole explanation for "still on the schedule after reload" and "still in the picker / costs". Worth re-testing: archive someone, reload, confirm they're gone from the picker, auto-generate and Team rows, and that their PAST shifts still render with their real name and colour.
 - [ ] **#4 Undo doesn't survive a reload — needs reproducing** - severity 5/10 - reported but not yet reproduced. The logic looks right (undo writes through the same debounced save as any edit), so I don't want to "fix" it blind. Useful detail if it recurs: how long after the edit you clicked Undo, and whether the change came back immediately on reload or only later.
-- [ ] **#10 A shift on a day someone is on leave** - severity 3/10 - Team view currently REPLACES the cell with "Leave", so a shift on that day is hidden entirely rather than flagged as the conflict it is. Needs a decision: show both (shift + leave marker) so the clash is visible, or keep hiding it.
 - [ ] **#11 Gradient/clipping artefacts around the sticky bars** - severity 2/10 - the fixed-attachment radial gradient on the sticky headers clips oddly against borders, most visibly on the right edge of the nav. Cosmetic but scruffy.
 
 
@@ -22,6 +21,8 @@
 - [ ] **Onboarding walkthrough / tutorial** - severity 3/10 - William's idea, explicitly deferred - a guided first-run tour once someone signs up, not scoped or started yet
 
 ## Done
+
+- [x] ~~Show the leave card AND the shift when they clash (#10)~~ (2026-08-03) - severity 3/10 - a leave card REPLACED the whole cell, so a shift on a day someone had booked off was hidden entirely - the one situation where you most need to see both. Now the leave card and the shift render together, with the shift outlined in the warning colour and a tooltip naming the clash. Applied to the employee's own grid too, so staff see it about themselves rather than only the manager seeing it. The empty "+"/"—" placeholder no longer appears underneath a leave card, which would have implied the day was free.
 
 - [x] ~~Archiving offers to clear upcoming shifts (#7); post open shifts from Team view (#5)~~ (2026-08-03) - severity 4/10 - archiving kept a person's FUTURE shifts on the rota, which isn't "preserving history", it's a gap the team discovers on the day. It now offers to clear what's still ahead while never touching the past — that split is the entire point of archiving over deleting. New removeUpcomingAssignments in lib/schedule.js (4 tests) does the date maths, including treating today itself as upcoming and returning null when there's nothing to clear so it doesn't prompt pointlessly. Separately, Team view can now post open shifts: its rows are PEOPLE, so unlike the Week grid there's no role/block to infer, and it gets a dedicated open-shifts row that asks which block and role. Also confirmed the reported archive failures (#7/#8) were simply the migration not being applied — the flag had nowhere to persist to.
 

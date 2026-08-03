@@ -715,11 +715,16 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           const date=weekDates[di],onTO=isOnTimeOff(emp.id,date,timeOff);
           const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
           return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72}}>
-            {onTO?(
+            {/* Leave and shifts shown together rather than either/or — same as
+                the manager's Team grid. Someone rostered on a day they booked
+                off needs to SEE that, not have the shift hidden behind a
+                leave card. */}
+            {onTO&&(
               <div style={{padding:'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                 <div style={{fontSize:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
               </div>
-            ):assignedBlocks.length>0?assignedBlocks.map(b=>{
+            )}
+            {assignedBlocks.length>0?assignedBlocks.map(b=>{
               const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
               const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
               const pendingSwap=isMe&&swaps.find(sw=>sw.weekKey===wKey&&sw.day===day&&sw.blockId===b.id&&sw.fromEmpId===myId&&(sw.status==='open'||sw.status==='claimed'));
@@ -758,7 +763,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                   return <button onClick={()=>openRequestShift(emp,day,b.id,b.name,shiftEntry.role)} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:500,background:'transparent',border:`1px solid ${p.dot}55`,color:isDark()?p.dot:p.text,cursor:'pointer',fontFamily:'inherit'}}>{t('swap.requestShift')}</button>;
                 })()}
               </div>
-            );}):(
+            );}):onTO?null:(
               <div style={{height:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
                 <span style={{fontSize:16,color:T.text3}}>—</span>
               </div>
