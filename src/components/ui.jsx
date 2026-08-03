@@ -15,7 +15,10 @@ export function GripDots({title}){
   </span>;
 }
 
-export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:isDark()?s.dot+'22':s.bg,color:isDark()?s.dot:s.text,border:`1px solid ${isDark()?s.dot+'55':s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
+// maxWidth + ellipsis so a long custom role name shrinks to fit its column
+// instead of pushing past it — roles are user-entered free text, so there's no
+// length to rely on.
+export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; return <span title={role} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:isDark()?s.dot+'22':s.bg,color:isDark()?s.dot:s.text,border:`1px solid ${isDark()?s.dot+'55':s.border}`,maxWidth:'100%',boxSizing:'border-box'}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/><span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{role}</span></span>; }
 
 // The single way a person is rendered anywhere in a schedule — day cells, the
 // isolated-day row, the on-leave strip. This replaced an older pill-shaped

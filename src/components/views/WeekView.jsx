@@ -264,9 +264,9 @@ export default function WeekView({
             relative to the others. minWidth rises with it so each fixed
             column still has room for a card — narrower viewports scroll
             horizontally, which the wrapper already handles. */}
-        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:930}}>
+        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:972}}>
           <thead><tr>
-            <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
+            <th style={{width:132,textAlign:'left',padding:'10px 14px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
             {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.accent+'12':T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
@@ -275,7 +275,7 @@ export default function WeekView({
               if(!anyDay)return null;
               const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
               return(<tr key={role} style={{borderBottom:`1px solid ${T.border}`}}>
-                <td style={{padding:'10px 20px',verticalAlign:'top',background:T.surface}}><RoleBadge role={role} rs={rs}/></td>
+                <td style={{padding:'10px 14px',verticalAlign:'top',background:T.surface,overflow:'hidden'}}><RoleBadge role={role} rs={rs}/></td>
                 {filterDays.map(day=>{
                   const allA=schedule[day]?.[block.id]||[],assigned=allA.filter(a=>a.role===role),req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selectedRoles.includes(role)&&selected.day!==day;
                   // Hovering anywhere in a day's column (not just its header)
