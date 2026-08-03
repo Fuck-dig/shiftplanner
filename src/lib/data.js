@@ -22,6 +22,7 @@ const empToRow = (orgId, e) => ({
   availability:    e.availability || {},
   pal_idx:         e.palIdx ?? 0,
   email_notifications: e.emailNotifications !== false,
+  archived:        e.archived === true,
   pin:             (e.pin||'').trim() || null,
   push_prefs:      e.pushPrefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
@@ -38,6 +39,7 @@ const empFromRow = (r) => ({
   availability:   r.availability || {},
   palIdx:         r.pal_idx ?? 0,
   emailNotifications: r.email_notifications ?? true,
+  archived:       r.archived === true,
   pin:            r.pin || '',
   pushPrefs:      r.push_prefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });

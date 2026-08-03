@@ -222,3 +222,38 @@ describe('syncSchedules', () => {
     expect(opsFor('schedules', 'delete')[0].filters.some(f => f.op === 'not')).toBe(true);
   });
 });
+
+describe('archived employees', () => {
+  it('reads the archived flag back off the row', async () => {
+    state.data.employees = [
+      { id: 'e1', name: 'Ann', roles: ['Waiter'], archived: true },
+      { id: 'e2', name: 'Bo',  roles: ['Waiter'] },
+    ];
+    state.data.employee_wages = [];
+    const [ann, bo] = await fetchEmployees('org1');
+    expect(ann.archived).toBe(true);
+    // Absent column must read as false, not undefined — the whole app branches
+    // on this, and `undefined` would be falsy by luck rather than by contract.
+    expect(bo.archived).toBe(false);
+  });
+
+  it('writes the archived flag back', async () => {
+    await syncEmployees('org1', [
+      { id: 'e1', name: 'Ann', roles: ['Waiter'], archived: true },
+      { id: 'e2', name: 'Bo',  roles: ['Waiter'] },
+    ]);
+    const rows = opsFor('employees', 'upsert')[0].rows;
+    expect(rows.find(r => r.id === 'e1').archived).toBe(true);
+    expect(rows.find(r => r.id === 'e2').archived).toBe(false);
+  });
+
+  it('still upserts an archived employee rather than dropping them from the sync', async () => {
+    // The critical one. syncEmployees DELETES anyone missing from the array it
+    // gets, so if archived people were ever filtered out before this call,
+    // archiving someone would delete them — and their shift history with them,
+    // which is the exact opposite of what archiving is for.
+    await syncEmployees('org1', [{ id: 'e1', name: 'Ann', roles: ['Waiter'], archived: true }]);
+    const del = opsFor('employees', 'delete')[0];
+    expect(del.filters).toContainEqual({ op: 'not', col: 'id', operator: 'in', val: '(e1)' });
+  });
+});

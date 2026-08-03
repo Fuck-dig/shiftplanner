@@ -14,11 +14,12 @@ const fmtSize=(bytes)=>{
 export default function EmployeesView({
   employees, allRoles, roleStyles,
   expandedEmp, setExpandedEmp,
-  updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp,
+  updateEmp, updateAvail, toggleDay, applyTemplate, duplicateEmp, removeEmp, archiveEmp,
   showAddEmp, setShowAddEmp, newEmp, setNewEmp, addEmployee,
   onAddShift, onOpenCompose, onOpenKiosk, myId,
   orgId, orgName, isOwner, uploaderLabel, currency, s, t,
 }){
+  const [showArchived,setShowArchived]=useState(false);
   // Documents are manager-only (see 20260725120000_employee_documents.sql)
   // and only ever needed for whichever single employee panel is expanded —
   // expandedEmp is one id, not a set, so a flat per-id cache is enough
@@ -71,7 +72,7 @@ export default function EmployeesView({
     </div>
   )}
   <div style={{display:'flex',flexDirection:'column',gap:10}}>
-    {employees.map(emp=>(<div key={emp.id} style={s.card}>
+    {employees.filter(e=>!e.archived).map(emp=>(<div key={emp.id} style={s.card}>
       <div style={{display:'flex',alignItems:'center',gap:12}}>
         <Avatar emp={emp} size={40}/>
         <div style={{flex:1}}>
@@ -83,7 +84,12 @@ export default function EmployeesView({
           {emp.id!==myId && <Btn onClick={()=>onOpenCompose([emp.id])} variant="ghost" small>{'✉ '+t('msg.message')}</Btn>}
           <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>
           <Btn onClick={()=>setExpandedEmp(expandedEmp===emp.id?null:emp.id)} variant={expandedEmp===emp.id?'secondary':'ghost'} small>{expandedEmp===emp.id?t('common.close'):t('common.edit')}</Btn>
-          <Btn onClick={()=>removeEmp(emp.id)} variant="danger" small>✕</Btn>
+          {/* Archive is the default way to remove someone: they leave every
+              scheduling surface but keep their history. Delete still exists
+              for a genuinely mistaken row and warns that it destroys past
+              shifts, which archiving doesn't. */}
+          {archiveEmp && <Btn onClick={()=>archiveEmp(emp.id,true)} variant="secondary" small>{t('emp.archive')}</Btn>}
+          <Btn onClick={()=>{ if(confirm(t('emp.deleteConfirm',{name:emp.name}))) removeEmp(emp.id); }} variant="danger" small>✕</Btn>
         </div>
       </div>
       {expandedEmp===emp.id&&(<div style={{marginTop:18,paddingTop:18,borderTop:`1px solid ${T.border}`}}>
@@ -167,6 +173,38 @@ export default function EmployeesView({
       <div style={{display:'flex',gap:8}}><Btn onClick={addEmployee}>{t('emp.addEmployee')}</Btn><Btn onClick={()=>setShowAddEmp(false)} variant="ghost">{t('common.cancel')}</Btn></div>
     </div>)}
     {!showAddEmp&&<Btn onClick={()=>setShowAddEmp(true)} variant="secondary">{t('emp.addEmployeeBtn')}</Btn>}
+
+    {/* Former staff. Compact and collapsed by default — they're kept for their
+        history, not for day-to-day use, so they shouldn't compete with the
+        active roster for attention. Restoring is one click, because "they're
+        back for the summer" is a real thing. */}
+    {(() => {
+      const archived = employees.filter(e => e.archived);
+      if (!archived.length) return null;
+      return (
+        <div style={{...s.card, marginTop: 4}}>
+          <button onClick={()=>setShowArchived(v=>!v)} style={{display:'flex',alignItems:'center',gap:8,width:'100%',background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',textAlign:'left'}}>
+            <span style={{fontSize:10,color:T.text3,transform:showArchived?'none':'rotate(-90deg)',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
+            <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('emp.archivedHeading',{n:archived.length})}</span>
+          </button>
+          {showArchived && (
+            <div style={{display:'flex',flexDirection:'column',gap:6,marginTop:12}}>
+              {archived.map(emp=>(
+                <div key={emp.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:9,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                  <span style={{opacity:0.55,display:'flex'}}><Avatar emp={emp} size={28}/></span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:500,color:T.text2,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div>
+                    <div style={{fontSize:10,color:T.text3}}>{t('emp.archivedNote')}</div>
+                  </div>
+                  {archiveEmp && <Btn onClick={()=>archiveEmp(emp.id,false)} variant="secondary" small>{t('emp.restore')}</Btn>}
+                  <Btn onClick={()=>{ if(confirm(t('emp.deleteConfirm',{name:emp.name}))) removeEmp(emp.id); }} variant="danger" small>✕</Btn>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    })()}
   </div>
 
   <TeamAccess orgId={orgId} orgName={orgName} isOwner={isOwner} s={s} t={t}/>

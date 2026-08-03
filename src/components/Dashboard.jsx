@@ -490,7 +490,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const confirmed  =weekData?.confirmed||false;
   const monthOff   =getMonthOffsets(calMode==='month'?displayMonth:weekOffset);
   const pendingCount=timeOff.filter(t=>t.status==='Pending').length;
-  const offThisWeek=employees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
+  // Everyone still on the team. Archived people stay in `employees` on purpose
+  // — historical assignments reference them by id, so every name lookup, past
+  // week's cost, and the orphaned-assignment cleanup needs them present — but
+  // they must never appear in anything FORWARD-looking. Use activeEmployees
+  // for scheduling; use employees for history.
+  const activeEmployees=employees.filter(e=>!e.archived);
+  const offThisWeek=activeEmployees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
   const shiftDay=(delta)=>{
     const cur=weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
@@ -507,7 +513,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setGenerating(true);setSelected(null);
     setTimeout(()=>{
       const wd=getWeekDates(forOff);
-      const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
+      const{schedule:s,total,noMgr}=buildSchedule(activeEmployees,blocks,wd,timeOff,allRoles);
       const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
       const warnings=noMgr.map(({day,block})=>'! '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
       setSchedules(p=>({...p,[weekKey(forOff)]:{schedule:s,notes,warnings}}));
@@ -521,7 +527,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       const updates={};
       getMonthOffsets(displayMonth).forEach(off=>{
         const wd=getWeekDates(off);
-        const{schedule:s,total,noMgr}=buildSchedule(employees,blocks,wd,timeOff,allRoles);
+        const{schedule:s,total,noMgr}=buildSchedule(activeEmployees,blocks,wd,timeOff,allRoles);
         const notes=noMgr.length?t('sched.notesGaps',{total,n:noMgr.length}):t('sched.notesOk',{total});
         const warnings=noMgr.map(({day,block})=>'! '+t('sched.noMgr',{day:`${t('day.'+day)} ${fmt(wd[DAYS.indexOf(day)])}`,block}));
         updates[weekKey(off)]={schedule:s,notes,warnings};
@@ -1013,9 +1019,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       if(!coversBlock(e.availability[day],block))r.push('avail');
       return r;
     };
-    const recommended=employees.filter(e=>reasonsFor(e).length===0).sort((a,b)=>(a.priority||100)-(b.priority||100));
+    const recommended=activeEmployees.filter(e=>reasonsFor(e).length===0).sort((a,b)=>(a.priority||100)-(b.priority||100));
     const recommendedIds=new Set(recommended.map(e=>e.id));
-    const everyoneElse=employees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>({...e,_reasons:reasonsFor(e)}));
+    const everyoneElse=activeEmployees.filter(e=>!alreadyHere.has(e.id)&&!recommendedIds.has(e.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(e=>({...e,_reasons:reasonsFor(e)}));
     return{available:recommended,unavailable:everyoneElse};
   };
 
@@ -1152,6 +1158,18 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // and a generic fallback color, which is exactly the kind of "shifts here
   // but not there" mismatch that's confusing to spot. See
   // pruneOrphanedAssignments in lib/schedule.js.
+  // Archive: they stop appearing anywhere you schedule from, but the person
+  // and every shift they ever worked stay put — which is the whole point, since
+  // past hours are what payroll and any later dispute rest on. Reversible.
+  const archiveEmp  =(id,archived=true)=>{
+    setEmployees(p=>p.map(e=>e.id===id?{...e,archived}:e));
+    if(archived&&expandedEmp===id)setExpandedEmp(null);
+  };
+  // Delete: still available, still destructive. Removing the roster row also
+  // strips their assignments (see pruneOrphanedAssignments) — correct for a
+  // mis-typed row, wrong for someone who actually worked, which is what
+  // archiving is for. The UI leads with archive and makes this the deliberate
+  // second choice.
   const removeEmp   =id=>{
     const remainingIds=employees.filter(e=>e.id!==id).map(e=>e.id);
     setEmployees(p=>p.filter(e=>e.id!==id));
@@ -1239,7 +1257,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
         // employee's own "open to anyone" list applies, so nobody gets
         // pinged about a shift their app won't offer them.
         const date=weekDates[DAYS.indexOf(day)];
-        const eligible=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
+        const eligible=activeEmployees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
         const blockName=blocks.find(b=>b.id===blockId)?.name||'';
         // The date goes INSIDE the existing {day} var rather than as a new
         // {date} placeholder — a notification's vars are frozen at send time,
@@ -1906,7 +1924,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   <EmployeesView
     employees={employees} allRoles={allRoles} roleStyles={roleStyles}
     expandedEmp={expandedEmp} setExpandedEmp={setExpandedEmp}
-    updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp}
+    updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp} archiveEmp={archiveEmp}
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
     onAddShift={openShiftModalFor}
     onOpenCompose={openCompose}

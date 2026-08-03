@@ -47,7 +47,11 @@ export default function TeamView({
   // the roster's shape and role grouping intact while you're looking.
   const gq=gridSearch.trim().toLowerCase();
   const matchesSearch=(name)=>!gq||(name||'').toLowerCase().includes(gq);
-  const gridEmployees=employees;
+  // Archived people are excluded from the ROWS (you can't schedule someone who
+  // has left) but deliberately still present in `employees` for lookups — a
+  // shift they worked before leaving must still render with their real name
+  // and colour rather than falling back to a generic card.
+  const gridEmployees=employees.filter(e=>!e.archived);
   const effRoles=new Map(gridEmployees.map(e=>[e.id,effectiveRolesFor(e,schedule,blocks)]));
   const primaryRoleFor=new Map(gridEmployees.map(e=>{
     const eff=effRoles.get(e.id);
