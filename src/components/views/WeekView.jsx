@@ -267,7 +267,14 @@ export default function WeekView({
         <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:972}}>
           <thead><tr>
             <th style={{width:132,textAlign:'left',padding:'10px 14px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.accent+'12':T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{
+              const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;
+              // Today gets a marked header (accent text + a solid underline)
+              // so you can find where you are in the week at a glance. Kept
+              // distinct from the "isolated day" state, which uses a filled
+              // background — the two can be true at once.
+              const isToday=weekDates[i]&&dateToISO(weekDates[i])===dateToISO(now);
+              return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:isToday?700:500,color:isActive||isToday?T.accent:T.text,background:isActive?T.accentLight:isHover?T.accent+'12':T.surfaceWarm,borderBottom:isToday?`2px solid ${T.accent}`:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive||isToday?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
@@ -284,6 +291,11 @@ export default function WeekView({
                   // separate day "cards" side by side instead of one flat
                   // sheet of cells.
                   const dayHover=hoverDay===day;
+                  // Today's column carries a faint tint the whole way down, so
+                  // the header marker doesn't strand itself at the top of a
+                  // long block. Weaker than hover on purpose: hover is a
+                  // response to what you're doing right now and should win.
+                  const dayIsToday=weekDates[DAYS.indexOf(day)]&&dateToISO(weekDates[DAYS.indexOf(day)])===dateToISO(now);
                   // Dropping onto empty space in this cell moves whoever is
                   // being dragged into this role/day/block. Dropping onto a
                   // person instead swaps the two (handled per-card below,
@@ -301,7 +313,7 @@ export default function WeekView({
                     // nested box rather than one highlighted column. The ring
                     // is kept ONLY for an active drop target, where a hard
                     // edge is the point.
-                    style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:'none',transition:'background 0.12s'}}>
+                    style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:dayIsToday?T.accent+'0A':T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{
                         const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;

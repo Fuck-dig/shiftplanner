@@ -953,7 +953,19 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             />
             <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>›</button>
           </div>
-          <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+          {/* Same behaviour as the manager's Today: land on today itself, not
+              merely today's week. Month stays on month — there "today" means
+              the current month, and jumping to a single day would overshoot. */}
+          <button onClick={()=>{
+            const n=new Date();
+            setWeekOffset(0);
+            setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});
+            if(calMode!=='month'){
+              const jsDay=n.getDay();
+              setCalMode('week');
+              setDayFilter(DAYS[jsDay===0?6:jsDay-1]);
+            }
+          }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           {myId && <Btn small variant="ghost" onClick={exportMyScheduleICS}>{t('emp.exportSchedule')}</Btn>}
           {/* Same staff search the manager has, behaving the same way (dim,
