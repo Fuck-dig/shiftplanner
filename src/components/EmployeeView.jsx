@@ -615,6 +615,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     setClaimWarn({swap:sw,reasons});
   };
 
+  // Badge on the Requests tab — only things needing MY action right now, not
+  // a total. A decided time-off request or a claim already waiting on a
+  // manager isn't something I can do anything about, so counting those would
+  // make the badge nag permanently and stop meaning anything.
+  const actionableRequests = myId
+    ? requestsForMe.length + shiftRequestsToApprove.length + openToAnyone.length
+    : 0;
+
   // Extracted from the Team tab's requests panel so the same markup can also
   // sit above the Week view. Open shifts are first-come-first-served, so
   // burying them in one tab means whoever happens to be on the Team tab wins;
@@ -825,8 +833,15 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             Month toggles below), which made the two top-level experiences
             read as differently-designed apps rather than one product. */}
         <div style={{display:'flex',alignItems:'center',height:56,marginRight:isMobile?4:16,flexShrink:0}}>
-          {[['schedule',t('nav.schedule')],['employees',t('sched.directory')],['profile',t('nav.profile')]].map(([k,l])=>{const active=view===k;return(
-            <button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:isMobile?'0 10px':'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:isMobile?12:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{active&&<div style={{position:'absolute',bottom:0,left:isMobile?10:16,right:isMobile?10:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>
+          {/* Requests gets its own tab, same as the manager's — open shifts,
+              swap requests and time off used to be one tall stacked card
+              sitting on top of the schedule, which pushed the actual rota
+              down the page and showed open shifts a third time (they're
+              already a row in the grid below and a section on Week). The
+              count badge is only for things needing YOUR action, so it
+              doesn't nag about requests already decided. */}
+          {[['schedule',t('nav.schedule')],['requests',t('nav.timeoff')],['employees',t('sched.directory')],['profile',t('nav.profile')]].map(([k,l])=>{const active=view===k;const badge=k==='requests'?actionableRequests:0;return(
+            <button key={k} onClick={()=>setView(k)} style={{fontFamily:'inherit',padding:isMobile?'0 10px':'0 16px',height:56,background:'none',border:'none',cursor:'pointer',fontSize:isMobile?12:13,fontWeight:active?500:400,color:active?T.text:T.text2,position:'relative',transition:'color 0.15s',whiteSpace:'nowrap'}}>{l}{badge>0&&<span style={{marginLeft:5,fontSize:10,fontWeight:700,color:'#fff',background:T.accent,borderRadius:999,padding:'1px 6px'}}>{badge}</span>}{active&&<div style={{position:'absolute',bottom:0,left:isMobile?10:16,right:isMobile?10:16,height:2,background:T.accent,borderRadius:'2px 2px 0 0'}}/>}</button>
           );})}
         </div>
         <span style={{marginRight:isMobile?6:10}}><Btn small variant="ghost" onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></span>
@@ -841,6 +856,80 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         <ProfileSettings role={role} myEmp={me} orgId={orgId} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
+      ) : view==='requests' ? (
+        <>
+          {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
+            <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
+              {shiftRequestsToApprove.length>0 && (<div>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYourShifts')}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {shiftRequestsToApprove.map(sw=>{const asker=employees.find(e=>e.id===sw.claimedByEmpId);return(
+                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
+                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.wantsYourShift',{name:asker?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+                      <Btn small onClick={()=>acceptShiftRequest(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
+                      <Btn small variant="ghost" onClick={()=>declineShiftRequest(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
+                    </div>
+                  );})}
+                </div>
+              </div>)}
+              {requestsForMe.length>0 && (<div>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYou')}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {requestsForMe.map(sw=>{const from=employees.find(e=>e.id===sw.fromEmpId);return(
+                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
+                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+                      <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
+                      <Btn small variant="ghost" onClick={()=>declineSwap(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
+                    </div>
+                  );})}
+                </div>
+              </div>)}
+              {openShiftsSection}
+              {myPendingClaimsSection}
+              {myOpenRequests.length>0 && (<div>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myRequests')}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {myOpenRequests.map(sw=>{const to=sw.toEmpId?employees.find(e=>e.id===sw.toEmpId):null,claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;return(
+                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{sw.role} · {t('day.'+sw.day)} · {to?t('swap.requestedTo',{name:to.name}):t('swap.openToAnyone')}</span>
+                      <span style={{fontSize:11,color:sw.status==='claimed'?T.success:T.text3}}>{sw.status==='claimed'?t('swap.statusClaimed',{name:claimant?.name||'?'}):t('swap.statusOpen')}</span>
+                      {sw.status==='open' && <Btn small variant="danger" onClick={()=>cancelSwap(sw)} disabled={swapBusy}>{t('swap.cancel')}</Btn>}
+                    </div>
+                  );})}
+                </div>
+              </div>)}
+              {myShiftRequests.length>0 && (<div>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myShiftRequests')}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {myShiftRequests.map(sw=>{const owner=employees.find(e=>e.id===sw.fromEmpId);return(
+                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.askedFor',{name:owner?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+                      <span style={{fontSize:11,color:T.text3}}>{t('swap.requestSent')}</span>
+                    </div>
+                  );})}
+                </div>
+              </div>)}
+              {myTimeOff.length>0 && (<div>
+                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('to.yourRequests')}</div>
+                <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                  {myTimeOff.map(to=>(
+                    <div key={to.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{to.type} · {fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
+                      <span style={{fontSize:11,color:to.status==='Approved'?T.success:to.status==='Rejected'?T.danger:T.text3}}>{t('to.'+to.status.toLowerCase())}</span>
+                      {to.status==='Pending' && <Btn small variant="danger" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
+                    </div>
+                  ))}
+                </div>
+              </div>)}
+            </div>
+          )}
+          {myId && !(requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
+            <div style={{...s.card,padding:'40px 24px',textAlign:'center',fontSize:13,color:T.text3}}>{t('notif.empty')}</div>
+          )}
+          {/* Filing new time off lives here too — it's a request, so this is
+              where someone looks for it. */}
+          <div style={{marginTop:12}}><Btn onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></div>
+        </>
       ) : (<>
         {/* Week/Month nav — sticky under the app header, same as the
             manager's schedule bar. Its measured height feeds the "Your
@@ -887,75 +976,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           {/* Pinned above the week itself — a shift anyone can claim is worth
               seeing before you start reading your own rota, and it's gone
               once someone else takes it. */}
-          {myId && (openShiftsSection||myPendingClaimsSection) && <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>{openShiftsSection}{myPendingClaimsSection}</div>}
           <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
         </>) : (<>
 
-        {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
-          <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
-            {shiftRequestsToApprove.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYourShifts')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {shiftRequestsToApprove.map(sw=>{const asker=employees.find(e=>e.id===sw.claimedByEmpId);return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.wantsYourShift',{name:asker?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                    <Btn small onClick={()=>acceptShiftRequest(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
-                    <Btn small variant="ghost" onClick={()=>declineShiftRequest(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
-                  </div>
-                );})}
-              </div>
-            </div>)}
-            {requestsForMe.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYou')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {requestsForMe.map(sw=>{const from=employees.find(e=>e.id===sw.fromEmpId);return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                    <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
-                    <Btn small variant="ghost" onClick={()=>declineSwap(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
-                  </div>
-                );})}
-              </div>
-            </div>)}
-            {openShiftsSection}
-            {myPendingClaimsSection}
-            {myOpenRequests.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myRequests')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {myOpenRequests.map(sw=>{const to=sw.toEmpId?employees.find(e=>e.id===sw.toEmpId):null,claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{sw.role} · {t('day.'+sw.day)} · {to?t('swap.requestedTo',{name:to.name}):t('swap.openToAnyone')}</span>
-                    <span style={{fontSize:11,color:sw.status==='claimed'?T.success:T.text3}}>{sw.status==='claimed'?t('swap.statusClaimed',{name:claimant?.name||'?'}):t('swap.statusOpen')}</span>
-                    {sw.status==='open' && <Btn small variant="danger" onClick={()=>cancelSwap(sw)} disabled={swapBusy}>{t('swap.cancel')}</Btn>}
-                  </div>
-                );})}
-              </div>
-            </div>)}
-            {myShiftRequests.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myShiftRequests')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {myShiftRequests.map(sw=>{const owner=employees.find(e=>e.id===sw.fromEmpId);return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.askedFor',{name:owner?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                    <span style={{fontSize:11,color:T.text3}}>{t('swap.requestSent')}</span>
-                  </div>
-                );})}
-              </div>
-            </div>)}
-            {myTimeOff.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('to.yourRequests')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {myTimeOff.map(to=>(
-                  <div key={to.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{to.type} · {fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
-                    <span style={{fontSize:11,color:to.status==='Approved'?T.success:to.status==='Rejected'?T.danger:T.text3}}>{t('to.'+to.status.toLowerCase())}</span>
-                    {to.status==='Pending' && <Btn small variant="danger" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
-                  </div>
-                ))}
-              </div>
-            </div>)}
-          </div>
-        )}
 
         <div style={{display:'flex',justifyContent:'flex-end',marginBottom:10}}>
           <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
