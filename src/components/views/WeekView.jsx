@@ -16,7 +16,7 @@ export default function WeekView({
   weekDates, handleSlotClick, openPicker, pickerRoleFilter, setPickerRoleFilter,
   pickerSortBy, setPickerSortBy, pickerSearch, setPickerSearch, candidatesForSlot,
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
-  removeFromSlot, gridGroupBy, setGridGroupBy,
+  removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
   currency,
   s, t,
 }){
@@ -29,6 +29,11 @@ export default function WeekView({
     const id=setInterval(()=>setNow(new Date()),60000);
     return ()=>clearInterval(id);
   },[]);
+  // Which day column is currently hovered in the (non-isolated) role×day
+  // table below — highlights the whole column, header included, so a shift
+  // grid this dense still reads as separate day "cards" rather than one flat
+  // sheet. Only one column at a time, so a single piece of state is enough.
+  const [hoverDay,setHoverDay]=useState(null);
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -86,19 +91,26 @@ export default function WeekView({
     const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[];for(let m=rangeStart;m<=rangeEnd;m+=60)ticks.push(m);
-    // Row height was tight enough (20/24px) that the time label inside a bar
-    // was the smallest text on the page — bumped taller while keeping the
-    // same gap between rows, so the view stays just as compact (same number
-    // of people visible per screen) but each bar itself reads more clearly.
-    const ganttSideW=isMobile?76:112,ganttRowH=isMobile?28:34;
+    // "Comfortable" (the default) is the taller row/label size — bars used
+    // to be tight enough (20/24px) that the time label inside was the
+    // smallest text on the page. "Compact" keeps the old tighter size for
+    // fitting more people on screen at once. Same gridTight flag the Team
+    // grid's own Compact/Comfortable toggle uses, so it's one shared setting
+    // rather than two views disagreeing about what "compact" means.
+    const ganttSideW=isMobile?76:112,ganttRowH=gridTight?(isMobile?20:24):(isMobile?28:34);
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
             {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
           </div>
-          <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-            {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+              {[['role',t('grid.byRole')],['name',t('grid.byName')]].map(([k,l])=><button key={k} onClick={()=>setDayGroupBy(k)} style={{padding:'3px 10px',borderRadius:6,background:dayGroupBy===k?T.bg:'transparent',border:dayGroupBy===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:11,fontWeight:dayGroupBy===k?500:400,color:dayGroupBy===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
+            </div>
+            {setGridTight&&<button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 10px',borderRadius:8,background:gridTight?T.bg:T.surfaceWarm,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
+              {gridTight?t('grid.compact'):t('grid.comfortable')}
+            </button>}
           </div>
         </div>
         <div style={{fontSize:11,color:T.text3,marginBottom:8,minWidth:isMobile?480:'auto'}}>{t('week.dragHint')}</div>
@@ -107,7 +119,7 @@ export default function WeekView({
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:isMobile?12:13,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -159,7 +171,7 @@ export default function WeekView({
                     // ("No se presentó" is the longest case across locales),
                     // instead of letting the bar and its text both collapse
                     // to an unreadable dot.
-                    const barMinPx=isMobile?92:116;
+                    const barMinPx=gridTight?(isMobile?84:104):(isMobile?92:116);
                     const label=dragging?`${minToHHMM(rawStart)}–${minToHHMM(rawEnd)}`
                       :isNoShow?t('emp.noShow')
                       :hasActual?`${realA.actualStart||seg.startStr}–${realA.actualEnd||'…'}${actOngoing?' ●':' ✓'}`
@@ -183,7 +195,7 @@ export default function WeekView({
                     return(<Fragment key={si}>
                       {showGhost&&<div style={{position:'absolute',left:`${ghostLeftPct}%`,width:`${ghostWidthPct}%`,top:0,bottom:0,minWidth:14,border:`1.5px dashed ${rs.dot}88`,borderRadius:6,pointerEvents:'none',zIndex:0}}/>}
                       <div onClick={()=>{if(ganttJustDraggedRef.current)return;openEditSlot(effectiveDay,seg.blockId,segIdx);}} title={t('week.editShift')} style={{position:'absolute',left:`${leftPct}%`,width:`max(${widthPct}%, ${barMinPx}px)`,top:0,bottom:0,background:isDark()?barColor+'40':barColor+'30',border:`1.5px solid ${barColor}`,borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden',zIndex:dragging?5:1,boxShadow:dragging?'0 2px 8px rgba(0,0,0,0.25)':'none',cursor:'pointer'}}>
-                        <span style={{fontSize:isMobile?11:13,fontWeight:600,color:isDark()?barColor:isNoShow?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
+                        <span style={{fontSize:gridTight?(isMobile?9:10):(isMobile?11:13),fontWeight:600,color:isDark()?barColor:isNoShow?barColor:rs.text,whiteSpace:'nowrap',padding:'0 5px',pointerEvents:'none'}}>{label}</span>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'start',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',left:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                         <div onMouseDown={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onTouchStart={e=>beginGanttDrag(e,{day:effectiveDay,blockId:seg.blockId,empId:row.empId,edge:'end',origStart:seg.start,origEnd:seg.end,railEl:e.currentTarget.parentElement.parentElement,rangeStart,totalMin})} onClick={e=>e.stopPropagation()} style={{position:'absolute',right:0,top:0,bottom:0,width:8,cursor:'ew-resize',touchAction:'none'}}/>
                       </div>
@@ -227,7 +239,7 @@ export default function WeekView({
         <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.surface:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
@@ -238,7 +250,13 @@ export default function WeekView({
                 <td style={{padding:'10px 20px',verticalAlign:'top',background:T.surface}}><RoleBadge role={role} rs={rs}/></td>
                 {filterDays.map(day=>{
                   const allA=schedule[day]?.[block.id]||[],assigned=allA.filter(a=>a.role===role),req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selectedRoles.includes(role)&&selected.day!==day;
-                  return(<td key={day} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:T.surface}}>
+                  // Hovering anywhere in a day's column (not just its header)
+                  // lights up that whole column together — a subtle tint
+                  // plus an inset ring, so the grid reads as a set of
+                  // separate day "cards" side by side instead of one flat
+                  // sheet of cells.
+                  const dayHover=hoverDay===day;
+                  return(<td key={day} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:dayHover?T.surfaceWarm:T.surface,boxShadow:dayHover?`inset 0 0 0 1px ${T.border}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
                         <div key={idx}>
