@@ -240,16 +240,17 @@ export default function WeekView({
       <div onClick={()=>setCollapsedBlocks(p=>({...p,[block.id]:!p[block.id]}))} style={{padding:'12px 20px',borderBottom:isCollapsed?'none':`1px solid ${T.border}`,background:T.surfaceWarm,display:'flex',alignItems:'center',gap:12,cursor:'pointer',userSelect:'none'}}>
         <span style={{fontSize:11,color:T.text3,transform:isCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
         <div style={{flex:1}}><span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500}}>{block.name}</span><span style={{fontSize:12,color:T.text3,marginLeft:10}}>{block.start} – {block.end} · {blockHours(block).toFixed(1)}h</span></div>
+        {/* Drag hint lives in the header rather than as its own full-width
+            band between the header and the table — as a band it read like a
+            stray strip of UI. Desktop only: there's no dragging on touch, and
+            it would crowd a narrow header. */}
+        {dropAssignment&&!effectiveDay&&!isCollapsed&&!isMobile&&(
+          <span style={{fontSize:10,color:T.text3,fontStyle:'italic',whiteSpace:'nowrap'}}>{t('week.dragToMove')}</span>
+        )}
         {blockWarnings.length>0&&<span style={{fontSize:10,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>! {blockWarnings.length}</span>}
         <span style={{fontSize:10,color:T.success,background:T.successLight,border:`1px solid ${T.success}33`,padding:'2px 8px',borderRadius:999,fontWeight:500}}>{t('week.managerEnforced')}</span>
       </div>
       {!isCollapsed&&<div style={{overflowX:'auto'}}>
-        {/* Drag-to-move isn't self-evident, so say it once per block rather
-            than leaving people to discover it by accident. Only shown when
-            there's actually someone to drag. */}
-        {dropAssignment&&!effectiveDay&&blocks.length>0&&(
-          <div style={{fontSize:10,color:T.text3,padding:'6px 20px 0'}}>{t('week.dragToMove')}</div>
-        )}
         {/* tableLayout:'fixed' is what actually keeps the 7 day columns equal.
             Without it a cell sizes to its widest child, so adding a single
             open shift (or a long name) visibly widened that whole day
@@ -259,7 +260,7 @@ export default function WeekView({
         <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:930}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
-            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.surface:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
+            {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.accent+'12':T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
@@ -287,7 +288,13 @@ export default function WeekView({
                   return(<td key={day} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)}
                     onDragOver={onCellDragOver} onDrop={onCellDrop}
                     onDragLeave={()=>{if(dropKey===cellKey)setDropKey(null);}}
-                    style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:dayHover?`inset 0 0 0 1px ${T.border}`:'none',transition:'background 0.12s'}}>
+                    // Hover is a plain background tint, nothing more. It used
+                    // to also draw `inset 0 0 0 1px` on every cell, which
+                    // outlined each one individually and read as a stray
+                    // nested box rather than one highlighted column. The ring
+                    // is kept ONLY for an active drop target, where a hard
+                    // edge is the point.
+                    style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
                       {assigned.map((a,idx)=>{
                         const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;
@@ -409,14 +416,14 @@ export default function WeekView({
                         // whole cell means "drop here" instead.
                         const alreadyOpen=openShiftsFor?openShiftsFor(day,block.id,role).length>0:false;
                         const canPostOpen=postOpenShift&&!selected&&!alreadyOpen;
-                        const openBtn=(label)=><button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{label}</button>;
+                        const openBtn=(label)=><button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:9,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{label}</button>;
                         if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
-                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:9,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
                           {canPostOpen&&openBtn(t('open.post'))}
                           {picker}
                         </div>);
                         return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexWrap:'wrap',gap:3,alignItems:'center'}}>
-                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 8px',borderRadius:999,fontSize:10,fontWeight:500,lineHeight:1.6,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit',whiteSpace:'nowrap'}}>{isTarget?t('week.moveHere'):`+ ${t('common.add')}`}</button>
+                          <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={isTarget?t('week.moveHere'):t('week.addExtra')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:9,fontSize:10,fontWeight:500,lineHeight:1.6,background:isTarget?T.successLight:'transparent',color:isTarget?T.success:T.text3,border:`1px dashed ${isTarget?T.success+'55':T.border}`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit',whiteSpace:'nowrap'}}>{isTarget?t('week.moveHere'):`+ ${t('common.add')}`}</button>
                           {/* Short label here — a fully-staffed cell is the
                               common case, so this button appears in most
                               cells and the full "Post as open shift" wording
