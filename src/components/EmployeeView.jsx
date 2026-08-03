@@ -12,7 +12,7 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker, EmpChip } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard } from './ui';
 
 function LoadingScreen(){
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
@@ -1439,17 +1439,18 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
                         {assigned.length===0 && <span style={{fontSize:12,color:T.text3,opacity:0.5}}>—</span>}
                         {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),isMe=a.empId===myId;return(
                           <div key={idx}>
-                            {/* Own shifts get the filled/"selected" chip styling
+                            {/* Own shifts get the filled/"selected" styling
                                 instead of a separate "(you)" label — a solid,
-                                unmissable pill reads as "that's me" without
-                                needing extra text. */}
-                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isMe}/>
-                            {dayFilter&&<div style={{fontSize:9,color:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
-                            {dayFilter&&(a.noShow||a.actualStart||a.actualEnd)&&(
-                              <div style={{fontSize:9,color:a.noShow?T.danger:T.success,marginLeft:2}}>
-                                {a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||t('week.clockedOngoing')}`}
-                              </div>
-                            )}
+                                unmissable card reads as "that's me" without
+                                needing extra text. Auto-width when a single
+                                day is isolated (people lay out across a row);
+                                full-width in the 7-day grid. */}
+                            <EmpCard emp={emp||{name:a.name,palIdx:0}} selected={isMe} inline={!!dayFilter}
+                              title={emp?.name||a.name}
+                              time={dayFilter?`${a.start||block.start}–${a.end||block.end}`:undefined}
+                              status={dayFilter&&(a.noShow||a.actualStart||a.actualEnd)
+                                ? {text:a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||t('week.clockedOngoing')}`,tone:a.noShow?'bad':'good'}
+                                : undefined}/>
                           </div>
                         );})}
                       </div>

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpChip, EmpCard, Btn } from '../ui';
+import { Avatar, RoleBadge, EmpCard, Btn } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
@@ -76,7 +76,7 @@ export default function WeekView({
       // moment the shift was created — a rename afterward never touches
       // existing schedule data. Prefer the CURRENT roster name, only
       // falling back to the embedded one for an assignment whose employee
-      // has since been deleted entirely (same fallback EmpChip already
+      // has since been deleted entirely (same fallback EmpCard already
       // uses elsewhere in this file).
       const liveName=employees.find(e=>e.id===a.empId)?.name||a.name;
       return{empId:a.empId,name:liveName,role:a.role,blockId:b.id,blockName:b.name,blockStart:b.start,blockEnd:b.end,startStr:st,endStr:en,start:bs,end:be};
@@ -295,7 +295,7 @@ export default function WeekView({
                         const statusInfo=clocked?{text:a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`,tone:a.noShow?'bad':'good'}:null;
                         const onClick=()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}};
                         // Drag handlers live on a wrapper rather than on
-                        // EmpChip/EmpCard themselves — those render a
+                        // EmpCard itself — it renders a
                         // <button>, and a draggable button swallows the drag
                         // in some browsers. The wrapper also gives the
                         // swap-target highlight something to sit on.
@@ -316,16 +316,15 @@ export default function WeekView({
                         // taller card, which has room for the shift time and
                         // clocked status inline instead of as loose text
                         // hanging under a pill.
-                        if(effectiveDay) return(
-                          <div key={idx} {...dragProps}>
-                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}/>
-                            <div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>
-                            {statusInfo&&<div style={{fontSize:9,color:statusInfo.tone==='bad'?T.danger:T.success,marginLeft:2,marginTop:1}}>{statusInfo.text}</div>}
-                          </div>
-                        );
+                        // Same card either way now — the isolated-day view just
+                        // uses the auto-width variant, since it lays people out
+                        // across a row rather than stacked in a narrow cell.
+                        // The time and clocked status live inside the card in
+                        // both cases instead of as loose text hanging under it.
                         return(
                           <div key={idx} {...dragProps}>
                             <EmpCard emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}
+                              inline={!!effectiveDay}
                               title={emp?.name||a.name}
                               time={`${a.start||block.start}–${a.end||block.end}`}
                               status={statusInfo}/>

@@ -5,7 +5,6 @@ import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants"
 import { dateToISO, LOCALE } from "../lib/dates";
 
 
-
 export function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
 
 // Drag-handle affordance drawn from plain dots rather than a unicode glyph —
@@ -18,20 +17,23 @@ export function GripDots({title}){
 
 export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:isDark()?s.dot+'22':s.bg,color:isDark()?s.dot:s.text,border:`1px solid ${isDark()?s.dot+'55':s.border}`}}><span style={{width:5,height:5,borderRadius:'50%',background:s.dot,flexShrink:0}}/>{role}</span>; }
 
-export function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:(isDark()?p.dot+'22':p.bg),color:selected?'#fff':(isDark()?p.dot:p.text),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
-
-// The fuller-bodied sibling of EmpChip, for the week grid's day cells where
-// there's room to show more than a first name. Same palette/selected
-// conventions as EmpChip so the two read as the same person, just at
-// different densities — EmpChip is still what's used anywhere genuinely
-// tight (the on-leave banner, the isolated-day row).
+// The single way a person is rendered anywhere in a schedule — day cells, the
+// isolated-day row, the on-leave strip. This replaced an older pill-shaped
+// EmpChip that showed only a first name; having two visual treatments for the
+// same thing made identical data look different depending on which view you
+// were in, so there's now just this one.
+//
 // `time` and `status` are optional: pass the scheduled window and, if
 // something was actually clocked (or a no-show recorded), a
 // {text, tone:'good'|'bad'} to show underneath.
-export function EmpCard({emp,selected,onClick,time,status,title}){
+//
+// `inline` swaps full-width for auto-width. Horizontal contexts (the on-leave
+// strip, the isolated-day row) wrap several people across a line, where a
+// 100%-width card would stack them one per row and look broken.
+export function EmpCard({emp,selected,onClick,time,status,title,inline}){
   const p=pal(emp);
   const toneColor=status?.tone==='bad'?T.danger:T.success;
-  return <button onClick={onClick} title={title} style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'6px 8px',borderRadius:9,background:selected?p.dot:(isDark()?p.dot+'1E':p.bg),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'box-shadow 0.15s,transform 0.15s,background 0.15s',fontFamily:'inherit',textAlign:'left',boxSizing:'border-box'}}
+  return <button onClick={onClick} title={title} style={{display:inline?'inline-flex':'flex',alignItems:'center',gap:7,width:inline?'auto':'100%',maxWidth:'100%',padding:'6px 8px',borderRadius:9,background:selected?p.dot:(isDark()?p.dot+'1E':p.bg),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'box-shadow 0.15s,transform 0.15s,background 0.15s',fontFamily:'inherit',textAlign:'left',boxSizing:'border-box'}}
     onMouseEnter={e=>{if(!onClick)return;e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}44`;e.currentTarget.style.transform='translateY(-1px)';}}
     onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
     <span style={{width:22,height:22,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>

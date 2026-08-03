@@ -1,6 +1,6 @@
 import { T, TIMEOFF_TYPES, DAYS } from '../../lib/constants';
 import { fmt, fmtLong, weekKeyToMonday } from '../../lib/dates';
-import { Avatar, StatusBadge, Btn, SectionLabel, EmpChip } from '../ui';
+import { Avatar, StatusBadge, Btn, SectionLabel, EmpCard } from '../ui';
 
 export default function TimeOffView({
   offThisWeek, weekDates,
@@ -56,7 +56,7 @@ export default function TimeOffView({
     </div>)}
     {offThisWeek.length>0&&(<div style={{background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'12px 16px'}}>
       <div style={{fontSize:12,fontWeight:600,color:T.warning,marginBottom:8}}>{t('sched.onLeaveWeek')} ({fmt(weekDates[0])} – {fmt(weekDates[6])})</div>
-      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}</div>
+      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{offThisWeek.map(e=><EmpCard key={e.id} emp={e} inline title={e.name}/>)}</div>
     </div>)}
     <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
       <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>

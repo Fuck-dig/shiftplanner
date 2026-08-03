@@ -24,7 +24,7 @@ import { escapeHtml } from './lib/html';
 import { mergeRoleOrder, reorderRoleList } from './lib/roles';
 import { supabase } from './lib/supabase';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
-import { RoleBadge, EmpChip, Btn, TimePicker, WeekPicker } from './components/ui';
+import { RoleBadge, EmpCard, Btn, TimePicker, WeekPicker } from './components/ui';
 import NotificationBell from './components/NotificationBell';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
@@ -642,7 +642,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
   // Only ever called while a move is already armed (via the edit modal's
   // "Move" button) — clicking a chip with nothing armed opens the edit
-  // modal instead (see the EmpChip onClick in the Week/Day table).
+  // modal instead (see the EmpCard onClick in the Week/Day table).
   const handleSlotClick=(day,blockId,idx)=>{
     if(!schedule||!selected)return;closePicker();
     if(selected.day===day&&selected.blockId===blockId&&selected.idx===idx){setSelected(null);return;}
@@ -1654,7 +1654,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     if(showLeave) segs.push(
       <span key="leave" style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
         <span style={{fontSize:12,fontWeight:500,color:T.warning,whiteSpace:'nowrap'}}>{t('sched.onLeaveWeek')}</span>
-        {offThisWeek.map(e=><EmpChip key={e.id} emp={e}/>)}
+        {offThisWeek.map(e=><EmpCard key={e.id} emp={e} inline title={e.name}/>)}
       </span>
     );
     if(notes) segs.push(<span key="notes" style={{fontSize:12,color:T.text2}}>{notes}</span>);
