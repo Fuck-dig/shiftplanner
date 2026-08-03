@@ -1053,6 +1053,14 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   };
   const removeTO      =id=>setTimeOff(p=>p.filter(t=>t.id!==id));
 
+  // " 07 Aug" for a swap, or '' if its weekKey is unparseable — a swap
+  // references a week by key rather than the currently-viewed offset, so the
+  // date has to be derived rather than read off weekDates.
+  const swapDateLabel=(sw)=>{
+    try{ const mon=weekKeyToMonday(sw.weekKey); const d=new Date(mon); d.setDate(mon.getDate()+DAYS.indexOf(sw.day)); return ' '+fmt(d); }
+    catch{ return ''; }
+  };
+
   const reloadSwaps=()=>fetchShiftSwaps(orgId).then(setSwaps).catch(err=>console.error('Load swaps failed:',err));
   const pendingSwaps=swaps.filter(sw=>sw.status==='claimed');
 
@@ -1105,7 +1113,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         const date=weekDates[DAYS.indexOf(day)];
         const eligible=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
         const blockName=blocks.find(b=>b.id===blockId)?.name||'';
-        eligible.forEach(e=>notify(e.id,'notif.openShiftPosted',{role,day:t('day.'+day),block:blockName}));
+        // The date goes INSIDE the existing {day} var rather than as a new
+        // {date} placeholder — a notification's vars are frozen at send time,
+        // so adding a placeholder would make every already-sent notification
+        // render a literal "{date}". This way old ones keep working.
+        const whenLabel=`${t('day.'+day)} ${fmt(date)}`;
+        eligible.forEach(e=>notify(e.id,'notif.openShiftPosted',{role,day:whenLabel,block:blockName}));
       })
       .catch(err=>{console.error('Post open shift failed:',err);alert(t('save.failedGeneric'));});
   };
@@ -1218,10 +1231,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     }),
     ...pendingSwaps.map(sw=>{
       // An open shift has no original owner — label it as the posted shift
-      // being claimed rather than "? → someone".
+      // being claimed rather than "? → someone". Includes the real date: a
+      // bare "Fri" is ambiguous once a request has sat in the bell a while.
       const from=sw.fromEmpId?employees.find(e=>e.id===sw.fromEmpId):null,claimant=employees.find(e=>e.id===sw.claimedByEmpId);
       const fromLabel=sw.fromEmpId?(from?.name||'?'):t('open.posted');
-      return{ id:'sw-'+sw.id, label:`${fromLabel} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
+      const when=`${t('day.'+sw.day)}${swapDateLabel(sw)}`;
+      return{ id:'sw-'+sw.id, label:`${fromLabel} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${when}`, onClick:()=>setView('timeoff') };
     }),
     ...unseenMessageReplies.map(m=>{
       const recipient=employees.find(e=>e.id===m.recipientEmpId);

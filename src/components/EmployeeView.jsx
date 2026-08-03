@@ -623,12 +623,52 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           // rendering "Given up by ?".
           const isOpenShift=!sw.fromEmpId;
           const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
+          const b=blocks.find(x=>x.id===sw.blockId);
+          // A bare day name ("Fri") is ambiguous — it could be this week or
+          // next. Show the real date, and the block's times, so it's clear
+          // what's actually being taken on before committing to it.
+          const date=dateForSwap(sw);
           return(
           <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
-            <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+            <span style={{flex:1,minWidth:160}}>
+              <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>
+                {t('day.'+sw.day)} {fmt(date)}{b?` · ${b.name} ${b.start}–${b.end}`:''}
+              </span>
+              <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>
+                {isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role}
+              </span>
+            </span>
             <Btn small onClick={()=>requestClaim(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
           </div>
         );})}
+      </div>
+    </div>
+  ) : null;
+
+  // Shifts I've claimed that a manager hasn't decided on yet. Without this
+  // the shift simply vanished from "open shifts you can take" the moment I
+  // took it, with nothing anywhere confirming I'd actually got it — leaving
+  // me unsure whether the click registered at all.
+  const myPendingClaims = myId ? swaps.filter(sw=>sw.claimedByEmpId===myId && sw.status==='claimed') : [];
+  const myPendingClaimsSection = myPendingClaims.length>0 ? (
+    <div>
+      <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('claim.awaitingHeading')}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {myPendingClaims.map(sw=>{
+          const b=blocks.find(x=>x.id===sw.blockId);
+          const date=dateForSwap(sw);
+          return(
+            <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <span style={{flex:1,minWidth:160}}>
+                <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>
+                  {t('day.'+sw.day)} {fmt(date)}{b?` · ${b.name} ${b.start}–${b.end}`:''}
+                </span>
+                <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>{sw.role}</span>
+              </span>
+              <span style={{fontSize:11,fontWeight:600,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:999,padding:'3px 10px',whiteSpace:'nowrap'}}>{t('claim.awaiting')}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   ) : null;
@@ -745,7 +785,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 {b&&<div style={{fontSize:11,color:T.accentText,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
                 <div style={{fontSize:10,color:T.accentText,opacity:0.7,marginTop:1}}>{sw.role}</div>
                 {sw.status==='claimed'?(
-                  <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{t('swap.statusClaimed',{name:claimant?.name||'?'})}</div>
+                  // "Claimed by <my own name>" reads oddly when it's me —
+                  // say it's mine and pending instead.
+                  <div style={{fontSize:9,fontWeight:600,marginTop:4,color:sw.claimedByEmpId===myId?T.warning:T.accentText,fontStyle:sw.claimedByEmpId===myId?'normal':'italic'}}>
+                    {sw.claimedByEmpId===myId?t('claim.awaiting'):t('swap.statusClaimed',{name:claimant?.name||'?'})}
+                  </div>
                 ):canTake?(
                   <button onClick={()=>requestClaim(sw)} disabled={swapBusy} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,background:T.accent,border:'none',color:'#fff',cursor:swapBusy?'wait':'pointer',fontFamily:'inherit'}}>{t('swap.take')}</button>
                 ):null}
@@ -825,11 +869,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           {/* Pinned above the week itself — a shift anyone can claim is worth
               seeing before you start reading your own rota, and it's gone
               once someone else takes it. */}
-          {myId && openShiftsSection && <div style={{...s.card,marginBottom:16}}>{openShiftsSection}</div>}
+          {myId && (openShiftsSection||myPendingClaimsSection) && <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>{openShiftsSection}{myPendingClaimsSection}</div>}
           <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
         </>) : (<>
 
-        {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
+        {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
           <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
             {shiftRequestsToApprove.length>0 && (<div>
               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYourShifts')}</div>
@@ -856,6 +900,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               </div>
             </div>)}
             {openShiftsSection}
+            {myPendingClaimsSection}
             {myOpenRequests.length>0 && (<div>
               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myRequests')}</div>
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
