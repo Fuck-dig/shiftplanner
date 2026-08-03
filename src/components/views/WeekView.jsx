@@ -17,7 +17,7 @@ export default function WeekView({
   pickerSortBy, setPickerSortBy, pickerSearch, setPickerSearch, candidatesForSlot,
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
-  currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment,
+  currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment, search,
   s, t,
 }){
   // Ticking "now" marker for the day-isolated Gantt view — only matters
@@ -42,6 +42,12 @@ export default function WeekView({
   const [dragSrc,setDragSrc]=useState(null);
   const [dropKey,setDropKey]=useState(null);
   const endDrag=()=>{setDragSrc(null);setDropKey(null);};
+  // Staff search. The Week grid's rows are ROLES, not people, so it can't
+  // filter rows down the way the Team grid does — hiding non-matches would
+  // leave holes where the rest of the week's shape used to be. Dimming keeps
+  // that shape readable while making the person you asked about jump out.
+  const q=(search||'').trim().toLowerCase();
+  const matchesSearch=(name)=>!q||(name||'').toLowerCase().includes(q);
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -127,7 +133,7 @@ export default function WeekView({
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;const dim=!matchesSearch(row.name);return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',opacity:dim?0.28:1,transition:'opacity 0.15s'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -138,7 +144,8 @@ export default function WeekView({
             )}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
               {dayRows.map(row=>{
-                return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6}}>
+                const dimRow=!matchesSearch(row.name);
+                return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6,opacity:dimRow?0.28:1,filter:dimRow?'grayscale(1)':'none',transition:'opacity 0.15s,filter 0.15s'}}>
                   {row.merged.map((seg,si)=>{
                     const rs=roleStyles[seg.role]||DEFAULT_ROLE_STYLES.Other;
                     const dragging=ganttPreview&&ganttPreview.day===effectiveDay&&ganttPreview.blockId===seg.blockId&&ganttPreview.empId===row.empId;
@@ -309,13 +316,16 @@ export default function WeekView({
                         const meKey=`${day}|${block.id}|${realIdx}`;
                         const isBeingDragged=dragSrc&&dragSrc.day===day&&dragSrc.blockId===block.id&&dragSrc.idx===realIdx;
                         const isSwapTarget=!!dragSrc&&!isBeingDragged&&dropKey===meKey;
+                        // Search dim. A dragged card's own 0.35 fade wins, so
+                        // the two never fight over the same property.
+                        const dimmed=!matchesSearch(emp?.name||a.name);
                         const dragProps={
                           draggable:!!dropAssignment,
                           onDragStart:e=>{ setDragSrc({day,blockId:block.id,idx:realIdx,empId:a.empId}); e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',a.empId||''); },
                           onDragEnd:endDrag,
                           onDragOver:e=>{ if(!dragSrc||isBeingDragged)return; e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect='move'; if(dropKey!==meKey)setDropKey(meKey); },
                           onDrop:e=>{ if(!dragSrc)return; e.preventDefault(); e.stopPropagation(); if(!isBeingDragged&&dropAssignment)dropAssignment(dragSrc,{day,blockId:block.id,role,idx:realIdx}); endDrag(); },
-                          style:{opacity:isBeingDragged?0.35:1,borderRadius:9,cursor:dropAssignment?'grab':'default',boxShadow:isSwapTarget?`0 0 0 2px ${T.accent}`:'none',transition:'opacity 0.12s,box-shadow 0.12s'},
+                          style:{opacity:isBeingDragged?0.35:(dimmed?0.22:1),filter:dimmed&&!isBeingDragged?'grayscale(1)':'none',borderRadius:9,cursor:dropAssignment?'grab':'default',boxShadow:isSwapTarget?`0 0 0 2px ${T.accent}`:'none',transition:'opacity 0.15s,filter 0.15s,box-shadow 0.12s'},
                         };
                         // Isolated-day view keeps the compact chip (it lays
                         // people out in a horizontal row, where a full-width
@@ -455,7 +465,7 @@ export default function WeekView({
       </div>
     </div>
     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
-      {[...employees].sort((a,b)=>gridGroupBy==='role'?(allRoles.indexOf((a.roles||[])[0]||'')-allRoles.indexOf((b.roles||[])[0]||''))||a.name.localeCompare(b.name):a.name.localeCompare(b.name)).map(emp=>{const h=empHours(emp.id),pct=Math.min(100,(h/emp.maxHours)*100),over=h>emp.maxHours,rs=roleStyles[(emp.roles||[])[0]]||DEFAULT_ROLE_STYLES.Other;return(<div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm}}>
+      {[...employees].sort((a,b)=>gridGroupBy==='role'?(allRoles.indexOf((a.roles||[])[0]||'')-allRoles.indexOf((b.roles||[])[0]||''))||a.name.localeCompare(b.name):a.name.localeCompare(b.name)).map(emp=>{const h=empHours(emp.id),pct=Math.min(100,(h/emp.maxHours)*100),over=h>emp.maxHours,rs=roleStyles[(emp.roles||[])[0]]||DEFAULT_ROLE_STYLES.Other,dim=!matchesSearch(emp.name);return(<div key={emp.id} style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${over?T.danger+'55':T.border}`,background:over?T.dangerLight:T.surfaceWarm,opacity:dim?0.28:1,filter:dim?'grayscale(1)':'none',transition:'opacity 0.15s,filter 0.15s'}}>
         <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:6}}><Avatar emp={emp} size={24}/><span style={{fontSize:12,fontWeight:500,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name.split(' ')[0]}</span></div>
         {gridGroupBy==='role'&&(emp.roles||[])[0]&&<div style={{marginBottom:6}}><RoleBadge role={(emp.roles||[])[0]} rs={rs}/></div>}
         <div style={{fontSize:13,fontWeight:500,color:over?T.danger:T.text,marginBottom:4}}>{h}h <span style={{fontSize:11,color:T.text3,fontWeight:400}}>/ {emp.maxHours}h</span></div>

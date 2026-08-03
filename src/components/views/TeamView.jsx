@@ -40,8 +40,14 @@ export default function TeamView({
   // (effectiveRolesFor) — so someone covering a one-off shift outside their
   // usual role still gets grouped sensibly.
   const allRoleOrder=allRoles;
+  // Search dims rather than filters. This grid used to drop non-matching rows
+  // entirely, while the Week view (whose rows are roles, not people) could
+  // only dim — so the same search box did two different things depending on
+  // which tab you were on. Dimming everywhere is one behaviour, and it keeps
+  // the roster's shape and role grouping intact while you're looking.
   const gq=gridSearch.trim().toLowerCase();
-  const gridEmployees=gq?employees.filter(e=>e.name.toLowerCase().includes(gq)):employees;
+  const matchesSearch=(name)=>!gq||(name||'').toLowerCase().includes(gq);
+  const gridEmployees=employees;
   const effRoles=new Map(gridEmployees.map(e=>[e.id,effectiveRolesFor(e,schedule,blocks)]));
   const primaryRoleFor=new Map(gridEmployees.map(e=>{
     const eff=effRoles.get(e.id);
@@ -104,7 +110,7 @@ export default function TeamView({
             </div>
             {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
-          {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface}}>
+          {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface,opacity:matchesSearch(emp.name)?1:0.25,filter:matchesSearch(emp.name)?'none':'grayscale(1)',transition:'opacity 0.15s,filter 0.15s'}}>
             {/* Name cell */}
             <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?8:10,minHeight:rowH}}>
               {!gridTight&&<div style={{width:36,height:36,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>}

@@ -46,6 +46,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [toBusy, setToBusy]       = useState(false);
   const [view, setView]           = useState('schedule'); // 'schedule' | 'employees' | 'profile' — top-level nav tabs
   const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
+  const [staffSearch, setStaffSearch] = useState('');     // dims non-matching people, same as the manager's staff search
   // Measured height of the sticky week/month nav bar, so the "Your Shifts"
   // strip can dock directly beneath it rather than under it. Declared here
   // (after view/calMode, which the effect depends on) and well above the
@@ -683,10 +684,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // normal (sortable, role-grouped) list and the sticky "Your Shifts"
   // strip pinned above it, so the pinned copy of your own row renders
   // identically to how it looks in the full list.
-  const renderTeamRow = (emp, ri=0) => {
+  const renderTeamRow = (emp, ri=0, {ignoreSearch=false}={}) => {
     const p=pal(emp), isMe=emp.id===myId, h=empHoursMap[emp.id]||0;
+    // Your own pinned "Your Shifts" strip never dims — it's your row, and
+    // greying it out while searching for a colleague would be confusing.
+    const dim=!ignoreSearch&&!!staffSearch.trim()&&!emp.name.toLowerCase().includes(staffSearch.trim().toLowerCase());
     return (
-      <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,transition:'background 0.2s'}}>
+      <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,opacity:dim?0.25:1,filter:dim?'grayscale(1)':'none',transition:'background 0.2s,opacity 0.15s,filter 0.15s'}}>
         {/* Name */}
         <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
           {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
@@ -863,6 +867,15 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           <button onClick={()=>{setWeekOffset(0);const n=new Date();setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});}} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           {myId && <Btn small variant="ghost" onClick={exportMyScheduleICS}>{t('emp.exportSchedule')}</Btn>}
+          {/* Same staff search the manager has, behaving the same way (dim,
+              don't hide) — an employee looking for who else is on Friday has
+              exactly the same question as a manager does. */}
+          {calMode!=='month'&&(
+            <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+              <input value={staffSearch} onChange={e=>setStaffSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:150,padding:'5px 26px 5px 10px',fontSize:12}}/>
+              {staffSearch&&<button onClick={()=>setStaffSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
+            </span>
+          )}
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,marginLeft:'auto'}}>
             {[['team',t('sched.team')],['week',t('sched.week')],['month',t('sched.month')]].map(([k,l])=><button key={k} onClick={()=>setCalMode(k)} style={{fontFamily:'inherit',padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2}}>{l}</button>)}
           </div>
@@ -971,7 +984,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             <div style={{position:'sticky',top:(isMobile?50:56)+navBarH,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,paddingBottom:10}}>
               <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
               <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
-                {renderTeamRow(me)}
+                {renderTeamRow(me,0,{ignoreSearch:true})}
               </div>
             </div>
           )}

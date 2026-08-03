@@ -1620,9 +1620,20 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
         {gridTight?t('grid.compact'):t('grid.comfortable')}
       </button>
-      <input value={gridSearch} onChange={e=>setGridSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:140,padding:'5px 10px',fontSize:12}}/>
       <span style={{fontSize:12,color:T.text3}}>{t('grid.scheduledOfTotal',{n:employees.filter(e=>schedule&&Object.values(schedule).some(day=>Object.values(day).some(b=>b.some(a=>a.empId===e.id)))).length,total:employees.length})}</span>
     </>)}
+    {/* One search box shared by Team and Week rather than one per view — the
+        same question ("where is this person this week?") in both, so keeping
+        the term when you switch views is the useful behaviour. Team filters
+        its rows down; Week can't (rows are roles, not people) so it dims
+        everyone else instead, which also keeps the shape of the week intact
+        while you look. */}
+    {(calMode==='grid'||calMode==='week')&&(
+      <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+        <input value={gridSearch} onChange={e=>setGridSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:150,padding:'5px 26px 5px 10px',fontSize:12}}/>
+        {gridSearch&&<button onClick={()=>setGridSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
+      </span>
+    )}
     {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
     {calMode==='week'&&dayFilter&&(()=>{const offDate=weekDates[DAYS.indexOf(dayFilter)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
       <span title={off.map(e=>e.name).join(', ')} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.warningLight,border:`1px solid ${T.warning}44`,color:T.warning,fontSize:12,fontWeight:500}}>{t('week.offToday',{n:off.length})}</span>
@@ -1702,7 +1713,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     weekDates={weekDates} handleSlotClick={handleSlotClick} openPicker={openPicker} pickerRoleFilter={pickerRoleFilter} setPickerRoleFilter={setPickerRoleFilter}
     pickerSortBy={pickerSortBy} setPickerSortBy={setPickerSortBy} pickerSearch={pickerSearch} setPickerSearch={setPickerSearch} candidatesForSlot={candidatesForSlot}
     addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
-    removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight}
+    removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} search={gridSearch}
     currency={hourlyRate.currency}
     openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
     dropAssignment={dropAssignment}
