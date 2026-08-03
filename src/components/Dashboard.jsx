@@ -71,7 +71,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // timer, so it can't sit around offering to undo something from ten minutes
   // ago that later edits have since built on.
   const [undoEntry,setUndoEntry]     = useState(null);
+  const [undoFading,setUndoFading]   = useState(false); // last ~600ms: fade rather than blink out
   const undoTimerRef                 = useRef(null);
+  const undoFadeRef                  = useRef(null);
   const undoSeqRef                   = useRef(0); // monotonic id; avoids Date.now()/Math.random() during a handler
   const [timeOff,setTORaw]           = useState([]);
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
@@ -607,8 +609,11 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // not an email); fall back to the login email for a manager who isn't on the
   // roster themselves, which is a supported setup.
   const auditActorName=employees.find(e=>e.id===myId)?.name||myEmail||null;
-  const audit=(action,detail={},weekKeyOverride=null)=>{
-    logScheduleEvent(orgId,{weekKey:weekKeyOverride||wKey,action,detail,actorName:auditActorName});
+  // weekKeyOverride: pass a week key to attribute the entry elsewhere, or an
+  // explicit null for org-level events (roster changes) that aren't about one
+  // week. `undefined` still means "the week being viewed".
+  const audit=(action,detail={},weekKeyOverride=undefined)=>{
+    logScheduleEvent(orgId,{weekKey:weekKeyOverride===undefined?wKey:weekKeyOverride,action,detail,actorName:auditActorName});
   };
   const empName=id=>employees.find(e=>e.id===id)?.name||'?';
   const blockName=id=>blocks.find(b=>b.id===id)?.name||'?';
@@ -622,7 +627,12 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const prevWeek=schedules[wKey];
     const id=++undoSeqRef.current;
     setUndoEntry({id,weekKey:wKey,prevWeek,label:t(labelKey,vars)});
+    setUndoFading(false);
     clearTimeout(undoTimerRef.current);
+    clearTimeout(undoFadeRef.current);
+    // Start fading a little before removal so it dissolves rather than
+    // disappearing mid-glance.
+    undoFadeRef.current=setTimeout(()=>setUndoFading(true),7400);
     undoTimerRef.current=setTimeout(()=>setUndoEntry(u=>(u&&u.id===id)?null:u),8000);
   };
   const runUndo=()=>{
@@ -638,8 +648,21 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     });
     setUndoEntry(null);
     clearTimeout(undoTimerRef.current);
+    clearTimeout(undoFadeRef.current);
     setSelected(null);
     audit('undone',{},k);
+  };
+
+  // Was the week already published before this edit? If so the edit keeps it
+  // published and notifies only the people it actually affects. Dropping it
+  // back to draft meant re-publishing, which re-notified the WHOLE team about
+  // shifts that hadn't changed.
+  const isPublished=()=>!!schedules[wKey]?.confirmed;
+  // Uses the existing notif.shiftChanged, which takes {day} — passing a week
+  // range into it would render the literal "{day}" instead.
+  const notifyShiftChanged=(empIds,day)=>{
+    const when=day?`${t('day.'+day)} ${fmt(weekDates[DAYS.indexOf(day)])}`:'';
+    [...new Set(empIds.filter(Boolean))].forEach(empId=>notify(empId,'notif.shiftChanged',{day:when}));
   };
 
   const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();audit('confirmed');};
@@ -708,7 +731,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // Swapping by click marks the week a draft again, matching the drag path
     // and every other edit — this was the last one that silently left a
     // published week looking published after changing it.
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setSelected(null);
+    const wasPublishedSwap=isPublished();
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+    if(wasPublishedSwap)notifyShiftChanged([se.empId,de.empId],day);
     audit('swapped',{who:empName(se.empId),with:empName(de.empId),day,block:blockName(blockId)});
   };
 
@@ -724,11 +749,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const handleEmptySlotClick=(day,blockId,role)=>{
     if(!selected||!schedule)return;
     const ns=applyAssignmentDrop(schedule,{day:selected.day,blockId:selected.blockId,idx:selected.idx},{day,blockId,role});
-    const movedName=empName(selected.empId);
+    const movedName=empName(selected.empId),movedEmpId=selected.empId;
     setSelected(null);
     if(!ns)return;
     armUndo('undo.moved',{who:movedName});
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    const wasPublishedMove=isPublished();
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));
+    if(wasPublishedMove)notifyShiftChanged([movedEmpId],day);
   };
 
   // Drag-and-drop equivalent of the two click handlers above. Those both
@@ -757,9 +784,17 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // disagree about what counts as a problem.
   const applyDrop=(src,dst,ns)=>{
     armUndo(dst.idx!=null?'undo.swapped':'undo.moved',{who:empName(schedule?.[src.day]?.[src.blockId]?.[src.idx]?.empId)});
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    const wasPublishedDrop=isPublished();
+    const movedId=schedule?.[src.day]?.[src.blockId]?.[src.idx]?.empId;
+    const displacedId=dst.idx!=null?schedule?.[dst.day]?.[dst.blockId]?.[dst.idx]?.empId:null;
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));
     setSelected(null);
     setPendingDrop(null);
+    // Both ends of a move/swap are affected, and they can be on different days.
+    if(wasPublishedDrop){
+      notifyShiftChanged([movedId],dst.day);
+      if(displacedId)notifyShiftChanged([displacedId],src.day);
+    }
     // Log the FROM and TO so the entry answers "where did this shift go?",
     // which is the actual question someone asks about a moved shift.
     const moved=schedule?.[src.day]?.[src.blockId]?.[src.idx];
@@ -783,8 +818,15 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // one would wave through half of every swap.
     const nameOf=id=>employees.find(e=>e.id===id)?.name||'';
     const groups=[];
-    const dragged=dropWarningsFor(ns,src.empId,dst.day,dst.blockId,dst.role);
-    if(dragged.length)groups.push({empId:src.empId,name:nameOf(src.empId),codes:dragged,day:dst.day,blockId:dst.blockId,role:dst.role});
+    // For a SWAP the dragged person inherits the role of the entry they land
+    // on, which isn't necessarily the role of the cell they were dropped in —
+    // someone can hold two roles in one block. Checking the cell's role let a
+    // swap hand somebody a Manager shift they weren't qualified for without
+    // any warning, because the check asked about the wrong role.
+    const dstEntry=dst.idx!=null?schedule?.[dst.day]?.[dst.blockId]?.[dst.idx]:null;
+    const roleDraggedGets=dstEntry?.role||dst.role;
+    const dragged=dropWarningsFor(ns,src.empId,dst.day,dst.blockId,roleDraggedGets);
+    if(dragged.length)groups.push({empId:src.empId,name:nameOf(src.empId),codes:dragged,day:dst.day,blockId:dst.blockId,role:roleDraggedGets});
     if(dst.idx!=null){
       const displaced=schedule?.[dst.day]?.[dst.blockId]?.[dst.idx];
       const srcRole=schedule?.[src.day]?.[src.blockId]?.[src.idx]?.role;
@@ -841,7 +883,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       if(editNotes.outNote.trim()) entry.clockNote=editNotes.outNote.trim(); else delete entry.clockNote;
     }
     else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    const wasPublishedEdit=isPublished();
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));
+    if(wasPublishedEdit)notifyShiftChanged([entry.empId],day);
     closeEditSlot();
   };
   const removeEditSlot=()=>{
@@ -868,7 +912,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const gone=schedule[day]?.[blockId]?.[idx];
     ns[day][blockId].splice(idx,1);
     armUndo('undo.removed',{who:empName(gone?.empId)});
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    const wasPublished=isPublished();
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));
+    if(wasPublished)notifyShiftChanged([gone?.empId],day);
     if(selected&&selected.day===day&&selected.blockId===blockId&&selected.idx===idx)setSelected(null);
     audit('removed',{who:empName(gone?.empId),day,block:blockName(blockId),role:gone?.role});
   };
@@ -1037,7 +1083,9 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // still be the pre-change value afterwards (state doesn't update until the
     // next render), relying on that is a trap for whoever edits this next.
     armUndo('undo.assigned',{who:emp.name});
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
+    const wasPublished=isPublished();
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setOpenPicker(null);
+    if(wasPublished)notifyShiftChanged([emp.id],day);
     audit('assigned',{who:emp.name,day,block:blockName(blockId),role});
   };
 
@@ -1080,7 +1128,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       const entry={empId:emp.id,name:emp.name,role};
       if(block&&customStart&&customEnd&&(customStart!==block.start||customEnd!==block.end)){entry.start=customStart;entry.end=customEnd;}
       ns[day][blockId]=[...(ns[day][blockId]||[]),entry];
-      return{...p,[wKeyD]:{...wd,schedule:ns,confirmed:false}};
+      return{...p,[wKeyD]:{...wd,schedule:ns}};
     });
   };
 
@@ -1099,7 +1147,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       const idx=arr.findIndex(a=>a.empId===empId);if(idx<0)return p;
       if(newStart===block.start&&newEnd===block.end){ delete arr[idx].start; delete arr[idx].end; }
       else { arr[idx]={...arr[idx],start:newStart,end:newEnd}; }
-      return{...p,[wKey]:{...wd,schedule:ns,confirmed:false}};
+      return{...p,[wKey]:{...wd,schedule:ns}};
     });
   };
   const beginGanttDrag=(e,{day,blockId,empId,edge,origStart,origEnd,railEl,rangeStart,totalMin})=>{
@@ -1162,8 +1210,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // and every shift they ever worked stay put — which is the whole point, since
   // past hours are what payroll and any later dispute rest on. Reversible.
   const archiveEmp  =(id,archived=true)=>{
+    const who=empName(id);
     setEmployees(p=>p.map(e=>e.id===id?{...e,archived}:e));
     if(archived&&expandedEmp===id)setExpandedEmp(null);
+    // Roster changes belong in the log too — "why is this person gone from the
+    // rota?" is the same class of question as "who moved my shift?", and it had
+    // no answer either. weekKey null: this isn't scoped to one week.
+    audit(archived?'employee_archived':'employee_restored',{who},null);
   };
   // Delete: still available, still destructive. Removing the roster row also
   // strips their assignments (see pruneOrphanedAssignments) — correct for a
@@ -1171,10 +1224,12 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // archiving is for. The UI leads with archive and makes this the deliberate
   // second choice.
   const removeEmp   =id=>{
+    const who=empName(id);
     const remainingIds=employees.filter(e=>e.id!==id).map(e=>e.id);
     setEmployees(p=>p.filter(e=>e.id!==id));
     setSchedules(p=>pruneOrphanedAssignments(p,remainingIds).schedules);
     if(expandedEmp===id)setExpandedEmp(null);
+    audit('employee_deleted',{who},null);
   };
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
@@ -1681,7 +1736,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     screen together. Auto-dismisses after 8s (see armUndo) so it can't
     linger offering to revert something later edits have built on. */}
 {undoEntry&&createPortal(
-  <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',zIndex:260,display:'flex',alignItems:'center',gap:12,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:'10px 14px',boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)',fontFamily:"'Hanken Grotesk',sans-serif",maxWidth:'calc(100vw - 32px)'}}>
+  <div style={{position:'fixed',bottom:20,left:'50%',transform:`translateX(-50%) translateY(${undoFading?'8px':'0'})`,opacity:undoFading?0:1,transition:'opacity 0.55s ease, transform 0.55s ease',zIndex:260,display:'flex',alignItems:'center',gap:12,background:T.surface,border:`1px solid ${T.border}`,borderRadius:12,padding:'10px 14px',boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)',fontFamily:"'Hanken Grotesk',sans-serif",maxWidth:'calc(100vw - 32px)'}}>
     <span style={{fontSize:12,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{undoEntry.label}</span>
     <Btn small variant="secondary" onClick={runUndo}>{t('undo.action')}</Btn>
     <button onClick={()=>setUndoEntry(null)} title={t('common.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>
@@ -1721,6 +1776,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
                     </div>
                     <div style={{fontSize:10,color:T.text3,marginTop:2}}>
                       {new Date(ev.createdAt).toLocaleString(LOCALE,{dateStyle:'medium',timeStyle:'short'})}
+                      {!ev.weekKey && <span style={{marginLeft:6,opacity:0.8}}>· {t('audit.allWeeks')}</span>}
                     </div>
                   </div>
                 </div>

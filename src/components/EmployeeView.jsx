@@ -12,7 +12,7 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen, StatusBadge } from './ui';
 
 
 export default function EmployeeView({ orgId, orgName, role='employee', theme, toggleTheme }){
@@ -640,8 +640,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           // what's actually being taken on before committing to it.
           const date=dateForSwap(sw);
           return(
-          <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
-            <span style={{flex:1,minWidth:160}}>
+          // Same row shape as every other request below (two-line left, action
+          // right). An open shift is marked by an accent EDGE rather than a
+          // fully tinted block — four saturated panels stacked up shouted far
+          // louder than the information warranted, and made this list look
+          // unrelated to the plainer rows underneath it.
+          <div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'9px 11px',borderRadius:9,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderLeft:`3px solid ${isOpenShift?T.accent:T.border}`}}>
+            <span style={{flex:1,minWidth:150}}>
               <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>
                 {t('day.'+sw.day)} {fmt(date)}{b?` · ${b.name} ${b.start}–${b.end}`:''}
               </span>
@@ -820,7 +825,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       {/* Nav */}
       <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',gap:isMobile?6:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.15)'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:9,flex:1,minWidth:0,overflow:'hidden'}}>
-          <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:isMobile?18:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0}}>Rorota</span>
+          {/* Logo doubles as a home button, same as the manager view — back to
+              the schedule with nothing isolated. Doesn't change which week
+              you're looking at. */}
+          <button onClick={()=>{setView('schedule');setCalMode('team');setDayFilter(null);}} title={t('nav.schedule')} style={{fontFamily:'Fraunces, Georgia, serif',fontSize:isMobile?18:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em',flexShrink:0,background:'none',border:'none',padding:0,cursor:'pointer',transition:'opacity 0.15s'}} onMouseEnter={e=>e.currentTarget.style.opacity=0.7} onMouseLeave={e=>e.currentTarget.style.opacity=1}>Rorota</button>
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{orgName}</span>
         </div>
         {!isMobile&&(()=>{const rc=MEMBERSHIP_ROLE_COLORS[role]||MEMBERSHIP_ROLE_COLORS.employee;return(<span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,marginRight:8,background:isDark()?rc.text+'22':rc.bg,color:rc.text,border:`1px solid ${isDark()?rc.text+'44':rc.border}`,flexShrink:0}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>);})()}
@@ -855,6 +863,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : view==='requests' ? (
         <>
+          {/* Page header. "Request time off" belongs up here beside the title,
+              not floating below the card — as a trailing button it read as
+              unrelated to anything above it. */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,flexWrap:'wrap',marginBottom:12}}>
+            <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text}}>{t('nav.timeoff')}</div>
+            <Btn small onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn>
+          </div>
           {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
             <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
               {shiftRequestsToApprove.length>0 && (<div>
@@ -910,10 +925,16 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('to.yourRequests')}</div>
                 <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   {myTimeOff.map(to=>(
-                    <div key={to.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{to.type} · {fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
-                      <span style={{fontSize:11,color:to.status==='Approved'?T.success:to.status==='Rejected'?T.danger:T.text3}}>{t('to.'+to.status.toLowerCase())}</span>
-                      {to.status==='Pending' && <Btn small variant="danger" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
+                    <div key={to.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'9px 11px',borderRadius:9,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                      <span style={{flex:1,minWidth:150}}>
+                        <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>{fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
+                        <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>{to.type}</span>
+                      </span>
+                      {/* StatusBadge instead of bare coloured text: the same
+                          approved/pending/rejected treatment the manager sees,
+                          so a status means the same thing on both sides. */}
+                      <StatusBadge status={to.status} label={t('to.'+to.status.toLowerCase())}/>
+                      {to.status==='Pending' && <Btn small variant="ghost" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
                     </div>
                   ))}
                 </div>
@@ -923,9 +944,6 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           {myId && !(requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
             <div style={{...s.card,padding:'40px 24px',textAlign:'center',fontSize:13,color:T.text3}}>{t('notif.empty')}</div>
           )}
-          {/* Filing new time off lives here too — it's a request, so this is
-              where someone looks for it. */}
-          <div style={{marginTop:12}}><Btn onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn></div>
         </>
       ) : (<>
         {/* Week/Month nav — sticky under the app header, same as the

@@ -284,7 +284,14 @@ export default function WeekView({
               return(<tr key={role} style={{borderBottom:`1px solid ${T.border}`}}>
                 <td style={{padding:'10px 14px',verticalAlign:'top',background:T.surface,overflow:'hidden'}}><RoleBadge role={role} rs={rs}/></td>
                 {filterDays.map(day=>{
-                  const allA=schedule[day]?.[block.id]||[],assigned=allA.filter(a=>a.role===role),req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selectedRoles.includes(role)&&selected.day!==day;
+                  const allA=schedule[day]?.[block.id]||[],
+                        // Carry each assignment's REAL index in the block. Looking
+                        // it back up by employee id (findIndex) is ambiguous the
+                        // moment someone holds two roles in the same block — it
+                        // returns their FIRST entry, so acting on their Waiter card
+                        // silently edited their Manager one instead.
+                        assigned=allA.map((a,i)=>({a,i})).filter(x=>x.a.role===role),
+                        req=getBlockRoles(block,day)[role]||0,gap=Math.max(0,req-assigned.length),isTarget=selected&&selectedRoles.includes(role)&&selected.day!==day;
                   // Hovering anywhere in a day's column (not just its header)
                   // lights up that whole column together — a subtle tint
                   // plus an inset ring, so the grid reads as a set of
@@ -315,8 +322,8 @@ export default function WeekView({
                     // edge is the point.
                     style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:isDropCell?T.accentLight:dayHover?T.surfaceWarm:dayIsToday?T.accent+'0A':T.surface,boxShadow:isDropCell?`inset 0 0 0 2px ${T.accent}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
-                      {assigned.map((a,idx)=>{
-                        const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;
+                      {assigned.map(({a,i:realIdx},idx)=>{
+                        const emp=employees.find(e=>e.id===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.idx===realIdx&&selected?.blockId===block.id;
                         const clocked=a.noShow||a.actualStart||a.actualEnd;
                         const statusInfo=clocked?{text:a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`,tone:a.noShow?'bad':'good'}:null;
                         const onClick=()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}};

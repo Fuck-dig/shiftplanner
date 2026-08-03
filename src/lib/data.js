@@ -720,7 +720,11 @@ export async function fetchScheduleAudit(orgId, weekKey = null, limit = 100) {
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .limit(limit);
-  if (weekKey) q = q.eq('week_key', weekKey);
+  // Roster changes (archive/restore/delete) aren't scoped to a week, so they
+  // carry a null week_key. Filtering strictly by week would hide them from the
+  // per-week History view — which is exactly where someone asks "why is this
+  // person no longer on the rota?".
+  if (weekKey) q = q.or(`week_key.eq.${weekKey},week_key.is.null`);
   const { data, error } = await q;
   if (error) { console.error('Audit log read failed:', error); return []; }
   return (data || []).map(r => ({

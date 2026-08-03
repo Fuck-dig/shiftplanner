@@ -134,14 +134,19 @@ export default function TeamView({
             {DAYS.map((day,di)=>{
               const date=weekDates[di];
               const onTO=isOnTimeOff(emp.id,date,timeOff);
-              const assignedBlocks=blocks.filter(b=>(schedule[day]?.[b.id]||[]).some(a=>a.empId===emp.id));
+              // One entry per ASSIGNMENT, not per block. Someone can legitimately
+              // hold two roles in the same block (e.g. Manager and Waiter at
+              // lunch); listing blocks showed only one card for that and — worse
+              // — looking the entry back up by employee id returned whichever
+              // came first, so clicking their Waiter card opened their Manager
+              // shift. Each card now carries its own real index.
+              const myEntries=blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map((a,i)=>({b,a,i})).filter(x=>x.a.empId===emp.id));
               return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
                 {onTO?(
                   <div style={{padding:gridTight?'4px 7px':'7px 9px',borderRadius:7,background:T.warningLight,border:`1px solid ${T.warning}44`,textAlign:'center'}}>
                     <div style={{fontSize:gridTight?10:11,fontWeight:600,color:T.warning}}>{t('staff.leave')}</div>
                   </div>
-                ):assignedBlocks.length>0?assignedBlocks.map(b=>{
-                  const shiftEntry=(schedule[day]?.[b.id]||[]).find(a=>a.empId===emp.id);
+                ):myEntries.length>0?myEntries.map(({b,a:shiftEntry,i:realIdx})=>{
                   const dispStart=shiftEntry?.start||b.start,dispEnd=shiftEntry?.end||b.end;
                   // Actual (clocked) hours, not scheduled — falls back to the
                   // scheduled figure automatically for anything not yet
@@ -149,9 +154,8 @@ export default function TeamView({
                   const bh=actualAssignmentHours(shiftEntry||{},b);
                   const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
                   const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
-                  const realIdx=(schedule[day]?.[b.id]||[]).findIndex(a=>a.empId===emp.id);
                   return(
-                    <div key={b.id} onClick={()=>openEditSlot(day,b.id,realIdx)} title={clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
+                    <div key={b.id+"-"+realIdx} onClick={()=>openEditSlot(day,b.id,realIdx)} title={clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:p.dot}}/>
                       <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
                       {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>}

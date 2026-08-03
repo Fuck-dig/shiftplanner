@@ -24,6 +24,8 @@ function makeBuilder(table) {
     eq(col, val) { op.filters.push({ op: 'eq', col, val }); return b; },
     not(col, operator, val) { op.filters.push({ op: 'not', col, operator, val }); return b; },
     in(col, val) { op.filters.push({ op: 'in', col, val }); return b; },
+    or(expr) { op.filters.push({ op: 'or', expr }); return b; },
+    limit(n) { op.limit = n; return b; },
     order() { return b; },
     single() { op.single = true; return b; },
     // Thenable, so `await supabase.from(...)...` resolves like the real client.

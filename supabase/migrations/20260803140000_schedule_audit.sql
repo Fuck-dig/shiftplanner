@@ -40,8 +40,15 @@ create index if not exists schedule_audit_week_idx on schedule_audit (org_id, we
 
 alter table schedule_audit enable row level security;
 
+-- The drop-if-exists lines make this whole script safely re-runnable. Postgres
+-- has no `create policy if not exists`, so without them a second run dies on
+-- 42710 ("policy already exists") — which is exactly what happened the first
+-- time this was re-run. Dropping and recreating is also how you'd legitimately
+-- amend a policy later.
+
 -- Read: managers/owners only. The log can reveal wage-adjacent scheduling
 -- decisions and who made them, which isn't a plain employee's business.
+drop policy if exists "managers can read schedule_audit" on schedule_audit;
 create policy "managers can read schedule_audit" on schedule_audit
   for select using (
     org_id in (
@@ -53,6 +60,7 @@ create policy "managers can read schedule_audit" on schedule_audit
 -- Insert: any org member, but only as THEMSELVES. Without the actor_user_id
 -- check, a member could write entries attributed to someone else — which would
 -- make the log actively misleading rather than merely incomplete.
+drop policy if exists "org members can append to schedule_audit" on schedule_audit;
 create policy "org members can append to schedule_audit" on schedule_audit
   for insert with check (
     org_id in (select org_id from memberships where user_id = auth.uid())
