@@ -1,8 +1,8 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -36,12 +36,33 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [isMobile,setIsMobile]    = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
   const [swaps, setSwaps]         = useState([]);       // all shift_swaps for this org, any week/status
   const [swapModal, setSwapModal] = useState(null);      // {day,blockId,blockName,role} while the give-away modal is open
+  // Claiming a shift that clashes with something (you're on leave, too
+  // little rest, over your hours) is allowed but confirmed first:
+  // {swap, reasons} while that dialog is open.
+  const [claimWarn, setClaimWarn] = useState(null);
   const [requestModal, setRequestModal] = useState(null); // {emp,day,blockId,blockName,role} while the "request this shift" modal is open (proactively asking a coworker for their shift)
   const [swapBusy, setSwapBusy]   = useState(false);
   const [timeOffModalOpen, setTimeOffModalOpen] = useState(false);
   const [toBusy, setToBusy]       = useState(false);
   const [view, setView]           = useState('schedule'); // 'schedule' | 'employees' | 'profile' — top-level nav tabs
   const [calMode, setCalMode]     = useState('team');     // 'team' | 'week' | 'month' — which layout the schedule tab shows
+  // Measured height of the sticky week/month nav bar, so the "Your Shifts"
+  // strip can dock directly beneath it rather than under it. Declared here
+  // (after view/calMode, which the effect depends on) and well above the
+  // `if (loading) return <LoadingScreen/>` guard further down — a hook below
+  // that guard runs on some renders and not others, which crashes React.
+  const navBarRef = useRef(null);
+  const [navBarH, setNavBarH] = useState(0);
+  useEffect(()=>{
+    const el=navBarRef.current;
+    if(!el) return;
+    const ro=new ResizeObserver(entries=>{
+      const h=entries[0]?.contentRect?.height;
+      if(h) setNavBarH(h);
+    });
+    ro.observe(el);
+    return ()=>ro.disconnect();
+  },[view,calMode]);
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
   const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
@@ -549,15 +570,44 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // whether a manager has approved/rejected it yet instead of it being a
   // black box after I submit.
   const myTimeOff = myId ? [...timeOff].filter(to=>to.empId===myId).sort((a,b)=>b.startDate.localeCompare(a.startDate)) : [];
+  // Shifts I could take. Being on leave used to disqualify me outright —
+  // that's now a warning at claim time instead (claimWarningsFor below), so
+  // someone whose plans changed can pick up a shift on a day they'd booked
+  // off rather than having to get a manager to cancel the leave first. The
+  // two genuinely hard filters stay: a role I don't have, and a block I'm
+  // already on (I can't be in two places).
   const openToAnyone    = myId && me ? swaps.filter(sw=>{
     if (sw.status!=='open' || sw.toEmpId || sw.fromEmpId===myId) return false;
     if (!(me.roles||[]).includes(sw.role)) return false;
-    const d=dateForSwap(sw);
-    if (isOnTimeOff(myId,d,timeOff)) return false;
     const sameWeekSched = schedules[sw.weekKey]?.schedule;
     if (sameWeekSched && (sameWeekSched[sw.day]?.[sw.blockId]||[]).some(a=>a.empId===myId)) return false; // already on that block
     return true;
   }) : [];
+
+  // What's awkward about me taking this shift — shown as a confirm dialog
+  // rather than used to hide it. Same reason codes (and translated labels)
+  // the manager's own drag-and-drop warning uses, so both sides of the app
+  // describe the same clash identically.
+  const claimWarningsFor = (sw) => {
+    if(!myId||!me) return [];
+    const w=[];
+    if(isOnTimeOff(myId,dateForSwap(sw),timeOff)) w.push('leave');
+    const wkSched=schedules[sw.weekKey]?.schedule;
+    if(wkSched && hasRestConflict(myId,sw.day,sw.blockId,wkSched,blocks)) w.push('rest');
+    const b=blocks.find(x=>x.id===sw.blockId);
+    if(b&&me.maxHours){
+      let h=0;DAYS.forEach(d=>blocks.forEach(bb=>{const a=(wkSched?.[d]?.[bb.id]||[]).find(x=>x.empId===myId);if(a)h+=assignmentHours(a,bb);}));
+      if(h+assignmentHours({},b)>me.maxHours) w.push('hours');
+    }
+    return w;
+  };
+  // Route every claim through the warning check — the button in the open
+  // shifts row, the one in the requests panel, and any future caller.
+  const requestClaim = (sw) => {
+    const reasons=claimWarningsFor(sw);
+    if(reasons.length===0){ claimSwap(sw); return; }
+    setClaimWarn({swap:sw,reasons});
+  };
 
   // Extracted from the Team tab's requests panel so the same markup can also
   // sit above the Week view. Open shifts are first-come-first-served, so
@@ -576,7 +626,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           return(
           <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
             <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-            <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
+            <Btn small onClick={()=>requestClaim(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
           </div>
         );})}
       </div>
@@ -697,7 +747,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 {sw.status==='claimed'?(
                   <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{t('swap.statusClaimed',{name:claimant?.name||'?'})}</div>
                 ):canTake?(
-                  <button onClick={()=>claimSwap(sw)} disabled={swapBusy} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,background:T.accent,border:'none',color:'#fff',cursor:swapBusy?'wait':'pointer',fontFamily:'inherit'}}>{t('swap.take')}</button>
+                  <button onClick={()=>requestClaim(sw)} disabled={swapBusy} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,background:T.accent,border:'none',color:'#fff',cursor:swapBusy?'wait':'pointer',fontFamily:'inherit'}}>{t('swap.take')}</button>
                 ):null}
               </div>
             );
@@ -739,8 +789,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       ) : view==='employees' ? (
         <Directory employees={employees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : (<>
-        {/* Week/Month nav */}
-        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+        {/* Week/Month nav — sticky under the app header, same as the
+            manager's schedule bar. Its measured height feeds the "Your
+            Shifts" strip's own sticky offset below, so the two dock
+            underneath each other instead of overlapping; measured rather
+            than hardcoded because this bar wraps to two lines on narrow
+            screens and with longer translated labels. */}
+        <div ref={navBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,paddingBottom:8}}>
           <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
             <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>‹</button>
             <WeekPicker
@@ -863,7 +918,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               flat rectangle out of the page's ambient radial-gradient
               backdrop as it scrolls over content, instead of blending in. */}
           {me && (
-            <div style={{position:'sticky',top:isMobile?50:56,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:10}}>
+            <div style={{position:'sticky',top:(isMobile?50:56)+navBarH,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,paddingBottom:10}}>
               <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
               <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
                 {renderTeamRow(me)}
@@ -940,6 +995,30 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
       </div>
     </div>
     {swapModal && createPortal(<GiveAwayModal modal={swapModal} employees={employees} myId={myId} busy={swapBusy} onCancel={()=>setSwapModal(null)} onSubmit={submitGiveAway} s={s} t={t}/>, document.body)}
+    {/* Taking a shift that clashes with something — being on leave that day
+        being the common one. Never blocks the claim, just makes sure it's a
+        deliberate choice rather than something noticed later. */}
+    {claimWarn && createPortal(
+      <div onClick={()=>setClaimWarn(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(380px,100%)',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+          <div style={{padding:'16px 18px 4px',fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text}}>{t('claim.warnTitle')}</div>
+          <div style={{padding:'0 18px 10px',fontSize:12,color:T.text2}}>
+            {blocks.find(b=>b.id===claimWarn.swap.blockId)?.name||''} · {claimWarn.swap.role} · {t('day.'+claimWarn.swap.day)}
+          </div>
+          <div style={{padding:'0 18px 14px',display:'flex',flexDirection:'column',gap:5}}>
+            {claimWarn.reasons.map(code=>{
+              const label={leave:t('week.reasonLeave'),rest:t('week.reasonRest'),hours:t('week.reasonHours')}[code];
+              return <div key={code} style={{fontSize:12,fontWeight:500,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{label}</div>;
+            })}
+          </div>
+          <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',gap:6,alignItems:'center'}}>
+            <Btn small variant="warning" disabled={swapBusy} onClick={()=>{const sw=claimWarn.swap;setClaimWarn(null);claimSwap(sw);}}>{t('claim.takeAnyway')}</Btn>
+            <span style={{flex:1}}/>
+            <Btn small variant="ghost" onClick={()=>setClaimWarn(null)}>{t('common.cancel')}</Btn>
+          </div>
+        </div>
+      </div>
+    , document.body)}
     {requestModal && createPortal(<RequestShiftModal modal={requestModal} busy={swapBusy} onCancel={()=>setRequestModal(null)} onSubmit={submitShiftRequest} s={s} t={t}/>, document.body)}
     {timeOffModalOpen && createPortal(<TimeOffRequestModal busy={toBusy} onCancel={()=>setTimeOffModalOpen(false)} onSubmit={submitTimeOffRequest} s={s} t={t}/>, document.body)}
     {openMessage && createPortal(<MessageThreadModal message={openMessage} viewerIsManager={false} myLabel={me?.name||''} counterpartLabel={openMessage.senderLabel} onClose={()=>setOpenMessage(null)} s={s} t={t}/>, document.body)}
