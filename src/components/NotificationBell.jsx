@@ -46,6 +46,13 @@ function relTime(iso, lang){
 export default function NotificationBell({ empId, t, lang, onNavigate, pendingItems, messages, onOpenMessage }){
   const [items, setItems] = useState([]);
   const [open, setOpen]   = useState(false);
+  // Messages you've already read used to sit pinned above everything else
+  // forever, so a bell with four 11-day-old read messages buried the one
+  // thing that actually needed attention. Unread still pin (they need
+  // action); read ones collapse behind a toggle rather than being dropped,
+  // because this bell is the only way to reopen a message thread — hiding
+  // them outright would make message history unreachable.
+  const [showReadMsgs, setShowReadMsgs] = useState(false);
   const wrapRef = useRef(null);
   const hasPending = Array.isArray(pendingItems);
   const hasMessages = Array.isArray(messages);
@@ -70,9 +77,10 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
 
   if (!empId && !hasPending) return null;
 
+  const unreadMessages = hasMessages ? messages.filter(m => !m.read) : [];
+  const readMessages   = hasMessages ? messages.filter(m => m.read) : [];
   const personalUnread = empId ? items.filter(n => !n.read).length : 0;
-  const messagesUnread = hasMessages ? messages.filter(m => !m.read).length : 0;
-  const unread = personalUnread + (pendingItems?.length || 0) + messagesUnread;
+  const unread = personalUnread + (pendingItems?.length || 0) + unreadMessages.length;
 
   const clickItem = (n) => {
     if (!n.read) {
@@ -127,9 +135,9 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
               </div>
             ))}
           </>)}
-          {hasMessages && messages.length > 0 && (<>
+          {hasMessages && (unreadMessages.length > 0 || readMessages.length > 0) && (<>
             <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('msg.title')}</div>
-            {messages.map(m => (
+            {[...unreadMessages, ...(showReadMsgs ? readMessages : [])].map(m => (
               <div key={m.id} onClick={() => clickMessage(m)} style={{ padding: '10px 14px', borderBottom: `1px solid ${T.border}`, cursor: 'pointer', background: m.read ? 'transparent' : T.accentLight, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
                 {!m.read && <span style={{ width: 6, height: 6, borderRadius: '50%', background: T.accent, marginTop: 5, flexShrink: 0 }} />}
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -139,6 +147,11 @@ export default function NotificationBell({ empId, t, lang, onNavigate, pendingIt
                 </div>
               </div>
             ))}
+            {readMessages.length > 0 && (
+              <button onClick={() => setShowReadMsgs(v => !v)} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 14px', borderBottom: `1px solid ${T.border}`, background: 'none', border: 'none', borderTop: 'none', borderLeft: 'none', borderRight: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 11, color: T.accent }}>
+                {showReadMsgs ? t('msg.hideRead') : t('msg.showRead', { n: readMessages.length })}
+              </button>
+            )}
           </>)}
           {empId && items.length > 0 && (<>
             {((hasPending && pendingItems.length > 0) || (hasMessages && messages.length > 0)) && <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 600, color: T.text3, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{t('notif.title')}</div>}

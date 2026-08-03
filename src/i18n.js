@@ -423,6 +423,8 @@ export const STRINGS = {
     'notif.title':'Notifications',
 
     'msg.title':'Messages',
+    'msg.showRead':'Show {n} earlier',
+    'msg.hideRead':'Hide earlier',
     'msg.newMessage':'New Message',
     'msg.message':'Message',
     'msg.sendTo':'Send to',
@@ -922,6 +924,8 @@ export const STRINGS = {
     'notif.title':'Notifikationer',
 
     'msg.title':'Beskeder',
+    'msg.showRead':'Vis {n} tidligere',
+    'msg.hideRead':'Skjul tidligere',
     'msg.newMessage':'Ny besked',
     'msg.message':'Besked',
     'msg.sendTo':'Send til',
@@ -1421,6 +1425,8 @@ export const STRINGS = {
     'notif.title':'Notificaciones',
 
     'msg.title':'Mensajes',
+    'msg.showRead':'Ver {n} anteriores',
+    'msg.hideRead':'Ocultar anteriores',
     'msg.newMessage':'Nuevo mensaje',
     'msg.message':'Mensaje',
     'msg.sendTo':'Enviar a',
@@ -1920,6 +1926,8 @@ export const STRINGS = {
     'notif.title':'Benachrichtigungen',
 
     'msg.title':'Nachrichten',
+    'msg.showRead':'{n} ältere anzeigen',
+    'msg.hideRead':'Ältere ausblenden',
     'msg.newMessage':'Neue Nachricht',
     'msg.message':'Nachricht',
     'msg.sendTo':'Senden an',
@@ -2419,6 +2427,8 @@ export const STRINGS = {
     'notif.title':'Notifications',
 
     'msg.title':'Messages',
+    'msg.showRead':'Voir {n} plus anciens',
+    'msg.hideRead':'Masquer les anciens',
     'msg.newMessage':'Nouveau message',
     'msg.message':'Message',
     'msg.sendTo':'Envoyer à',

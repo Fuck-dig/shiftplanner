@@ -241,13 +241,25 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return ()=>{alive=false;};
   },[orgId]);
 
+  // "Has this source returned real data at least once for the CURRENT org?"
+  // The manager-email effects below must not decide what's "new" until the
+  // answer is yes. Without this they seeded their already-seen set from the
+  // initial empty array — which happens before the fetch resolves, since
+  // myEmail comes straight off the auth session — so every existing pending
+  // item then looked brand new and got emailed on every single login.
+  // Reset per org so switching restaurants doesn't inherit the last one's
+  // seen-set (or, worse, email out the new org's whole backlog).
+  const swapsLoaded=useRef(false);
+  const repliesLoaded=useRef(false);
+
   // Shift swaps are written incrementally by employees in their own
   // sessions, so there's nothing here to debounce-sync — just poll (no
   // realtime subscription yet) so newly-claimed swaps show up without a
   // manual refresh.
   useEffect(()=>{
     let alive=true;
-    const loadSwaps=()=>fetchShiftSwaps(orgId).then(v=>{if(alive)setSwaps(v);}).catch(err=>console.error('Load swaps failed:',err));
+    swapsLoaded.current=false;
+    const loadSwaps=()=>fetchShiftSwaps(orgId).then(v=>{if(alive){swapsLoaded.current=true;setSwaps(v);}}).catch(err=>console.error('Load swaps failed:',err));
     loadSwaps();
     const iv=setInterval(loadSwaps,45000);
     return ()=>{alive=false;clearInterval(iv);};
@@ -258,7 +270,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // shows up in the manager's own bell even without an employees row.
   useEffect(()=>{
     let alive=true;
-    const loadReplies=()=>fetchUnseenMessageReplies(orgId).then(v=>{if(alive)setUnseenMessageReplies(v);}).catch(err=>console.error('Load message replies failed:',err));
+    repliesLoaded.current=false;
+    const loadReplies=()=>fetchUnseenMessageReplies(orgId).then(v=>{if(alive){repliesLoaded.current=true;setUnseenMessageReplies(v);}}).catch(err=>console.error('Load message replies failed:',err));
     loadReplies();
     const iv=setInterval(loadReplies,45000); // fallback in case the realtime subscription below ever drops
     return ()=>{alive=false;clearInterval(iv);};
@@ -315,8 +328,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // they have an employees row) and respects nothing else — there's no
   // per-manager opt-out toggle yet, unlike the employee-facing one.
   const seenTOIds=useRef(null);
+  const seenSwapIds=useRef(null);
+  const seenReplyIds=useRef(null);
+  // Switching restaurants has to start the "what's new" tracking over —
+  // otherwise the new org's existing backlog is all unseen and gets emailed.
+  // Declared before the three effects below so it resets first on org change.
   useEffect(()=>{
-    if(!myEmail) return;
+    seenTOIds.current=null; seenSwapIds.current=null; seenReplyIds.current=null;
+  },[orgId]);
+
+  useEffect(()=>{
+    // `loading` is the main data load (time off is part of that Promise.all).
+    // Seeding before it finishes is exactly the bug described above.
+    if(!myEmail||loading) return;
     const pending=timeOff.filter(to=>to.status==='Pending');
     if(seenTOIds.current===null){ seenTOIds.current=new Set(pending.map(to=>to.id)); return; }
     pending.forEach(to=>{
@@ -327,11 +351,10 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       const text=t('notif.mgrTimeOffRequest',{name:emp?.name||'?',type:to.type,range});
       sendNotificationEmail({to:myEmail,subject:text,body:text});
     });
-  },[timeOff,employees,myEmail]);
+  },[timeOff,employees,myEmail,loading]);
 
-  const seenSwapIds=useRef(null);
   useEffect(()=>{
-    if(!myEmail) return;
+    if(!myEmail||!swapsLoaded.current) return;
     const pending=swaps.filter(sw=>sw.status==='claimed');
     if(seenSwapIds.current===null){ seenSwapIds.current=new Set(pending.map(sw=>sw.id)); return; }
     pending.forEach(sw=>{
@@ -343,9 +366,8 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     });
   },[swaps,employees,myEmail]);
 
-  const seenReplyIds=useRef(null);
   useEffect(()=>{
-    if(!myEmail) return;
+    if(!myEmail||!repliesLoaded.current) return;
     if(seenReplyIds.current===null){ seenReplyIds.current=new Set(unseenMessageReplies.map(m=>m.id)); return; }
     unseenMessageReplies.forEach(m=>{
       if(seenReplyIds.current.has(m.id)) return;
