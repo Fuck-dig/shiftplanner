@@ -581,6 +581,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     if (!(me.roles||[]).includes(sw.role)) return false;
     const sameWeekSched = schedules[sw.weekKey]?.schedule;
     if (sameWeekSched && (sameWeekSched[sw.day]?.[sw.blockId]||[]).some(a=>a.empId===myId)) return false; // already on that block
+    // A slot can now carry several open shifts at once (a busy Saturday
+    // needing three waiters). Without this you could claim two of them and
+    // sign yourself up to work the same shift twice — one pending claim on a
+    // given day+block is enough, the rest stay for other people.
+    if (swaps.some(o=>o.claimedByEmpId===myId && o.status==='claimed' && o.weekKey===sw.weekKey && o.day===sw.day && o.blockId===sw.blockId)) return false;
     return true;
   }) : [];
 

@@ -411,11 +411,16 @@ export default function WeekView({
                         // just when it's short — a fully-staffed day might
                         // still want an extra pair of hands, and there's no
                         // reason "post an open shift" should require first
-                        // creating a gap. Suppressed only when one is already
-                        // posted for this exact slot, or mid-move, when the
-                        // whole cell means "drop here" instead.
-                        const alreadyOpen=openShiftsFor?openShiftsFor(day,block.id,role).length>0:false;
-                        const canPostOpen=postOpenShift&&!selected&&!alreadyOpen;
+                        // creating a gap.
+                        //
+                        // Multiple open shifts per slot are allowed: a busy
+                        // Saturday might need three more waiters, and each
+                        // one is a separate thing for a separate person to
+                        // claim. This used to hide the button once one
+                        // existed, which capped every slot at exactly one.
+                        // Only suppressed mid-move, when the whole cell means
+                        // "drop here" instead.
+                        const canPostOpen=postOpenShift&&!selected;
                         const openBtn=(label)=><button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:9,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{label}</button>;
                         if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'4px 9px',borderRadius:9,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
