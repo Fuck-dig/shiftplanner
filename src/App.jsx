@@ -1031,9 +1031,15 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // 'approved' and 'declined' ones are done with and shouldn't keep
   // occupying a cell. Identified by having no fromEmpId, which is what
   // distinguishes a manager-posted open shift from a released one.
-  const openShiftsFor=useCallback((day,blockId,role)=>
-    swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&sw.blockId===blockId&&sw.role===role&&(sw.status==='open'||sw.status==='claimed')),
-  [swaps,wKey]);
+  //
+  // Deliberately a plain function, NOT useCallback: everything from here
+  // down sits after the `if(loading) return <LoadingScreen/>` early return
+  // near the top of this component, so any hook added below that line runs
+  // on the loaded render but not the loading one — which React rejects with
+  // "rendered more hooks than during the previous render". Filtering a
+  // short array per cell is cheap; memoizing it is not worth a hook here.
+  const openShiftsFor=(day,blockId,role)=>
+    swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&sw.blockId===blockId&&sw.role===role&&(sw.status==='open'||sw.status==='claimed'));
 
   const declineSwapManager=(sw)=>{
     updateShiftSwap(sw.id,{status:'declined'}).catch(err=>console.error(err));

@@ -18,5 +18,10 @@ jobs:
           cache: npm
 
       - run: npm ci
+      # Narrow lint gate — see eslint.ci.config.js for why this isn't the
+      # full `npm run lint` (that has a ~140-item cosmetic backlog). This
+      # catches rules-of-hooks violations, which white-screen the app for
+      # every user; one shipped to production on 2026-08-03.
+      - run: npm run lint:ci
       - run: npm test
       - run: npm run build
