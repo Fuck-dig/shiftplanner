@@ -10,6 +10,7 @@ export default function TeamView({
   gridGroupBy, gridTight, gridSearch,
   empHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
+  openShiftsForDay, postOpenShift, cancelOpenShift,
   stickyTop,
   s, t,
 }){
@@ -20,6 +21,10 @@ export default function TeamView({
   // the highlight), both cleared on drop/dragend regardless of outcome.
   const [dragRole,setDragRole]=useState(null);
   const [dragOverRole,setDragOverRole]=useState(null);
+  // Which day's "post an open shift" picker is open. Team rows are per-PERSON,
+  // so unlike the Week grid there's no role/block context to infer — it has to
+  // be asked for.
+  const [openShiftDay,setOpenShiftDay]=useState(null);
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -89,6 +94,45 @@ export default function TeamView({
       </div>
     </div>
     <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderTop:'none',borderTopLeftRadius:0,borderTopRightRadius:0}}>
+      {/* Open shifts — the Week grid can post one straight into a role cell,
+          but Team's rows are people, so this row carries them instead and asks
+          which block/role when you add one. */}
+      {postOpenShift&&(
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
+          <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:8}}>
+            <span style={{width:gridTight?22:28,height:gridTight?22:28,borderRadius:'50%',background:T.accent+'1E',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:gridTight?11:13,fontWeight:700,flexShrink:0,border:`1.5px dashed ${T.accent}55`}}>?</span>
+            <span style={{fontSize:gridTight?11:12,fontWeight:600,color:T.accentText}}>{t('open.rowLabel')}</span>
+          </div>
+          {DAYS.map((day,di)=>{
+            const forDay=openShiftsForDay?openShiftsForDay(day):[];
+            return(<div key={day} style={{padding:'6px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:3,justifyContent:'center',position:'relative'}}>
+              {forDay.map(sw=>(
+                <div key={sw.id} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 6px',borderRadius:7,background:T.accentLight,border:`1px dashed ${T.accent}66`}}>
+                  <span style={{flex:1,minWidth:0,fontSize:10,fontWeight:600,color:T.accentText,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{blocks.find(b=>b.id===sw.blockId)?.name||''} · {sw.role}</span>
+                  {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:11,padding:0,fontFamily:'inherit'}}>✕</button>}
+                </div>
+              ))}
+              <button onClick={()=>setOpenShiftDay(openShiftDay===day?null:day)} title={t('open.post')} style={{padding:'3px 7px',borderRadius:7,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{t('open.postShort')}</button>
+              {openShiftDay===day&&(
+                <div style={{position:'absolute',top:'100%',left:4,zIndex:30,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)',padding:8,minWidth:150}}>
+                  <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>{t('open.post')}</div>
+                  {blocks.map(b=>(
+                    <div key={b.id} style={{marginBottom:6}}>
+                      <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{b.name}</div>
+                      <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                        {allRoles.map(r=>(
+                          <button key={r} onClick={()=>{postOpenShift(day,b.id,r);setOpenShiftDay(null);}} style={{padding:'2px 7px',borderRadius:7,fontSize:10,fontWeight:500,background:'transparent',border:`1px solid ${T.border}`,color:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <button onClick={()=>setOpenShiftDay(null)} style={{fontSize:10,color:T.text3,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:0}}>{t('common.cancel')}</button>
+                </div>
+              )}
+            </div>);
+          })}
+        </div>
+      )}
       {/* Rows */}
       {rows.map((row,ri)=>{
         const emp=row.emp;

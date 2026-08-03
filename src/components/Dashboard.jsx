@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, Suspense, lazy, Fragment } from '
 import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop } from '../lib/schedule';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments } from '../lib/schedule';
 import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
@@ -1213,6 +1213,17 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const who=empName(id);
     setEmployees(p=>p.map(e=>e.id===id?{...e,archived}:e));
     if(archived&&expandedEmp===id)setExpandedEmp(null);
+    // Archiving keeps HISTORY, but leaving someone rostered for next week
+    // isn't history — it's a gap the team discovers on the day. Offer to clear
+    // what's still ahead of them; past shifts are never touched, which is the
+    // whole point of archiving rather than deleting.
+    if(archived){
+      const upcoming=removeUpcomingAssignments(schedules,id,todayISO(),weekKeyToMonday,DAYS);
+      if(upcoming&&confirm(t('emp.archiveClearUpcoming',{name:who,n:upcoming.removed}))){
+        setSchedules(upcoming.schedules);
+        audit('employee_shifts_cleared',{who,n:upcoming.removed},null);
+      }
+    }
     // Roster changes belong in the log too — "why is this person gone from the
     // rota?" is the same class of question as "who moved my shift?", and it had
     // no answer either. weekKey null: this isn't scoped to one week.
@@ -1951,6 +1962,8 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     empHours={empHours} assignmentHours={assignmentHours} actualAssignmentHours={actualAssignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
     generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
+    openShiftsForDay={day=>swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&(sw.status==='open'||sw.status==='claimed'))}
+    postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
     stickyTop={56+scheduleBarH}
     s={s} t={t}
   />

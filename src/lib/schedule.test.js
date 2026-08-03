@@ -11,6 +11,7 @@ import {
   hasRestConflict,
   pruneOrphanedAssignments,
   applyAssignmentDrop,
+  removeUpcomingAssignments,
   WEEKS_PER_MONTH,
 } from './schedule';
 
@@ -427,5 +428,46 @@ describe('applyAssignmentDrop — no duplicate assignments in one block', () => 
     const out = applyAssignmentDrop(sch, { day: 'Tue', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'lunch', role: 'Kitchen', idx: 1 });
     expect(out.Mon.lunch.filter(a => a.empId === 'a')).toHaveLength(2); // swap, by design
     expect(out.Tue.lunch[0].empId).toBe('b');
+  });
+});
+
+describe('removeUpcomingAssignments', () => {
+  // Used when archiving someone who has left: clear what they're still down
+  // for, keep what they actually worked.
+  const DAYS_ = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const mondayOf = wk => { const [y,m,d] = wk.split('-').map(Number); return new Date(y, m-1, d); };
+  const base = () => ({
+    // Mon 27 Jul 2026 .. Sun 2 Aug
+    '2026-07-27': { schedule: { Mon: { lunch: [{ empId:'a' }, { empId:'b' }] }, Fri: { lunch: [{ empId:'a' }] } }, confirmed: true },
+    // Mon 3 Aug 2026 .. Sun 9 Aug
+    '2026-08-03': { schedule: { Mon: { lunch: [{ empId:'a' }] }, Wed: { lunch: [{ empId:'a' }, { empId:'b' }] } }, confirmed: false },
+  });
+
+  it('removes only shifts on or after the cutoff, keeping the past intact', () => {
+    // Cutoff Mon 3 Aug: the July week is history, the August week is upcoming.
+    const r = removeUpcomingAssignments(base(), 'a', '2026-08-03', mondayOf, DAYS_);
+    expect(r.removed).toBe(2);
+    expect(r.schedules['2026-07-27'].schedule.Mon.lunch.map(x=>x.empId)).toEqual(['a','b']); // untouched
+    expect(r.schedules['2026-07-27'].schedule.Fri.lunch.map(x=>x.empId)).toEqual(['a']);     // untouched
+    expect(r.schedules['2026-08-03'].schedule.Mon.lunch).toEqual([]);
+    expect(r.schedules['2026-08-03'].schedule.Wed.lunch.map(x=>x.empId)).toEqual(['b']);     // colleague kept
+  });
+
+  it('includes the cutoff day itself — today counts as upcoming', () => {
+    const r = removeUpcomingAssignments(base(), 'a', '2026-08-05', mondayOf, DAYS_); // Wed 5 Aug
+    expect(r.removed).toBe(1);
+    expect(r.schedules['2026-08-03'].schedule.Mon.lunch.map(x=>x.empId)).toEqual(['a']); // Mon 3rd is past
+    expect(r.schedules['2026-08-03'].schedule.Wed.lunch.map(x=>x.empId)).toEqual(['b']); // Wed 5th removed
+  });
+
+  it('returns null when the person has nothing upcoming, so no pointless write', () => {
+    expect(removeUpcomingAssignments(base(), 'a', '2027-01-01', mondayOf, DAYS_)).toBeNull();
+    expect(removeUpcomingAssignments(base(), 'nobody', '2026-01-01', mondayOf, DAYS_)).toBeNull();
+  });
+
+  it('preserves other fields on the week entry, like confirmed', () => {
+    const r = removeUpcomingAssignments(base(), 'a', '2026-08-03', mondayOf, DAYS_);
+    expect(r.schedules['2026-07-27'].confirmed).toBe(true);
+    expect(r.schedules['2026-08-03'].confirmed).toBe(false);
   });
 });

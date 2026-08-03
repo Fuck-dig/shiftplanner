@@ -365,3 +365,39 @@ export function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
   return { schedule:result, total, noMgr };
 }
 export function dayCoverage(schedule,blocks,day,allRoles){ if(!schedule||!schedule[day]) return 'empty'; let tot=0,fill=0; blocks.forEach(b=>{ const r=getBlockRoles(b,day); allRoles.forEach(role=>{ tot+=r[role]||0; fill+=Math.min(r[role]||0,(schedule[day][b.id]||[]).filter(a=>a.role===role).length); }); }); if(tot===0) return 'empty'; const p=fill/tot; return p>=1?'full':p>=0.6?'partial':'low'; }
+
+// Strip someone's UPCOMING assignments (on or after `fromISO`) while leaving
+// everything earlier untouched. Used when archiving a departed employee: the
+// point of archiving is that their history survives, but leaving them rostered
+// for next week isn't "kept history", it's a gap someone discovers on the day.
+//
+// Returns a NEW schedules map plus a count, or null if nothing changed — so a
+// caller can skip a pointless write and skip prompting when there's nothing to
+// remove.
+export function removeUpcomingAssignments(schedulesByWeek, empId, fromISO, weekKeyToMondayFn, days) {
+  let removed = 0;
+  const out = {};
+  for (const [wk, entry] of Object.entries(schedulesByWeek || {})) {
+    if (!entry?.schedule) { out[wk] = entry; continue; }
+    let monday;
+    try { monday = weekKeyToMondayFn(wk); } catch { out[wk] = entry; continue; }
+    const newSchedule = {};
+    for (const [day, byBlock] of Object.entries(entry.schedule)) {
+      const di = days.indexOf(day);
+      const d = new Date(monday); d.setDate(monday.getDate() + (di < 0 ? 0 : di));
+      // Compare as YYYY-MM-DD to sidestep timezone drift on the boundary.
+      const iso = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const future = iso >= fromISO;
+      const newByBlock = {};
+      for (const [blockId, list] of Object.entries(byBlock || {})) {
+        if (!future) { newByBlock[blockId] = list; continue; }
+        const kept = (list || []).filter(a => a.empId !== empId);
+        removed += (list || []).length - kept.length;
+        newByBlock[blockId] = kept;
+      }
+      newSchedule[day] = newByBlock;
+    }
+    out[wk] = { ...entry, schedule: newSchedule };
+  }
+  return removed ? { schedules: out, removed } : null;
+}
