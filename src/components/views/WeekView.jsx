@@ -250,7 +250,13 @@ export default function WeekView({
         {dropAssignment&&!effectiveDay&&blocks.length>0&&(
           <div style={{fontSize:10,color:T.text3,padding:'6px 20px 0'}}>{t('week.dragToMove')}</div>
         )}
-        <table style={{width:'100%',borderCollapse:'collapse',minWidth:580}}>
+        {/* tableLayout:'fixed' is what actually keeps the 7 day columns equal.
+            Without it a cell sizes to its widest child, so adding a single
+            open shift (or a long name) visibly widened that whole day
+            relative to the others. minWidth rises with it so each fixed
+            column still has room for a card — narrower viewports scroll
+            horizontally, which the wrapper already handles. */}
+        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:930}}>
           <thead><tr>
             <th style={{width:90,textAlign:'left',padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
             {filterDays.map(day=>{const i=DAYS.indexOf(day),isActive=effectiveDay===day,isHover=hoverDay===day;return(<th key={day} onClick={()=>setDayFilter(f=>f===day?null:day)} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{textAlign:'left',padding:'10px 10px',fontSize:11,fontWeight:500,color:isActive?T.accent:T.text,background:isActive?T.accentLight:isHover?T.surface:T.surfaceWarm,borderBottom:`1px solid ${T.border}`,cursor:'pointer',userSelect:'none',transition:'background 0.12s'}} title={t('week.isolateDay')}>{t('day.'+day)}<div style={{fontSize:10,fontWeight:400,color:isActive?T.accent:T.text3}}>{fmt(weekDates[i])}</div></th>);})}
@@ -333,10 +339,16 @@ export default function WeekView({
                           glance, with its claim state underneath. */}
                       {openShiftsFor&&openShiftsFor(day,block.id,role).map(sw=>{
                         const claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;
-                        return(<div key={sw.id} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7}}>
+                        // minWidth:0 on both the card and its text column, plus
+                        // ellipsis on the labels, so a long claim status can
+                        // never push the whole day column wider than the
+                        // person cards next to it — a table cell otherwise
+                        // sizes to its widest child, which made adding one
+                        // open shift visibly widen that entire day.
+                        return(<div key={sw.id} title={t('open.claimable')} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7,minWidth:0,boxSizing:'border-box'}}>
                           <span style={{width:22,height:22,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>?</span>
                           <div style={{minWidth:0,flex:1}}>
-                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25}}>{t('open.posted')}</div>
+                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('open.posted')}</div>
                             {claimant&&<div style={{fontSize:9,color:T.accentText,opacity:0.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('swap.statusClaimed',{name:claimant.name})}</div>}
                           </div>
                           {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:12,padding:2,fontFamily:'inherit',flexShrink:0}}>✕</button>}

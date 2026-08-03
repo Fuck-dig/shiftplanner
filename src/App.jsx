@@ -129,6 +129,12 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
   const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline
   const [collapsedBlocks,setCollapsedBlocks]=useState({}); // blockId -> true when collapsed in Week view
+  // A drag-and-drop move that tripped a warning and is waiting on the
+  // manager to confirm or cancel: {src,dst,ns,warnings,name,day,blockId}.
+  // Must live up here with the other hooks — everything below the
+  // `if(loading) return <LoadingScreen/>` guard further down runs on some
+  // renders and not others, and a hook there crashes React.
+  const [pendingDrop,setPendingDrop] = useState(null);
   const [costsMode,setCostsMode]     = useState('week');
   const [costsWeekOffset,setCostsWeekOffset]=useState(0); // independent of the Schedule tab's own week
   const [hourlyRate,setHourlyRateRaw]= useState(()=>load('sa2_rate',{amount:150,currency:'kr'}));
@@ -651,11 +657,42 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // unit-tested there); this just wires it to state. A null return means the
   // drop was a no-op or referred to something stale — do nothing rather than
   // writing an unchanged schedule and needlessly un-confirming it.
+  //
+  // Dropping someone somewhere they shouldn't be (on leave, not available,
+  // over their hours, too little rest) is allowed, but not silently — it
+  // routes through a confirm dialog first. Same six checks the staff picker
+  // already labels people with, so the drag and the picker can never
+  // disagree about what counts as a problem.
+  const applyDrop=(src,dst,ns)=>{
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
+    setSelected(null);
+    setPendingDrop(null);
+  };
   const dropAssignment=(src,dst)=>{
     const ns=applyAssignmentDrop(schedule,src,dst);
     if(!ns)return;
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
-    setSelected(null);
+    // Warnings are evaluated against the schedule AS IT WOULD BE after the
+    // move, not the current one — otherwise someone moving between two slots
+    // on the same day flags as "already working today" against their own
+    // outgoing assignment, and hours/rest would be computed off stale data.
+    //
+    // A swap moves TWO people, so both get checked: the person dragged, and
+    // whoever they displaced into the source slot. Checking only the dragged
+    // one would wave through half of every swap.
+    const nameOf=id=>employees.find(e=>e.id===id)?.name||'';
+    const groups=[];
+    const dragged=dropWarningsFor(ns,src.empId,dst.day,dst.blockId,dst.role);
+    if(dragged.length)groups.push({empId:src.empId,name:nameOf(src.empId),codes:dragged,day:dst.day,blockId:dst.blockId,role:dst.role});
+    if(dst.idx!=null){
+      const displaced=schedule?.[dst.day]?.[dst.blockId]?.[dst.idx];
+      const srcRole=schedule?.[src.day]?.[src.blockId]?.[src.idx]?.role;
+      if(displaced?.empId){
+        const codes=dropWarningsFor(ns,displaced.empId,src.day,src.blockId,srcRole);
+        if(codes.length)groups.push({empId:displaced.empId,name:nameOf(displaced.empId),codes,day:src.day,blockId:src.blockId,role:srcRole});
+      }
+    }
+    if(groups.length===0){ applyDrop(src,dst,ns); return; }
+    setPendingDrop({src,dst,ns,groups});
   };
 
   // Editing an existing assignment in place — separate from the move/swap
@@ -753,6 +790,29 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     acc[e.id]=h;return acc;
   },{});
   const empHours=id=>empHoursMap[id]||0;
+
+  // What's wrong with putting this person in this slot, evaluated against a
+  // GIVEN schedule (so a drag can ask about the post-move world rather than
+  // the current one). Returns the same reason codes the staff picker uses —
+  // 'role' | 'leave' | 'avail' | 'rest' | 'hours' — which already have
+  // translated labels under week.reason*. Deliberately no 'working' code:
+  // hasRestConflict already covers a genuine same-day clash, whereas
+  // "already working today" on its own is normal for a split shift and isn't
+  // worth interrupting a drag over.
+  const dropWarningsFor=(sched,empId,day,blockId,role)=>{
+    const emp=employees.find(e=>e.id===empId);
+    const block=blocks.find(b=>b.id===blockId);
+    if(!emp||!block||!sched)return[];
+    const date=weekDates[DAYS.indexOf(day)];
+    const w=[];
+    if(!(emp.roles||[]).includes(role))w.push('role');
+    if(isOnTimeOff(emp.id,date,timeOff))w.push('leave');
+    if(!coversBlock(emp.availability?.[day],block))w.push('avail');
+    if(hasRestConflict(emp.id,day,blockId,sched,blocks))w.push('rest');
+    let h=0;DAYS.forEach(d=>blocks.forEach(b=>{const a=(sched[d]?.[b.id]||[]).find(x=>x.empId===emp.id);if(a)h+=assignmentHours(a,b);}));
+    if(h>emp.maxHours)w.push('hours');
+    return w;
+  };
 
   // Parallel map counting how many of those hours came from a clocked/
   // corrected shift rather than a bare schedule estimate — same "is this
@@ -1450,6 +1510,42 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     </div>
   ,document.body);
 })()}
+
+{/* DRAG-DROP WARNING CONFIRM — only appears when a drag would put someone
+    somewhere that trips one of the availability/hours/rest checks. The move
+    is already computed at this point (pendingDrop.ns); confirming just
+    commits it, cancelling discards it untouched. */}
+{pendingDrop&&createPortal(
+  <div onClick={()=>setPendingDrop(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'16px 18px 6px',fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text}}>
+        {t('drop.warnTitle',{name:pendingDrop.groups.map(g=>(g.name||'').split(' ')[0]).join(' & ')})}
+      </div>
+      <div style={{padding:'0 18px 14px'}}>
+        <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('drop.warnDesc')}</div>
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          {pendingDrop.groups.map(g=>(
+            <div key={g.empId}>
+              <div style={{fontSize:12,fontWeight:600,color:T.text,marginBottom:2}}>{g.name}</div>
+              <div style={{fontSize:11,color:T.text3,marginBottom:6}}>{t('day.'+g.day)} · {blocks.find(b=>b.id===g.blockId)?.name||''} · {g.role}</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {g.codes.map(code=>{
+                  const label={role:t('week.reasonRole',{role:g.role}),leave:t('week.reasonLeave'),working:t('week.reasonWorking'),hours:t('week.reasonHours'),rest:t('week.reasonRest'),avail:t('week.reasonAvail')}[code];
+                  return <div key={code} style={{fontSize:12,fontWeight:500,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{label}</div>;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:12,display:'flex',gap:6}}>
+        <Btn small variant="warning" onClick={()=>applyDrop(pendingDrop.src,pendingDrop.dst,pendingDrop.ns)}>{t('drop.moveAnyway')}</Btn>
+        <span style={{flex:1}}/>
+        <Btn small variant="ghost" onClick={()=>setPendingDrop(null)}>{t('common.cancel')}</Btn>
+      </div>
+    </div>
+  </div>
+,document.body)}
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>

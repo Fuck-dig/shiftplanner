@@ -52,7 +52,10 @@ export function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLi
 
 export function Btn({children,onClick,disabled,variant='primary',small}){
   const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
-  const vs={primary:{background:T.accent,color:'#fff'},secondary:{background:T.surfaceWarm,color:T.text,border:`1px solid ${T.border}`},ghost:{background:'transparent',color:T.text2,border:`1px solid ${T.border}`},danger:{background:T.dangerLight,color:T.danger,border:`1px solid ${T.danger}33`},success:{background:T.successLight,color:T.success,border:`1px solid ${T.success}33`}};
+  // `warning` is for "proceed even though something's off" actions (e.g.
+  // moving someone onto a shift they're not available for) — distinct from
+  // `danger`, which is for destructive things like delete.
+  const vs={primary:{background:T.accent,color:'#fff'},secondary:{background:T.surfaceWarm,color:T.text,border:`1px solid ${T.border}`},ghost:{background:'transparent',color:T.text2,border:`1px solid ${T.border}`},danger:{background:T.dangerLight,color:T.danger,border:`1px solid ${T.danger}33`},warning:{background:T.warningLight,color:T.warning,border:`1px solid ${T.warning}33`},success:{background:T.successLight,color:T.success,border:`1px solid ${T.success}33`}};
   return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant]}}>{children}</button>;
 }
 

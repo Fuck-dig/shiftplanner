@@ -559,6 +559,30 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     return true;
   }) : [];
 
+  // Extracted from the Team tab's requests panel so the same markup can also
+  // sit above the Week view. Open shifts are first-come-first-served, so
+  // burying them in one tab means whoever happens to be on the Team tab wins;
+  // showing them on Week too gives everyone the same shot at seeing them.
+  const openShiftsSection = openToAnyone.length>0 ? (
+    <div>
+      <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.availableToYou')}</div>
+      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+        {openToAnyone.map(sw=>{
+          // No fromEmpId = a manager-posted OPEN shift (nobody held it),
+          // rather than a coworker giving one away — say so instead of
+          // rendering "Given up by ?".
+          const isOpenShift=!sw.fromEmpId;
+          const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
+          return(
+          <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
+            <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+            <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
+          </div>
+        );})}
+      </div>
+    </div>
+  ) : null;
+
   // One employee's row in the Team tab's day grid — name cell + day cells
   // with shift chips / time-off / give-away button. Shared between the
   // normal (sortable, role-grouped) list and the sticky "Your Shifts"
@@ -695,9 +719,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
         {calMode==='month' ? (
           <MonthView monthOff={monthOff} schedules={schedules} weekOffset={weekOffset} setWeekOffset={setWeekOffset} setCalMode={setCalMode} displayMonth={displayMonth} blocks={blocks} allRoles={allRoles} employees={employees} timeOff={timeOff} generate={()=>{}} deleteMonth={()=>{}} readOnly s={s} t={t}/>
-        ) : calMode==='week' ? (
+        ) : calMode==='week' ? (<>
+          {/* Pinned above the week itself — a shift anyone can claim is worth
+              seeing before you start reading your own rota, and it's gone
+              once someone else takes it. */}
+          {myId && openShiftsSection && <div style={{...s.card,marginBottom:16}}>{openShiftsSection}</div>}
           <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
-        ) : (<>
+        </>) : (<>
 
         {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
           <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
@@ -725,23 +753,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                 );})}
               </div>
             </div>)}
-            {openToAnyone.length>0 && (<div>
-              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.availableToYou')}</div>
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {openToAnyone.map(sw=>{
-                  // No fromEmpId = a manager-posted OPEN shift (nobody held
-                  // it), rather than a coworker giving one away — say so
-                  // instead of rendering "Given up by ?".
-                  const isOpenShift=!sw.fromEmpId;
-                  const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
-                  return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                    <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
-                  </div>
-                );})}
-              </div>
-            </div>)}
+            {openShiftsSection}
             {myOpenRequests.length>0 && (<div>
               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myRequests')}</div>
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
