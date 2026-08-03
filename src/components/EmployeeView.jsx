@@ -12,7 +12,7 @@ import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
-import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen, StatusBadge } from './ui';
+import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen, StatusBadge, SectionLabel, RequestRow } from './ui';
 
 
 export default function EmployeeView({ orgId, orgName, role='employee', theme, toggleTheme }){
@@ -616,17 +616,28 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // a total. A decided time-off request or a claim already waiting on a
   // manager isn't something I can do anything about, so counting those would
   // make the badge nag permanently and stop meaning anything.
-  const actionableRequests = myId
-    ? requestsForMe.length + shiftRequestsToApprove.length + openToAnyone.length
-    : 0;
+  // Everything needing MY decision, as one list, so the nav badge and the
+  // "Needs you" card count are the same expression rather than two that can
+  // silently drift apart.
+  const needsYou = myId ? [...shiftRequestsToApprove, ...requestsForMe, ...openToAnyone] : [];
+  const actionableRequests = needsYou.length;
 
   // Extracted from the Team tab's requests panel so the same markup can also
   // sit above the Week view. Open shifts are first-come-first-served, so
   // burying them in one tab means whoever happens to be on the Team tab wins;
   // showing them on Week too gives everyone the same shot at seeing them.
+  // What/when for a swap, in the one format every request row uses:
+  // "Thu 14 Aug · Dinner 17:00-23:00" over "Waiter". A weekday alone is
+  // ambiguous once a request has sat in the queue for a few days, and
+  // without the block you can't tell a lunch from a dinner.
+  const swapWhen = (sw) => {
+    const b=blocks.find(x=>x.id===sw.blockId);
+    return `${t('day.'+sw.day)} ${fmt(dateForSwap(sw))}${b?` \u00b7 ${b.name} ${b.start}\u2013${b.end}`:''}`;
+  };
+
   const openShiftsSection = openToAnyone.length>0 ? (
     <div>
-      <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.availableToYou')}</div>
+      <SectionLabel>{t('swap.availableToYou')}</SectionLabel>
       <div style={{display:'flex',flexDirection:'column',gap:6}}>
         {openToAnyone.map(sw=>{
           // No fromEmpId = a manager-posted OPEN shift (nobody held it),
@@ -634,29 +645,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           // rendering "Given up by ?".
           const isOpenShift=!sw.fromEmpId;
           const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
-          const b=blocks.find(x=>x.id===sw.blockId);
-          // A bare day name ("Fri") is ambiguous — it could be this week or
-          // next. Show the real date, and the block's times, so it's clear
-          // what's actually being taken on before committing to it.
-          const date=dateForSwap(sw);
           return(
-          // Same row shape as every other request below (two-line left, action
-          // right). An open shift is marked by an accent EDGE rather than a
-          // fully tinted block — four saturated panels stacked up shouted far
-          // louder than the information warranted, and made this list look
-          // unrelated to the plainer rows underneath it.
-          <div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'9px 11px',borderRadius:9,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderLeft:`3px solid ${isOpenShift?T.accent:T.border}`}}>
-            <span style={{flex:1,minWidth:150}}>
-              <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>
-                {t('day.'+sw.day)} {fmt(date)}{b?` · ${b.name} ${b.start}–${b.end}`:''}
-              </span>
-              <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>
-                {isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role}
-              </span>
-            </span>
-            <Btn small onClick={()=>requestClaim(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
-          </div>
-        );})}
+            <RequestRow key={sw.id} emp={from} accent={isOpenShift}
+              badge={isOpenShift?t('swap.badgeOpen'):t('swap.badgeSwap')}
+              title={swapWhen(sw)}
+              subtitle={`${isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} \u00b7 ${sw.role}`}>
+              <Btn small onClick={()=>requestClaim(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
+            </RequestRow>
+          );})}
       </div>
     </div>
   ) : null;
@@ -668,26 +664,21 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const myPendingClaims = myId ? swaps.filter(sw=>sw.claimedByEmpId===myId && sw.status==='claimed') : [];
   const myPendingClaimsSection = myPendingClaims.length>0 ? (
     <div>
-      <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('claim.awaitingHeading')}</div>
+      <SectionLabel>{t('claim.awaitingHeading')}</SectionLabel>
       <div style={{display:'flex',flexDirection:'column',gap:6}}>
-        {myPendingClaims.map(sw=>{
-          const b=blocks.find(x=>x.id===sw.blockId);
-          const date=dateForSwap(sw);
-          return(
-            <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-              <span style={{flex:1,minWidth:160}}>
-                <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>
-                  {t('day.'+sw.day)} {fmt(date)}{b?` · ${b.name} ${b.start}–${b.end}`:''}
-                </span>
-                <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>{sw.role}</span>
-              </span>
-              <span style={{fontSize:11,fontWeight:600,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:999,padding:'3px 10px',whiteSpace:'nowrap'}}>{t('claim.awaiting')}</span>
-            </div>
-          );
-        })}
+        {myPendingClaims.map(sw=>(
+          <RequestRow key={sw.id} emp={me} title={swapWhen(sw)} subtitle={sw.role}>
+            <span style={{fontSize:11,fontWeight:600,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:999,padding:'3px 10px',whiteSpace:'nowrap'}}>{t('claim.awaiting')}</span>
+          </RequestRow>
+        ))}
       </div>
     </div>
   ) : null;
+
+  // The mirror of needsYou: things I've asked for that someone else has to
+  // decide. Nothing here is actionable by me, which is exactly why it's
+  // separated out rather than interleaved with the list above.
+  const waitingOn = myId ? [...myPendingClaims, ...myOpenRequests, ...myShiftRequests] : [];
 
   // One employee's row in the Team tab's day grid — name cell + day cells
   // with shift chips / time-off / give-away button. Shared between the
@@ -875,80 +866,100 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.text}}>{t('nav.timeoff')}</div>
             <Btn small onClick={()=>setTimeOffModalOpen(true)}>{t('to.request')}</Btn>
           </div>
-          {myId && (requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
-            <div style={{...s.card,marginBottom:16,display:'flex',flexDirection:'column',gap:14}}>
-              {shiftRequestsToApprove.length>0 && (<div>
-                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYourShifts')}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {shiftRequestsToApprove.map(sw=>{const asker=employees.find(e=>e.id===sw.claimedByEmpId);return(
-                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
-                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.wantsYourShift',{name:asker?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                      <Btn small onClick={()=>acceptShiftRequest(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
-                      <Btn small variant="ghost" onClick={()=>declineShiftRequest(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
-                    </div>
-                  );})}
+          {/* Three cards, not one. Previously all six lists were stacked
+              inside a single card separated only by small grey labels, so
+              things waiting on YOU sat in the same visual box as things you
+              were waiting on SOMEONE ELSE for. Those demand opposite
+              reactions, and the first is the only reason to open this page —
+              it now comes first, in its own card, with a count. */}
+          {myId && (needsYou.length>0 || waitingOn.length>0 || myTimeOff.length>0) ? (<>
+            {needsYou.length>0 && (
+              <div style={{...s.card,marginBottom:12,display:'flex',flexDirection:'column',gap:14,borderLeft:`3px solid ${T.accent}`}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+                  <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,color:T.text}}>{t('req.needsYou')}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:'#fff',background:T.accent,borderRadius:999,padding:'1px 7px'}}>{needsYou.length}</span>
                 </div>
-              </div>)}
-              {requestsForMe.length>0 && (<div>
-                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.requestsForYou')}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {requestsForMe.map(sw=>{const from=employees.find(e=>e.id===sw.fromEmpId);return(
-                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`1px solid ${T.accent}33`}}>
-                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                      <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
-                      <Btn small variant="ghost" onClick={()=>declineSwap(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
-                    </div>
-                  );})}
-                </div>
-              </div>)}
-              {openShiftsSection}
-              {myPendingClaimsSection}
-              {myOpenRequests.length>0 && (<div>
-                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myRequests')}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {myOpenRequests.map(sw=>{const to=sw.toEmpId?employees.find(e=>e.id===sw.toEmpId):null,claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;return(
-                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{sw.role} · {t('day.'+sw.day)} · {to?t('swap.requestedTo',{name:to.name}):t('swap.openToAnyone')}</span>
-                      <span style={{fontSize:11,color:sw.status==='claimed'?T.success:T.text3}}>{sw.status==='claimed'?t('swap.statusClaimed',{name:claimant?.name||'?'}):t('swap.statusOpen')}</span>
-                      {sw.status==='open' && <Btn small variant="danger" onClick={()=>cancelSwap(sw)} disabled={swapBusy}>{t('swap.cancel')}</Btn>}
-                    </div>
-                  );})}
-                </div>
-              </div>)}
-              {myShiftRequests.length>0 && (<div>
-                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.myShiftRequests')}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {myShiftRequests.map(sw=>{const owner=employees.find(e=>e.id===sw.fromEmpId);return(
-                    <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                      <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.askedFor',{name:owner?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
-                      <span style={{fontSize:11,color:T.text3}}>{t('swap.requestSent')}</span>
-                    </div>
-                  );})}
-                </div>
-              </div>)}
-              {myTimeOff.length>0 && (<div>
-                <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('to.yourRequests')}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {myTimeOff.map(to=>(
-                    <div key={to.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'9px 11px',borderRadius:9,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                      <span style={{flex:1,minWidth:150}}>
-                        <span style={{display:'block',fontSize:12,fontWeight:600,color:T.text}}>{fmtLong(to.startDate)}{to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}</span>
-                        <span style={{display:'block',fontSize:11,color:T.text3,marginTop:1}}>{to.type}</span>
-                      </span>
-                      {/* StatusBadge instead of bare coloured text: the same
-                          approved/pending/rejected treatment the manager sees,
-                          so a status means the same thing on both sides. */}
-                      <StatusBadge status={to.status} label={t('to.'+to.status.toLowerCase())}/>
-                      {to.status==='Pending' && <Btn small variant="ghost" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
-                    </div>
-                  ))}
-                </div>
-              </div>)}
+                {shiftRequestsToApprove.length>0 && (<div>
+                  <SectionLabel>{t('swap.requestsForYourShifts')}</SectionLabel>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {shiftRequestsToApprove.map(sw=>{const asker=employees.find(e=>e.id===sw.claimedByEmpId);return(
+                      <RequestRow key={sw.id} emp={asker} badge={t('swap.badgeSwap')} title={swapWhen(sw)}
+                        subtitle={`${t('swap.wantsYourShift',{name:asker?.name||'?'})} \u00b7 ${sw.role}`}>
+                        <Btn small onClick={()=>acceptShiftRequest(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
+                        <Btn small variant="ghost" onClick={()=>declineShiftRequest(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
+                      </RequestRow>
+                    );})}
+                  </div>
+                </div>)}
+                {requestsForMe.length>0 && (<div>
+                  <SectionLabel>{t('swap.requestsForYou')}</SectionLabel>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {requestsForMe.map(sw=>{const from=employees.find(e=>e.id===sw.fromEmpId);return(
+                      <RequestRow key={sw.id} emp={from} badge={t('swap.badgeSwap')} title={swapWhen(sw)}
+                        subtitle={`${t('swap.by',{name:from?.name||'?'})} \u00b7 ${sw.role}`}>
+                        <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.accept')}</Btn>
+                        <Btn small variant="ghost" onClick={()=>declineSwap(sw)} disabled={swapBusy}>{t('swap.decline')}</Btn>
+                      </RequestRow>
+                    );})}
+                  </div>
+                </div>)}
+                {openShiftsSection}
+              </div>
+            )}
+            {waitingOn.length>0 && (
+              <div style={{...s.card,marginBottom:12,display:'flex',flexDirection:'column',gap:14}}>
+                <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,color:T.text}}>{t('req.waiting')}</div>
+                {myPendingClaimsSection}
+                {myOpenRequests.length>0 && (<div>
+                  <SectionLabel>{t('swap.myRequests')}</SectionLabel>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {myOpenRequests.map(sw=>{const to=sw.toEmpId?employees.find(e=>e.id===sw.toEmpId):null,claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;return(
+                      <RequestRow key={sw.id} emp={me} badge={to?t('swap.badgeSwap'):t('swap.badgeOpen')} title={swapWhen(sw)}
+                        subtitle={`${sw.role} \u00b7 ${to?t('swap.requestedTo',{name:to.name}):t('swap.openToAnyone')}`}>
+                        <span style={{fontSize:11,color:sw.status==='claimed'?T.success:T.text3,whiteSpace:'nowrap'}}>{sw.status==='claimed'?t('swap.statusClaimed',{name:claimant?.name||'?'}):t('swap.statusOpen')}</span>
+                        {sw.status==='open' && <Btn small variant="danger" onClick={()=>cancelSwap(sw)} disabled={swapBusy}>{t('swap.cancel')}</Btn>}
+                      </RequestRow>
+                    );})}
+                  </div>
+                </div>)}
+                {myShiftRequests.length>0 && (<div>
+                  <SectionLabel>{t('swap.myShiftRequests')}</SectionLabel>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {myShiftRequests.map(sw=>{const owner=employees.find(e=>e.id===sw.fromEmpId);return(
+                      <RequestRow key={sw.id} emp={owner} badge={t('swap.badgeSwap')} title={swapWhen(sw)}
+                        subtitle={`${t('swap.askedFor',{name:owner?.name||'?'})} \u00b7 ${sw.role}`}>
+                        <span style={{fontSize:11,color:T.text3,whiteSpace:'nowrap'}}>{t('swap.requestSent')}</span>
+                      </RequestRow>
+                    );})}
+                  </div>
+                </div>)}
+              </div>
+            )}
+            {myTimeOff.length>0 && (
+              <div style={{...s.card,display:'flex',flexDirection:'column',gap:8}}>
+                <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,color:T.text}}>{t('to.yourRequests')}</div>
+                {myTimeOff.map(to=>(
+                  <RequestRow key={to.id} emp={me}
+                    title={`${fmtLong(to.startDate)}${to.endDate!==to.startDate?' \u2013 '+fmtLong(to.endDate):''}`}
+                    subtitle={to.type}>
+                    {/* StatusBadge instead of bare coloured text: the same
+                        approved/pending/rejected treatment the manager sees,
+                        so a status means the same thing on both sides. */}
+                    <StatusBadge status={to.status} label={t('to.'+to.status.toLowerCase())}/>
+                    {to.status==='Pending' && <Btn small variant="ghost" onClick={()=>cancelMyTimeOff(to.id)} disabled={toBusy}>{t('to.cancel')}</Btn>}
+                  </RequestRow>
+                ))}
+              </div>
+            )}
+          </>) : myId ? (
+            /* Was reusing notif.empty ("Nothing yet") — a NOTIFICATIONS
+               string on a requests page, which told you nothing about what
+               this page is for or how to put something on it. */
+            <div style={{...s.card,padding:'44px 24px',textAlign:'center'}}>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,color:T.text,marginBottom:6}}>{t('req.emptyTitle')}</div>
+              <div style={{fontSize:13,color:T.text3}}>{t('req.emptyDesc')}</div>
             </div>
-          )}
-          {myId && !(requestsForMe.length>0 || openToAnyone.length>0 || myPendingClaims.length>0 || myOpenRequests.length>0 || shiftRequestsToApprove.length>0 || myShiftRequests.length>0 || myTimeOff.length>0) && (
-            <div style={{...s.card,padding:'40px 24px',textAlign:'center',fontSize:13,color:T.text3}}>{t('notif.empty')}</div>
-          )}
+          ) : null}
         </>
       ) : (<>
         {/* Week/Month nav — sticky under the app header, same as the

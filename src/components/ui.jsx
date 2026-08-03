@@ -61,6 +61,38 @@ export function EmpCard({emp,selected,onClick,time,status,title,inline}){
 // subtle) dark-mode bug rather than a deliberate design choice.
 export function StatusBadge({status,label}){ const cfg={Approved:{bg:T.successLight,text:T.success,dot:T.success},Pending:{bg:T.warningLight,text:T.warning,dot:T.warning},Rejected:{bg:T.dangerLight,text:T.danger,dot:T.danger}}[status]||{}; return <span style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px',borderRadius:999,fontSize:11,fontWeight:500,background:cfg.bg,color:cfg.text,border:`1px solid ${cfg.dot}33`}}><span style={{width:5,height:5,borderRadius:'50%',background:cfg.dot}}/>{label||status}</span>; }
 
+// One row in any list of requests — a swap, an open shift, a claim waiting
+// on a manager, a booked day off. They are all the same shape: WHO on the
+// left, WHAT and WHEN in the middle, the action on the right.
+//
+// This exists because the staff Requests page had grown four different row
+// shapes and the manager's queue a fifth, so the same swap looked like two
+// unrelated things depending on who was logged in. Worse, the older shapes
+// printed only a weekday — "Waiter · Thursday" — with no date and no shift
+// block, which is not enough to decide whether to accept: you can't tell
+// which Thursday, or whether it's the lunch or the dinner.
+//
+// `accent` marks a row as the kind of thing anyone can take (an open
+// shift), as a left EDGE rather than a filled panel — a stack of fully
+// tinted rows shouts louder than the content warrants.
+export function RequestRow({emp,badge,title,subtitle,accent,children}){
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:11,flexWrap:'wrap',padding:'10px 12px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderLeft:`3px solid ${accent?T.accent:T.border}`}}>
+      {emp
+        ? <Avatar emp={emp} size={32}/>
+        : <div style={{width:32,height:32,borderRadius:'50%',flexShrink:0,background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700}}>?</div>}
+      <span style={{flex:1,minWidth:150}}>
+        <span style={{display:'flex',alignItems:'center',gap:7,flexWrap:'wrap'}}>
+          {badge&&<span style={{fontSize:9,fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',padding:'2px 7px',borderRadius:999,color:accent?T.accent:T.text2,background:accent?T.accent+'1E':T.bg,border:`1px solid ${accent?T.accent+'44':T.border}`}}>{badge}</span>}
+          <span style={{fontSize:12,fontWeight:600,color:T.text}}>{title}</span>
+        </span>
+        {subtitle&&<span style={{display:'block',fontSize:11,color:T.text3,marginTop:2}}>{subtitle}</span>}
+      </span>
+      {children}
+    </div>
+  );
+}
+
 export function Btn({children,onClick,disabled,variant='primary',small}){
   const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
   // `warning` is for "proceed even though something's off" actions (e.g.
