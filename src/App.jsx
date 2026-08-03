@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict, pruneOrphanedAssignments } from './lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
+import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
 // Lazy-loaded: each of these four is only ever needed for a subset of
 // sessions (EmployeeView/KioskView are mutually exclusive with the manager
 // Dashboard and with each other — see the isManager/isKiosk branch below —
@@ -517,6 +517,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     return null;
   };
   const notify=(empId,messageKey,messageVars={})=>{
+    // An open shift has no original owner, so callers that notify "whoever
+    // gave this up" now legitimately pass null — nothing to notify, and
+    // notifications.emp_id is NOT NULL, so this would otherwise be a failed
+    // insert logged on every open-shift approval.
+    if(!empId) return;
     createNotification(orgId,empId,{type:messageKey.replace('notif.',''),messageKey,messageVars}).catch(err=>console.error('Notify failed:',err));
     const target=employees.find(e=>e.id===empId);
     // emailNotifications defaults to true for anyone who hasn't touched the
@@ -973,18 +978,54 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const approveSwap=(sw)=>{
     const weekEntry=schedules[sw.weekKey];
     const list=weekEntry?.schedule?.[sw.day]?.[sw.blockId];
-    const idx=list?list.findIndex(a=>a.empId===sw.fromEmpId&&a.role===sw.role):-1;
     const claimant=employees.find(e=>e.id===sw.claimedByEmpId);
-    if(idx==null||idx<0||!claimant){alert(t('swap.approveFailed'));return;}
+    if(!claimant){alert(t('swap.approveFailed'));return;}
+    // An open shift (no fromEmpId) has nobody to swap OUT — approving it just
+    // adds the claimant to that block. A normal swap still replaces the
+    // original owner's assignment in place, keeping any custom start/end
+    // times that were set on it.
+    const isOpenShift=!sw.fromEmpId;
+    const idx=list?list.findIndex(a=>a.empId===sw.fromEmpId&&a.role===sw.role):-1;
+    if(!isOpenShift&&(idx==null||idx<0)){alert(t('swap.approveFailed'));return;}
+    if(isOpenShift&&!weekEntry?.schedule?.[sw.day]){alert(t('swap.approveFailed'));return;}
     const ns=JSON.parse(JSON.stringify(schedules));
-    const entry=ns[sw.weekKey].schedule[sw.day][sw.blockId][idx];
-    ns[sw.weekKey].schedule[sw.day][sw.blockId][idx]={...entry,empId:claimant.id,name:claimant.name};
+    if(isOpenShift){
+      const dayMap=ns[sw.weekKey].schedule[sw.day];
+      dayMap[sw.blockId]=[...(dayMap[sw.blockId]||[]),{empId:claimant.id,name:claimant.name,role:sw.role}];
+    }else{
+      const entry=ns[sw.weekKey].schedule[sw.day][sw.blockId][idx];
+      ns[sw.weekKey].schedule[sw.day][sw.blockId][idx]={...entry,empId:claimant.id,name:claimant.name};
+    }
     setSchedules(ns);
     updateShiftSwap(sw.id,{status:'approved'}).catch(err=>console.error(err));
     const day=t('day.'+sw.day);
     notify(sw.fromEmpId,'notif.swapApproved',{day});
     notify(sw.claimedByEmpId,'notif.swapApproved',{day});
     reloadSwaps();
+  };
+
+  // Post an unfilled slot as an OPEN shift — a shift_swaps row with no
+  // fromEmpId, which every eligible employee then sees in their own app and
+  // can claim. Deliberately reuses the swap pipeline rather than inventing a
+  // parallel one: claiming, the manager approval queue, and the notification
+  // flow are all identical, the only difference being that approving adds the
+  // claimant instead of replacing someone (see approveSwap above).
+  const postOpenShift=(day,blockId,role)=>{
+    createShiftSwap(orgId,{weekKey:wKey,day,blockId,role,fromEmpId:null,toEmpId:null,status:'open'})
+      .then(()=>{
+        reloadSwaps();
+        // Everyone who could actually take it — same eligibility test the
+        // employee's own "open to anyone" list applies, so nobody gets
+        // pinged about a shift their app won't offer them.
+        const date=weekDates[DAYS.indexOf(day)];
+        const eligible=employees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
+        const blockName=blocks.find(b=>b.id===blockId)?.name||'';
+        eligible.forEach(e=>notify(e.id,'notif.openShiftPosted',{role,day:t('day.'+day),block:blockName}));
+      })
+      .catch(err=>{console.error('Post open shift failed:',err);alert(t('save.failedGeneric'));});
+  };
+  const cancelOpenShift=(sw)=>{
+    deleteShiftSwap(sw.id).then(reloadSwaps).catch(err=>{console.error('Cancel open shift failed:',err);alert(t('save.failedGeneric'));});
   };
 
   const declineSwapManager=(sw)=>{
