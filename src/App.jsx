@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 
 import { createPortal } from 'react-dom';
 import { T, styles, THEMES, computeStyles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, pal, isDark, MEMBERSHIP_ROLE_COLORS } from './lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, toMin, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from './lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict } from './lib/schedule';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, dayCoverage, calcWageCost, hasRestConflict, pruneOrphanedAssignments } from './lib/schedule';
 import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, updateShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from './lib/data';
 // Lazy-loaded: each of these four is only ever needed for a subset of
 // sessions (EmployeeView/KioskView are mutually exclusive with the manager
@@ -194,9 +194,18 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
         // empty state for that). Coverage blocks still get a starter
         // template (DEFAULT_BLOCKS) since an empty block list means the
         // schedule literally can't do anything yet, unlike an empty roster.
-        setEmpRaw(emps.map(migrateEmployee));
+        const migratedEmps=emps.map(migrateEmployee);
+        setEmpRaw(migratedEmps);
         setBlocksRaw(blks.length?blks:DEFAULT_BLOCKS);
-        setTORaw(to); setSchedsRaw(scheds); setLoading(false);
+        setTORaw(to);
+        // One-off cleanup for shifts left behind by an employee who was
+        // deleted before removeEmp started pruning their assignments itself
+        // — same helper, just run once against whatever's already saved so
+        // existing orgs self-heal instead of staying inconsistent forever.
+        const{schedules:prunedScheds,removed}=pruneOrphanedAssignments(scheds,migratedEmps.map(e=>e.id));
+        setSchedsRaw(prunedScheds);
+        if(removed>0) syncSchedules(orgId,prunedScheds).catch(err=>console.error('Orphaned-shift cleanup save failed:',err));
+        setLoading(false);
         // Only the currency field — amount stays whatever this browser had
         // locally, currency now follows the org itself (see saveOrgCurrency).
         setHourlyRateRaw(p=>({...p,currency:currency||p.currency}));
@@ -896,7 +905,19 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   // Cloning an employee deliberately drops email — two roster rows sharing
   // one login email would make "which one am I" ambiguous in EmployeeView.
   const duplicateEmp=emp=>setEmployees(p=>[...p,{...JSON.parse(JSON.stringify(emp)),id:crypto.randomUUID(),name:emp.name+' (copy)',email:'',palIdx:p.length%EMP_PALETTE.length}]);
-  const removeEmp   =id=>{setEmployees(p=>p.filter(e=>e.id!==id));if(expandedEmp===id)setExpandedEmp(null);};
+  // Removing someone from the roster also strips their existing assignments
+  // out of every week's schedule — otherwise those shifts turn into orphans
+  // that the Team grid silently drops (it only matches against current
+  // employees) while the Week grid keeps showing them under a frozen name
+  // and a generic fallback color, which is exactly the kind of "shifts here
+  // but not there" mismatch that's confusing to spot. See
+  // pruneOrphanedAssignments in lib/schedule.js.
+  const removeEmp   =id=>{
+    const remainingIds=employees.filter(e=>e.id!==id).map(e=>e.id);
+    setEmployees(p=>p.filter(e=>e.id!==id));
+    setSchedules(p=>pruneOrphanedAssignments(p,remainingIds).schedules);
+    if(expandedEmp===id)setExpandedEmp(null);
+  };
   const addEmployee =()=>{
     if(!newEmp.name.trim())return;
     setEmployees(p=>[...p,{...newEmp,id:crypto.randomUUID(),palIdx:p.length%EMP_PALETTE.length,availability:Object.fromEntries(DAYS.map(d=>[d,null]))}]);

@@ -9,6 +9,7 @@ import {
   coversBlock,
   dayCoverage,
   hasRestConflict,
+  pruneOrphanedAssignments,
   WEEKS_PER_MONTH,
 } from './schedule';
 
@@ -260,5 +261,62 @@ describe('dayCoverage', () => {
     const twoSlotBlocks = [{ id: 'b1', name: 'Morning', start: '09:00', end: '13:00', roles: { Waiter: 5 } }];
     const schedule = { Mon: { b1: [{ role: 'Waiter' }] } };
     expect(dayCoverage(schedule, twoSlotBlocks, 'Mon', allRoles)).toBe('low');
+  });
+});
+
+describe('pruneOrphanedAssignments', () => {
+  // Deleting an employee didn't used to remove their existing shift
+  // assignments from the schedule — this is the fix for that, exercised
+  // directly against the same {week: {schedule: {day: {blockId: [...]}}}}
+  // shape App.jsx keeps in state.
+  const schedulesByWeek = {
+    '2026-08-03': {
+      confirmed: true,
+      schedule: {
+        Mon: { lunch: [{ empId: 'alive-1', role: 'Waiter' }, { empId: 'gone-1', role: 'Manager' }] },
+        Tue: { lunch: [{ empId: 'alive-1', role: 'Waiter' }] },
+      },
+    },
+    '2026-08-10': {
+      confirmed: false,
+      schedule: {
+        Mon: { lunch: [{ empId: 'gone-1', role: 'Manager' }, { empId: 'gone-2', role: 'Waiter' }] },
+      },
+    },
+  };
+
+  it('strips assignments for ids not in the valid set, across every week/day/block', () => {
+    const { schedules, removed } = pruneOrphanedAssignments(schedulesByWeek, ['alive-1']);
+    expect(removed).toBe(3);
+    expect(schedules['2026-08-03'].schedule.Mon.lunch).toEqual([{ empId: 'alive-1', role: 'Waiter' }]);
+    expect(schedules['2026-08-03'].schedule.Tue.lunch).toEqual([{ empId: 'alive-1', role: 'Waiter' }]);
+    expect(schedules['2026-08-10'].schedule.Mon.lunch).toEqual([]);
+  });
+
+  it('leaves everything else on the week entry untouched (e.g. confirmed)', () => {
+    const { schedules } = pruneOrphanedAssignments(schedulesByWeek, ['alive-1']);
+    expect(schedules['2026-08-03'].confirmed).toBe(true);
+    expect(schedules['2026-08-10'].confirmed).toBe(false);
+  });
+
+  it('reports 0 removed and leaves assignments alone when nobody is orphaned', () => {
+    const { schedules, removed } = pruneOrphanedAssignments(schedulesByWeek, ['alive-1', 'gone-1', 'gone-2']);
+    expect(removed).toBe(0);
+    expect(schedules).toEqual(schedulesByWeek);
+  });
+
+  it('accepts a Set as well as an array for validEmpIds', () => {
+    const { removed } = pruneOrphanedAssignments(schedulesByWeek, new Set(['alive-1']));
+    expect(removed).toBe(3);
+  });
+
+  it('handles a week entry with no schedule (e.g. a stray null) without throwing', () => {
+    const withNull = { '2026-08-17': null, ...schedulesByWeek };
+    const { schedules } = pruneOrphanedAssignments(withNull, ['alive-1']);
+    expect(schedules['2026-08-17']).toBe(null);
+  });
+
+  it('handles an empty schedules object', () => {
+    expect(pruneOrphanedAssignments({}, ['alive-1'])).toEqual({ schedules: {}, removed: 0 });
   });
 });

@@ -55,6 +55,40 @@ export function actualAssignmentHours(a,b){
 }
 const prio=e=>e.priority??e.salaryPct??100;
 
+// Deleting an employee never used to cascade into the schedule — their old
+// assignments stayed behind in every week, still pointing at an id that no
+// longer exists anywhere in the roster. That orphaned assignment then showed
+// up inconsistently depending on which view rendered it: the Team grid only
+// matches assignments against the CURRENT employee list, so it silently
+// disappeared there ("0 scheduled" even on a day with real shifts), while
+// the Week grid falls back to the assignment's own frozen name and kept
+// showing it — with a generic default color, since the per-person color
+// also comes from looking up the (now-missing) employee record. This strips
+// any assignment whose empId isn't in validEmpIds out of every week/day/
+// block, so every view agrees again. Used both right after a delete (so it
+// takes effect immediately) and once on load (to clean up anything a delete
+// from before this existed already left behind).
+export function pruneOrphanedAssignments(schedulesByWeek, validEmpIds) {
+  const valid = validEmpIds instanceof Set ? validEmpIds : new Set(validEmpIds);
+  let removed = 0;
+  const cleaned = {};
+  for (const [wk, entry] of Object.entries(schedulesByWeek || {})) {
+    if (!entry?.schedule) { cleaned[wk] = entry; continue; }
+    const newSchedule = {};
+    for (const [day, byBlock] of Object.entries(entry.schedule)) {
+      const newByBlock = {};
+      for (const [blockId, assignments] of Object.entries(byBlock || {})) {
+        const kept = (assignments || []).filter(a => valid.has(a.empId));
+        removed += (assignments || []).length - kept.length;
+        newByBlock[blockId] = kept;
+      }
+      newSchedule[day] = newByBlock;
+    }
+    cleaned[wk] = { ...entry, schedule: newSchedule };
+  }
+  return { schedules: cleaned, removed };
+}
+
 // Average weeks per calendar month — used to normalize a monthly salary into
 // an hourly-equivalent rate so it can be compared against hourly wages.
 export const WEEKS_PER_MONTH = 4.33;
