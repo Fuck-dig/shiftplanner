@@ -660,6 +660,53 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     );
   };
 
+  // A day-by-day row of shifts nobody holds yet, laid out on exactly the same
+  // 7-column grid as renderTeamRow so it lines up with the employee rows
+  // beneath it — same idea as the pinned "Your Shifts" strip, but for work
+  // that's up for grabs. Covers both manager-posted open shifts (no
+  // fromEmpId) and coworker release-to-anyone offers, since from the reader's
+  // point of view both are "a shift you could take".
+  //
+  // A day can hold several at once, so each cell stacks them rather than
+  // showing only the first — the whole point is seeing that Thursday needs
+  // three people, not one.
+  const openShiftsThisWeek = swaps.filter(sw=>sw.weekKey===wKey && !sw.toEmpId && (sw.status==='open'||sw.status==='claimed'));
+  const claimableIds = new Set(openToAnyone.map(sw=>sw.id));
+  const renderOpenShiftsRow = () => (
+    <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,background:T.surface}}>
+      <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72}}>
+        <div style={{width:36,height:36,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,flexShrink:0,border:`2px dashed ${T.accent}55`}}>?</div>
+        <div style={{fontSize:13,fontWeight:700,color:T.accentText}}>{t('open.rowLabel')}</div>
+      </div>
+      {DAYS.map((day,di)=>{
+        const forDay=openShiftsThisWeek.filter(sw=>sw.day===day);
+        return(<div key={day} style={{padding:'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:72}}>
+          {forDay.length===0?(
+            <div style={{height:46,borderRadius:7,border:`1.5px dashed ${T.border}`,display:'flex',alignItems:'center',justifyContent:'center',opacity:0.3}}>
+              <span style={{fontSize:16,color:T.text3}}>—</span>
+            </div>
+          ):forDay.map(sw=>{
+            const b=blocks.find(x=>x.id===sw.blockId);
+            const claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;
+            const canTake=claimableIds.has(sw.id);
+            return(
+              <div key={sw.id} style={{padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`2px dashed ${T.accent}66`,position:'relative'}}>
+                <div style={{fontSize:13,fontWeight:700,color:T.accentText}}>{b?.name||t('open.posted')}</div>
+                {b&&<div style={{fontSize:11,color:T.accentText,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
+                <div style={{fontSize:10,color:T.accentText,opacity:0.7,marginTop:1}}>{sw.role}</div>
+                {sw.status==='claimed'?(
+                  <div style={{fontSize:9,color:T.accentText,marginTop:4,fontStyle:'italic'}}>{t('swap.statusClaimed',{name:claimant?.name||'?'})}</div>
+                ):canTake?(
+                  <button onClick={()=>claimSwap(sw)} disabled={swapBusy} style={{marginTop:5,padding:'3px 8px',borderRadius:6,fontSize:10,fontWeight:600,background:T.accent,border:'none',color:'#fff',cursor:swapBusy?'wait':'pointer',fontFamily:'inherit'}}>{t('swap.take')}</button>
+                ):null}
+              </div>
+            );
+          })}
+        </div>);
+      })}
+    </div>
+  );
+
   return (<>
     <div style={{minHeight:'100vh',width:'100%',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       {/* Nav */}
@@ -820,6 +867,19 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
               <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
                 {renderTeamRow(me)}
+              </div>
+            </div>
+          )}
+          {/* Shifts nobody holds yet, on the same 7-day grid as the team list
+              below so the columns line up. Sits under "Your Shifts" because
+              it's the same kind of thing — a summary strip you scan before
+              reading the full roster — and only appears when there's actually
+              something up for grabs. */}
+          {myId && openShiftsThisWeek.length>0 && (
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('open.rowLabel')}</div>
+              <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px dashed ${T.accent}55`}}>
+                {renderOpenShiftsRow()}
               </div>
             </div>
           )}
