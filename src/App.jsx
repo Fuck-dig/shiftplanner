@@ -50,6 +50,28 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const [loading,setLoading]         = useState(true);
   const [view,setView]               = useState('schedule');
   const [calMode,setCalMode]         = useState('week');
+  // The Team grid's own header row is sticky too, and needs to know exactly
+  // how tall the schedule bar above it (date nav + tabs, now also carrying
+  // the grid's by-name/by-role/compact/search/count controls) actually
+  // renders at, or it sticks at a hardcoded guess and either overlaps
+  // whatever's still on screen above it or leaves an ugly gap. That bar's
+  // real height isn't a constant — it wraps to a second line on a narrower
+  // window, and translated strings (German/French run noticeably longer
+  // than English) can push it to wrap at a wider width than English would.
+  // Measuring it live with ResizeObserver instead of guessing a pixel
+  // number sidesteps all of that.
+  const scheduleBarRef=useRef(null);
+  const [scheduleBarH,setScheduleBarH]=useState(42);
+  useEffect(()=>{
+    const el=scheduleBarRef.current;
+    if(!el) return;
+    const ro=new ResizeObserver(entries=>{
+      const h=entries[0]?.contentRect?.height;
+      if(h) setScheduleBarH(h);
+    });
+    ro.observe(el);
+    return ()=>ro.disconnect();
+  },[view]);
   const [employees,setEmpRaw]        = useState([]);
   const [blocks,setBlocksRaw]        = useState([]);
   const [schedules,setSchedsRaw]     = useState({});
@@ -1345,7 +1367,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
-  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
+  <div ref={scheduleBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
       <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
       <WeekPicker
@@ -1420,6 +1442,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     empHours={empHours} assignmentHours={assignmentHours} actualAssignmentHours={actualAssignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
     generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
+    stickyTop={56+scheduleBarH}
     s={s} t={t}
   />
 )}

@@ -10,6 +10,7 @@ export default function TeamView({
   gridGroupBy, setGridGroupBy, gridTight, setGridTight, gridSearch, setGridSearch,
   empHours, assignmentHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
+  stickyTop,
   s, t,
 }){
   const [collapsedRoles,setCollapsedRoles]=useState(()=>new Set());
@@ -62,7 +63,7 @@ export default function TeamView({
         live in their own sticky bar right here now live one level up, folded
         into the same row as the date nav and Week/Month/Team tabs — one
         toolbar instead of two stacked ones. */}
-    <div style={{position:'sticky',top:98,zIndex:19,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8}}>
+    <div style={{position:'sticky',top:stickyTop??98,zIndex:19,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8}}>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
         {/* Header */}
         <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
