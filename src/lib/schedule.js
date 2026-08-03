@@ -101,6 +101,16 @@ export function applyAssignmentDrop(schedule, src, dst) {
     dstList[dst.idx] = { ...srcEntry, role: dstEntry.role };
   } else {
     if (!ns[dst.day]) return null;
+    // Nobody can hold the same block twice. Without this, dragging someone
+    // onto empty space in a block they're ALREADY in appends a second copy —
+    // and once that happens the UI can't tell the two apart (it maps a card
+    // back to its assignment by employee id, so both rows resolve to the
+    // first one, and editing or dragging either silently acts on the other).
+    // Treated as a no-op rather than an error: the drop simply isn't a
+    // meaningful move.
+    const already = (ns[dst.day][dst.blockId] || [])
+      .some((a, i) => a.empId === srcEntry.empId && !(dst.day === src.day && dst.blockId === src.blockId && i === src.idx));
+    if (already) return null;
     const moved = srcList.splice(src.idx, 1)[0];
     ns[dst.day][dst.blockId] = [...(ns[dst.day][dst.blockId] || []), { ...moved, role: dst.role }];
   }

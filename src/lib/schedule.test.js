@@ -382,3 +382,50 @@ describe('applyAssignmentDrop', () => {
     expect(sch.Mon.lunch.map(a => a.empId)).toEqual(['a', 'b']); // original untouched
   });
 });
+
+describe('applyAssignmentDrop — no duplicate assignments in one block', () => {
+  // Regression: drag-and-drop could put the same person in a block twice.
+  // That's not just untidy — the week grid maps a rendered card back to its
+  // underlying assignment by employee id, so with a duplicate BOTH cards
+  // resolve to the first one, and editing or dragging either silently acts on
+  // the wrong assignment.
+  const base = () => ({
+    Mon: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }], dinner: [] },
+    Tue: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }], dinner: [] },
+  });
+
+  it('refuses a move into a block the person is already in', () => {
+    const out = applyAssignmentDrop(base(), { day: 'Tue', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'lunch', role: 'Kitchen' });
+    expect(out).toBeNull();
+  });
+
+  it('still allows moving to a DIFFERENT block on a day they already work', () => {
+    // Split shifts are legitimate — the rule is one block, not one day.
+    const out = applyAssignmentDrop(base(), { day: 'Tue', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'dinner', role: 'Waiter' });
+    expect(out.Mon.dinner.map(a => a.empId)).toEqual(['a']);
+    expect(out.Mon.lunch.map(a => a.empId)).toEqual(['a']);
+    expect(out.Tue.lunch).toEqual([]);
+  });
+
+  it('still allows re-roling within the same block (dropped on its own cell)', () => {
+    // Source and destination are the same assignment, so the "already there"
+    // check must not count the person against themselves.
+    const sch = { Mon: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }, { empId: 'b', name: 'Bo', role: 'Kitchen' }] } };
+    const out = applyAssignmentDrop(sch, { day: 'Mon', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'lunch', role: 'Kitchen' });
+    expect(out.Mon.lunch.filter(a => a.empId === 'a')).toHaveLength(1);
+    expect(out.Mon.lunch.find(a => a.empId === 'a').role).toBe('Kitchen');
+    expect(out.Mon.lunch).toHaveLength(2); // Bo untouched
+  });
+
+  it('a swap into a block the dragged person already works is still fine', () => {
+    // Swaps exchange positions rather than appending, so no duplicate is
+    // possible — this must keep working.
+    const sch = {
+      Mon: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }, { empId: 'b', name: 'Bo', role: 'Kitchen' }] },
+      Tue: { lunch: [{ empId: 'a', name: 'Ann', role: 'Waiter' }] },
+    };
+    const out = applyAssignmentDrop(sch, { day: 'Tue', blockId: 'lunch', idx: 0 }, { day: 'Mon', blockId: 'lunch', role: 'Kitchen', idx: 1 });
+    expect(out.Mon.lunch.filter(a => a.empId === 'a')).toHaveLength(2); // swap, by design
+    expect(out.Tue.lunch[0].empId).toBe('b');
+  });
+});

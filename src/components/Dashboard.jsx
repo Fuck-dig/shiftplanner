@@ -644,12 +644,21 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
   };
 
+  // Moving someone into an empty slot by CLICK. Now goes through the same
+  // applyAssignmentDrop the drag path uses, rather than its own hand-rolled
+  // splice-and-append. That had the same duplication bug the drag path did —
+  // moving someone into a block they were already in appended a second copy,
+  // after which the UI couldn't tell the two apart — and it's tested in one
+  // place now instead of being two implementations of the same operation.
+  // Also brings it in line on `confirmed`: editing a published week marks it
+  // a draft again so it has to be re-published, which the drag path already
+  // did and this one silently didn't.
   const handleEmptySlotClick=(day,blockId,role)=>{
     if(!selected||!schedule)return;
-    const ns=JSON.parse(JSON.stringify(schedule));
-    const entry=ns[selected.day][selected.blockId].splice(selected.idx,1)[0];
-    ns[day][blockId]=[...(ns[day][blockId]||[]),{...entry,role}];
-    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));setSelected(null);
+    const ns=applyAssignmentDrop(schedule,{day:selected.day,blockId:selected.blockId,idx:selected.idx},{day,blockId,role});
+    setSelected(null);
+    if(!ns)return;
+    setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
   };
 
   // Drag-and-drop equivalent of the two click handlers above. Those both
@@ -923,6 +932,10 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 
   const addToSlot=(day,blockId,role,emp)=>{
     const ns=JSON.parse(JSON.stringify(schedule));
+    // Nobody twice in one block. The picker already filters out people
+    // who are on this block, so this shouldn't trigger from there — it's a
+    // guard so the invariant holds no matter which path calls this.
+    if((ns[day]?.[blockId]||[]).some(a=>a.empId===emp.id)){setOpenPicker(null);return;}
     ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
   };
@@ -956,6 +969,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setSchedules(p=>{
       const wd=p[wKeyD];if(!wd||!wd.schedule)return p;
       const ns=JSON.parse(JSON.stringify(wd.schedule));
+      // Assigning from the Employees tab doesn't go through the staff picker,
+      // so nothing upstream filters out someone already on this block — which
+      // made this the one genuinely reachable way to get the same person into
+      // one block twice. A duplicate is unusable once created (the grid maps a
+      // card back to its assignment by employee id, so both resolve to the
+      // first), so this is a no-op rather than a second entry.
+      if((ns[day]?.[blockId]||[]).some(a=>a.empId===emp.id))return p;
       const entry={empId:emp.id,name:emp.name,role};
       if(block&&customStart&&customEnd&&(customStart!==block.start||customEnd!==block.end)){entry.start=customStart;entry.end=customEnd;}
       ns[day][blockId]=[...(ns[day][blockId]||[]),entry];
