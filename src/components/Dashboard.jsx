@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop } from '../lib/schedule';
-import { fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
+import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
@@ -59,6 +59,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const [employees,setEmpRaw]        = useState([]);
   const [blocks,setBlocksRaw]        = useState([]);
   const [schedules,setSchedsRaw]     = useState({});
+  // Last state we know the SERVER had, so a save can push only what changed
+  // instead of the whole map (see syncSchedules in lib/data.js — writing
+  // everything is what let two managers clobber each other's weeks). Updated
+  // from the initial load, from every poll, and after each successful save.
+  const serverSchedRef               = useRef({});
+  // Change-history panel: null = closed, [] = open and loading/empty.
+  const [auditLog,setAuditLog]       = useState(null);
   const [timeOff,setTORaw]           = useState([]);
   const [swaps,setSwaps]             = useState([]); // shift_swaps for this org, any week/status — polled, not part of the debounced-sync data model
   const [unseenMessageReplies,setUnseenMessageReplies]=useState([]); // sent messages with a new reply the manager hasn't opened yet — polled
@@ -215,7 +222,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
         // — same helper, just run once against whatever's already saved so
         // existing orgs self-heal instead of staying inconsistent forever.
         const{schedules:prunedScheds,removed}=pruneOrphanedAssignments(scheds,migratedEmps.map(e=>e.id));
-        setSchedsRaw(prunedScheds);
+        setSchedsRaw(prunedScheds); serverSchedRef.current=prunedScheds;
         if(removed>0) syncSchedules(orgId,prunedScheds).catch(err=>console.error('Orphaned-shift cleanup save failed:',err));
         setLoading(false);
         // Only the currency field — amount stays whatever this browser had
@@ -295,7 +302,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // never see it until they reloaded the whole page.
   useEffect(()=>{
     let alive=true;
-    const iv=setInterval(()=>{ fetchSchedules(orgId).then(v=>{if(alive)setSchedsRaw(v);}).catch(err=>console.error('Poll schedules failed:',err)); },45000);
+    const iv=setInterval(()=>{ fetchSchedules(orgId).then(v=>{if(alive){setSchedsRaw(v);serverSchedRef.current=v;}}).catch(err=>console.error('Poll schedules failed:',err)); },45000);
     return ()=>{alive=false;clearInterval(iv);};
   },[orgId]);
 
@@ -427,7 +434,8 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const dBlk  =useMemo(()=>mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
   // eslint-disable-next-line react-hooks/refs
   const dTO   =useMemo(()=>mkDebounce(v=>empSaveRef.current.then(()=>syncTimeOff(orgId,v)),'timeoff'),[orgId]);
-  const dSched=useMemo(()=>mkDebounce(v=>syncSchedules(orgId,v),'schedules'),[orgId]);
+  // eslint-disable-next-line react-hooks/refs
+  const dSched=useMemo(()=>mkDebounce(v=>syncSchedules(orgId,v,serverSchedRef.current).then(()=>{serverSchedRef.current=v;}),'schedules'),[orgId]);
   const dRoleStyles=useMemo(()=>mkDebounce(v=>saveRoleStyles(orgId,v),'roleStyles'),[orgId]);
 
   const setEmployees=v=>{const val=typeof v==='function'?v(employees):v;setEmpRaw(val);dEmp(val);};
@@ -579,9 +587,22 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const week=`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
     empIds.forEach(empId=>notify(empId,'notif.schedulePublished',{week}));
   };
-  const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();};
-  const unconfirmSchedule =()=>setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));
-  const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);};
+  // Audit: who changed what, when. Fire-and-forget by design — logScheduleEvent
+  // swallows its own errors, so a logging failure can never block or undo the
+  // edit it's describing.
+  // Prefer the roster name (a manager reading the log wants "Alma Thomsen",
+  // not an email); fall back to the login email for a manager who isn't on the
+  // roster themselves, which is a supported setup.
+  const auditActorName=employees.find(e=>e.id===myId)?.name||myEmail||null;
+  const audit=(action,detail={},weekKeyOverride=null)=>{
+    logScheduleEvent(orgId,{weekKey:weekKeyOverride||wKey,action,detail,actorName:auditActorName});
+  };
+  const empName=id=>employees.find(e=>e.id===id)?.name||'?';
+  const blockName=id=>blocks.find(b=>b.id===id)?.name||'?';
+
+  const confirmSchedule   =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:true}}));notifySchedulePublished();audit('confirmed');};
+  const unconfirmSchedule =()=>{setSchedules(p=>({...p,[wKey]:{...p[wKey],confirmed:false}}));audit('unconfirmed');};
+  const deleteSchedule    =()=>{setSchedules(p=>{const n={...p};delete n[wKey];return n;});setSelected(null);audit('week_deleted');};
   const deleteMonth       =()=>{const offs=getMonthOffsets(displayMonth);setSchedules(p=>{const n={...p};offs.forEach(off=>delete n[weekKey(off)]);return n;});};
 
   // Opens a standalone, unstyled-by-the-app HTML page in a new tab and
@@ -689,6 +710,15 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     setSelected(null);
     setPendingDrop(null);
+    // Log the FROM and TO so the entry answers "where did this shift go?",
+    // which is the actual question someone asks about a moved shift.
+    const moved=schedule?.[src.day]?.[src.blockId]?.[src.idx];
+    audit(dst.idx!=null?'swapped':'moved',{
+      who:empName(moved?.empId),
+      from:{day:src.day,block:blockName(src.blockId),role:moved?.role},
+      to:{day:dst.day,block:blockName(dst.blockId),role:dst.role},
+      ...(dst.idx!=null?{with:empName(schedule?.[dst.day]?.[dst.blockId]?.[dst.idx]?.empId)}:{}),
+    });
   };
   const dropAssignment=(src,dst)=>{
     const ns=applyAssignmentDrop(schedule,src,dst);
@@ -734,6 +764,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setEditNotes({inNote:entry.clockInNote||'',outNote:entry.clockNote||''});
     document.body.style.overflow='hidden';
   };
+  // Scroll-lock release. react-hooks/immutability objects to assigning to
+  // something declared outside the component — but that "something" is
+  // `document`, and this runs in a click handler, not during render, which is
+  // how every scroll lock works. Note the identical assignment two lines above
+  // (='hidden') is NOT flagged, which is a decent sign this is analyser noise
+  // rather than a real finding.
+  // eslint-disable-next-line react-hooks/immutability
   const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
   const saveEditSlot=()=>{
     if(!editingSlot||!schedule)return;
@@ -776,9 +813,13 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   function removeFromSlot(day,blockId,idx){
     if(!schedule)return;
     const ns=JSON.parse(JSON.stringify(schedule));
+    // Read the entry BEFORE splicing it out — afterwards there's nothing left
+    // to name in the log, and "someone was removed" isn't much of an answer.
+    const gone=schedule[day]?.[blockId]?.[idx];
     ns[day][blockId].splice(idx,1);
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));
     if(selected&&selected.day===day&&selected.blockId===blockId&&selected.idx===idx)setSelected(null);
+    audit('removed',{who:empName(gone?.empId),day,block:blockName(blockId),role:gone?.role});
   };
 
   // The add-staff picker is a proper centered modal (not an anchored popover
@@ -938,6 +979,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     if((ns[day]?.[blockId]||[]).some(a=>a.empId===emp.id)){setOpenPicker(null);return;}
     ns[day][blockId]=[...(ns[day][blockId]||[]),{empId:emp.id,name:emp.name,role}];
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns,confirmed:false}}));setOpenPicker(null);
+    audit('assigned',{who:emp.name,day,block:blockName(blockId),role});
   };
 
   // Lets a manager assign someone a shift straight from the Employees tab,
@@ -1563,6 +1605,52 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     somewhere that trips one of the availability/hours/rest checks. The move
     is already computed at this point (pendingDrop.ns); confirming just
     commits it, cancelling discards it untouched. */}
+{/* CHANGE HISTORY — append-only audit of who changed this week's schedule.
+    Read-only by design: the log exists to be trusted, so nothing here can
+    edit or clear it (there are no update/delete RLS policies either). */}
+{auditLog&&createPortal(
+  <div onClick={()=>setAuditLog(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(520px,100%)',maxHeight:'min(72vh,560px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+      <div style={{padding:'16px 18px 8px',flexShrink:0}}>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:16,fontWeight:500,color:T.text}}>{t('audit.title')}</div>
+        <div style={{fontSize:12,color:T.text3,marginTop:2}}>{fmt(weekDates[0])} – {fmt(weekDates[6])}</div>
+      </div>
+      <div style={{overflowY:'auto',padding:'0 18px 8px',flex:1,minHeight:0}}>
+        {auditLog.length===0
+          ? <div style={{fontSize:12,color:T.text3,padding:'20px 0',textAlign:'center'}}>{t('audit.empty')}</div>
+          : auditLog.map(ev=>{
+              const d=ev.detail||{};
+              // Each action has its own sentence; anything unrecognised falls
+              // back to the raw action name rather than rendering blank, so a
+              // future action type added without a translation is still legible.
+              const key='audit.'+ev.action;
+              const line=t(key,{
+                who:d.who||'?',
+                block:d.to?.block||d.block||'?',
+                day:d.to?.day?t('day.'+d.to.day):(d.day?t('day.'+d.day):''),
+                with:d.with||'?',
+              });
+              return(
+                <div key={ev.id} style={{display:'flex',gap:10,padding:'9px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:T.text,lineHeight:1.4}}>
+                      <b>{ev.actorName||'?'}</b> {line===key?ev.action:line}
+                    </div>
+                    <div style={{fontSize:10,color:T.text3,marginTop:2}}>
+                      {new Date(ev.createdAt).toLocaleString(LOCALE,{dateStyle:'medium',timeStyle:'short'})}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+      </div>
+      <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0}}>
+        <Btn small variant="ghost" onClick={()=>setAuditLog(null)}>{t('common.cancel')}</Btn>
+      </div>
+    </div>
+  </div>
+,document.body)}
+
 {pendingDrop&&createPortal(
   <div onClick={()=>setPendingDrop(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
     <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
@@ -1670,6 +1758,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       <div style={{width:1,height:16,background:T.border}}/>
       {confirmed?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('sched.confirmed')}</span>:<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>}
       {confirmed?<Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn>:<Btn small variant="success" onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
+      <Btn small variant="ghost" onClick={()=>{setAuditLog([]);fetchScheduleAudit(orgId,wKey).then(setAuditLog);}}>{t('audit.thisWeek')}</Btn>
       <Btn small variant="ghost" onClick={printSchedule}>{t('sched.print')}</Btn>
       <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
     </div>)}

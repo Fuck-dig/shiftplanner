@@ -203,9 +203,29 @@ export async function fetchSchedules(orgId){
   return out;
 }
 
-export async function syncSchedules(orgId, schedules){
+// Push the schedule map. `baseline` is the last state we know the server had
+// (from the initial load or the most recent poll); pass it and this only
+// touches what actually changed.
+//
+// Without a baseline this writes EVERY week it holds and deletes every week it
+// doesn't — which is genuinely destructive with more than one manager:
+//
+//   - Two managers editing DIFFERENT weeks still clobber each other, because
+//     each pushes its whole map including its stale copy of the other's week.
+//   - Worse, if manager A creates a new week and manager B saves anything
+//     before B's 45s poll picks it up, B's delete removes A's week entirely —
+//     B never knew it existed.
+//
+// Diffing against the baseline fixes both: only changed weeks are written, and
+// only weeks we previously SAW and that are now gone get deleted. Concurrent
+// edits to the same week still resolve last-write-wins (see TASKS.md), but
+// that's a far smaller window than "any save clobbers everything".
+export async function syncSchedules(orgId, schedules, baseline){
   const keys = Object.keys(schedules);
-  const rows = keys.map(week_key => ({
+  const changedKeys = baseline
+    ? keys.filter(k => JSON.stringify(schedules[k]) !== JSON.stringify(baseline[k]))
+    : keys;
+  const rows = changedKeys.map(week_key => ({
     org_id: orgId,
     week_key,
     data: schedules[week_key],
@@ -215,8 +235,19 @@ export async function syncSchedules(orgId, schedules){
     const { error } = await supabase.from('schedules').upsert(rows, { onConflict: 'org_id,week_key' });
     if (error) throw error;
   }
+  // Only delete weeks we actually knew about and that have since been removed
+  // locally. With no baseline, fall back to the old behaviour of deleting
+  // anything not present — correct for a single session, dangerous with two.
+  const removedKeys = baseline
+    ? Object.keys(baseline).filter(k => !(k in schedules))
+    : null;
+  if (removedKeys && removedKeys.length === 0) return;
   let del = supabase.from('schedules').delete().eq('org_id', orgId);
-  if (keys.length) del = del.not('week_key', 'in', `(${keys.map(k => `"${k}"`).join(',')})`);
+  if (removedKeys) {
+    del = del.in('week_key', removedKeys);
+  } else if (keys.length) {
+    del = del.not('week_key', 'in', `(${keys.map(k => `"${k}"`).join(',')})`);
+  }
   const { error: e2 } = await del;
   if (e2) throw e2;
 }
@@ -650,4 +681,48 @@ export async function saveDailyRevenue(orgId, date, amount, source='manual'){
     { onConflict: 'org_id,date' }
   );
   if (error) throw error;
+}
+// ── Schedule audit trail ─────────────────────────────────────────────────────
+// Append-only record of who changed a schedule and when (see
+// 20260803140000_schedule_audit.sql). Read is manager-only; insert is
+// self-attributed.
+
+// Deliberately never throws and never blocks the edit it describes. A failed
+// audit write must not lose someone's actual schedule change — a gap in the
+// log is bad, refusing the edit because logging failed is worse. Failures go
+// to the console so they're diagnosable rather than invisible.
+export async function logScheduleEvent(orgId, { weekKey = null, action, detail = {}, actorName = null }) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from('schedule_audit').insert({
+      org_id: orgId,
+      week_key: weekKey,
+      action,
+      detail,
+      actor_user_id: user.id,
+      actor_name: actorName || user.email || null,
+    });
+    if (error) console.error('Audit log write failed:', error);
+  } catch (err) {
+    console.error('Audit log write failed:', err);
+  }
+}
+
+// Most recent entries first. weekKey narrows to one week; omit it for the
+// whole org. Returns [] rather than throwing for a non-manager (RLS gives them
+// no read policy), so a caller can render "no history" instead of an error.
+export async function fetchScheduleAudit(orgId, weekKey = null, limit = 100) {
+  let q = supabase.from('schedule_audit')
+    .select('id, week_key, action, detail, actor_name, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (weekKey) q = q.eq('week_key', weekKey);
+  const { data, error } = await q;
+  if (error) { console.error('Audit log read failed:', error); return []; }
+  return (data || []).map(r => ({
+    id: r.id, weekKey: r.week_key, action: r.action,
+    detail: r.detail || {}, actorName: r.actor_name || '', createdAt: r.created_at,
+  }));
 }

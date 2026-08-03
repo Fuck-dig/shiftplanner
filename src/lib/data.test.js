@@ -41,7 +41,7 @@ vi.mock('./supabase', () => ({
   functionsUrl: 'https://example.test/functions/v1',
 }));
 
-const { fetchEmployees, syncEmployees } = await import('./data');
+const { fetchEmployees, syncEmployees, syncSchedules } = await import('./data');
 
 const opsFor = (table, type) => state.ops.filter(o => o.table === table && (!type || o.type === type));
 
@@ -169,5 +169,56 @@ describe('syncEmployees', () => {
     state.errors.employees = { message: 'constraint violation' };
     await expect(syncEmployees('org1', [ann])).rejects.toBeTruthy();
     expect(opsFor('employees', 'delete')).toHaveLength(0);
+  });
+});
+
+describe('syncSchedules', () => {
+  const wk = (n) => ({ schedule: { Mon: { lunch: [{ empId: n }] } }, confirmed: false });
+
+  it('with a baseline, writes ONLY the weeks that actually changed', async () => {
+    const baseline = { 'w1': wk('a'), 'w2': wk('b') };
+    const next     = { 'w1': wk('a'), 'w2': wk('CHANGED') };
+    await syncSchedules('org1', next, baseline);
+    const up = opsFor('schedules', 'upsert')[0];
+    expect(up.rows).toHaveLength(1);
+    expect(up.rows[0].week_key).toBe('w2');
+  });
+
+  it('does not write at all when nothing changed', async () => {
+    const same = { 'w1': wk('a') };
+    await syncSchedules('org1', same, { ...same });
+    expect(opsFor('schedules', 'upsert')).toHaveLength(0);
+    expect(opsFor('schedules', 'delete')).toHaveLength(0);
+  });
+
+  it('deletes only weeks that were in the baseline and are now gone', async () => {
+    await syncSchedules('org1', { 'w1': wk('a') }, { 'w1': wk('a'), 'w2': wk('b') });
+    const del = opsFor('schedules', 'delete')[0];
+    expect(del.filters).toContainEqual({ op: 'in', col: 'week_key', val: ['w2'] });
+  });
+
+  it('NEVER deletes a week it has never seen — the cross-manager data-loss case', async () => {
+    // Manager A creates week 'new'. Manager B, whose 45s poll hasn't run yet,
+    // saves an unrelated edit. B's map has no 'new', and the old code deleted
+    // every week not in the map — wiping A's work. With a baseline, B only
+    // deletes weeks B previously saw, so 'new' survives.
+    await syncSchedules('org1', { 'w1': wk('edited') }, { 'w1': wk('a') });
+    expect(opsFor('schedules', 'delete')).toHaveLength(0);
+  });
+
+  it('marks a confirmed week as confirmed and a draft as draft', async () => {
+    const next = { 'w1': { schedule: {}, confirmed: true }, 'w2': { schedule: {}, confirmed: false } };
+    await syncSchedules('org1', next, {});
+    const rows = opsFor('schedules', 'upsert')[0].rows;
+    expect(rows.find(r => r.week_key === 'w1').status).toBe('confirmed');
+    expect(rows.find(r => r.week_key === 'w2').status).toBe('draft');
+  });
+
+  it('without a baseline falls back to the old write-everything behaviour', async () => {
+    // Kept so a caller that genuinely has no idea what the server holds still
+    // converges, rather than silently writing nothing.
+    await syncSchedules('org1', { 'w1': wk('a'), 'w2': wk('b') });
+    expect(opsFor('schedules', 'upsert')[0].rows).toHaveLength(2);
+    expect(opsFor('schedules', 'delete')[0].filters.some(f => f.op === 'not')).toBe(true);
   });
 });
