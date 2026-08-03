@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpChip, Btn } from '../ui';
+import { Avatar, RoleBadge, EmpChip, EmpCard, Btn } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
@@ -17,7 +17,7 @@ export default function WeekView({
   pickerSortBy, setPickerSortBy, pickerSearch, setPickerSearch, candidatesForSlot,
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
-  currency,
+  currency, openShiftsFor, postOpenShift, cancelOpenShift,
   s, t,
 }){
   // Ticking "now" marker for the day-isolated Gantt view — only matters
@@ -258,22 +258,47 @@ export default function WeekView({
                   const dayHover=hoverDay===day;
                   return(<td key={day} onMouseEnter={()=>setHoverDay(day)} onMouseLeave={()=>setHoverDay(null)} style={{padding:'8px 10px',verticalAlign:'top',borderLeft:`1px solid ${T.border}`,background:dayHover?T.surfaceWarm:T.surface,boxShadow:dayHover?`inset 0 0 0 1px ${T.border}`:'none',transition:'background 0.12s'}}>
                     <div style={{display:'flex',flexDirection:effectiveDay?'row':'column',flexWrap:effectiveDay?'wrap':'nowrap',gap:effectiveDay?14:3,alignItems:effectiveDay?'flex-start':'stretch'}}>
-                      {assigned.map((a,idx)=>{const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;return(
-                        <div key={idx}>
-                          <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}}}/>
-                          {effectiveDay&&<div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>}
-                          {/* What actually happened, straight from the punch clock/kiosk —
-                              only shown once isolated to a single day (same as the scheduled
-                              time above), since a 7-day grid has no room for it. Click the
-                              chip itself to open the full edit modal, which also shows any
-                              clock-in/out note. */}
-                          {effectiveDay&&(a.noShow||a.actualStart||a.actualEnd)&&(
-                            <div style={{fontSize:9,color:a.noShow?T.danger:T.success,marginLeft:2,marginTop:1}}>
-                              {a.noShow ? t('emp.noShow') : `${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`}
-                            </div>
-                          )}
-                        </div>
-                      );})}
+                      {assigned.map((a,idx)=>{
+                        const emp=employees.find(e=>e.id===a.empId),realIdx=allA.findIndex(x=>x.empId===a.empId),isSel=selected?.empId===a.empId&&selected?.day===day&&selected?.blockId===block.id;
+                        const clocked=a.noShow||a.actualStart||a.actualEnd;
+                        const statusInfo=clocked?{text:a.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${a.actualStart||'—'}–${a.actualEnd||'…'}`,tone:a.noShow?'bad':'good'}:null;
+                        const onClick=()=>{if(selected){handleSlotClick(day,block.id,realIdx);}else{openEditSlot(day,block.id,realIdx);}};
+                        // Isolated-day view keeps the compact chip (it lays
+                        // people out in a horizontal row, where a full-width
+                        // card would look wrong); the 7-day grid uses the
+                        // taller card, which has room for the shift time and
+                        // clocked status inline instead of as loose text
+                        // hanging under a pill.
+                        if(effectiveDay) return(
+                          <div key={idx}>
+                            <EmpChip emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}/>
+                            <div style={{fontSize:9,color:a.start||a.end?T.accent:T.text3,marginTop:1,marginLeft:2}}>{a.start||block.start}–{a.end||block.end}</div>
+                            {statusInfo&&<div style={{fontSize:9,color:statusInfo.tone==='bad'?T.danger:T.success,marginLeft:2,marginTop:1}}>{statusInfo.text}</div>}
+                          </div>
+                        );
+                        return(
+                          <EmpCard key={idx} emp={emp||{name:a.name,palIdx:0}} selected={isSel} onClick={onClick}
+                            title={emp?.name||a.name}
+                            time={`${a.start||block.start}–${a.end||block.end}`}
+                            status={statusInfo}/>
+                        );
+                      })}
+                      {/* Open shifts posted for this exact slot — a shift
+                          nobody holds yet that any eligible employee can
+                          claim from their own app. Shown as a dashed
+                          placeholder card so it reads as "not filled" at a
+                          glance, with its claim state underneath. */}
+                      {openShiftsFor&&openShiftsFor(day,block.id,role).map(sw=>{
+                        const claimant=sw.claimedByEmpId?employees.find(e=>e.id===sw.claimedByEmpId):null;
+                        return(<div key={sw.id} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7}}>
+                          <span style={{width:22,height:22,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>?</span>
+                          <div style={{minWidth:0,flex:1}}>
+                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25}}>{t('open.posted')}</div>
+                            {claimant&&<div style={{fontSize:9,color:T.accentText,opacity:0.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('swap.statusClaimed',{name:claimant.name})}</div>}
+                          </div>
+                          {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:12,padding:2,fontFamily:'inherit',flexShrink:0}}>✕</button>}
+                        </div>);
+                      })}
                       {(()=>{
                         const pickerOpen=openPicker?.day===day&&openPicker?.blockId===block.id&&openPicker?.role===role&&!selected;
                         // A centered modal, not an anchored popover — an anchored popup kept
@@ -321,8 +346,17 @@ export default function WeekView({
                         ,document.body);})();
                         const blocked=selected&&!isTarget; // mid-move, but this isn't a valid destination
                         const noAvail=gap>0&&!isTarget&&candidatesForSlot(day,block.id,role).available.length===0;
-                        if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>
+                        // An unfilled slot can either be filled directly (the
+                        // "-N short" button opens the staff picker) or thrown
+                        // open to the team — the second button posts it as an
+                        // open shift anyone eligible can claim. Only offered
+                        // when there isn't already one posted for this slot,
+                        // and never mid-move, when the whole cell means
+                        // "drop here" instead.
+                        const alreadyOpen=openShiftsFor?openShiftsFor(day,block.id,role).length>0:false;
+                        if(gap>0)return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0,display:'flex',flexDirection:'column',gap:3,alignItems:'flex-start'}}>
                           <button onClick={()=>{if(selected&&isTarget){handleEmptySlotClick(day,block.id,role);return;}if(!selected)openPickerFor(day,block.id,role);}} disabled={blocked} title={noAvail?t('week.noOneAvailable'):undefined} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:isTarget?T.successLight:T.dangerLight,color:isTarget?T.success:T.danger,border:`1px dashed ${isTarget?T.success:T.danger}55`,cursor:blocked?'default':'pointer',opacity:blocked?0.35:1,fontFamily:'inherit'}}>{isTarget?t('week.moveHere'):t('week.shortCount',{n:gap})}</button>
+                          {postOpenShift&&!selected&&!alreadyOpen&&<button onClick={()=>postOpenShift(day,block.id,role)} title={t('open.post')} style={{display:'inline-flex',alignItems:'center',gap:3,padding:'2px 7px',borderRadius:999,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{t('open.post')}</button>}
                           {picker}
                         </div>);
                         return(<div style={{position:'relative',marginLeft:effectiveDay&&assigned.length>0?'auto':0}}>

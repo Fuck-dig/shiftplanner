@@ -360,6 +360,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // recipient has an email on file, reusing the exact same translated text
   // so the two never say different things.
   const notify = (targetEmpId, messageKey, messageVars) => {
+    // A manager-posted open shift has no original owner, so claiming one
+    // legitimately has nobody to notify — bail rather than attempting an
+    // insert against notifications.emp_id, which is NOT NULL.
+    if (!targetEmpId) return;
     createNotification(orgId, targetEmpId, { type: messageKey.replace('notif.',''), messageKey, messageVars })
       .catch(err=>console.error('Notify failed:',err));
     const target = employees.find(e=>e.id===targetEmpId);
@@ -724,9 +728,15 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             {openToAnyone.length>0 && (<div>
               <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:8}}>{t('swap.availableToYou')}</div>
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                {openToAnyone.map(sw=>{const from=employees.find(e=>e.id===sw.fromEmpId);return(
-                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
+                {openToAnyone.map(sw=>{
+                  // No fromEmpId = a manager-posted OPEN shift (nobody held
+                  // it), rather than a coworker giving one away — say so
+                  // instead of rendering "Given up by ?".
+                  const isOpenShift=!sw.fromEmpId;
+                  const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId);
+                  return(
+                  <div key={sw.id} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'8px 10px',borderRadius:8,background:isOpenShift?T.accentLight:T.surfaceWarm,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`}}>
+                    <span style={{fontSize:12,color:T.text,flex:1,minWidth:160}}>{isOpenShift?t('open.fromManager'):t('swap.by',{name:from?.name||'?'})} · {sw.role} · {t('day.'+sw.day)}</span>
                     <Btn small onClick={()=>claimSwap(sw)} disabled={swapBusy}>{t('swap.take')}</Btn>
                   </div>
                 );})}

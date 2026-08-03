@@ -1027,6 +1027,13 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
   const cancelOpenShift=(sw)=>{
     deleteShiftSwap(sw.id).then(reloadSwaps).catch(err=>{console.error('Cancel open shift failed:',err);alert(t('save.failedGeneric'));});
   };
+  // Open shifts still live for a given slot in the week being viewed —
+  // 'approved' and 'declined' ones are done with and shouldn't keep
+  // occupying a cell. Identified by having no fromEmpId, which is what
+  // distinguishes a manager-posted open shift from a released one.
+  const openShiftsFor=useCallback((day,blockId,role)=>
+    swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&sw.blockId===blockId&&sw.role===role&&(sw.status==='open'||sw.status==='claimed')),
+  [swaps,wKey]);
 
   const declineSwapManager=(sw)=>{
     updateShiftSwap(sw.id,{status:'declined'}).catch(err=>console.error(err));
@@ -1119,8 +1126,11 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
       return{ id:'to-'+to.id, label:`${emp?.name||'?'} · ${to.type} · ${fmtLong(to.startDate)}${to.endDate!==to.startDate?' – '+fmtLong(to.endDate):''}`, onClick:()=>setView('timeoff') };
     }),
     ...pendingSwaps.map(sw=>{
-      const from=employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId);
-      return{ id:'sw-'+sw.id, label:`${from?.name||'?'} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
+      // An open shift has no original owner — label it as the posted shift
+      // being claimed rather than "? → someone".
+      const from=sw.fromEmpId?employees.find(e=>e.id===sw.fromEmpId):null,claimant=employees.find(e=>e.id===sw.claimedByEmpId);
+      const fromLabel=sw.fromEmpId?(from?.name||'?'):t('open.posted');
+      return{ id:'sw-'+sw.id, label:`${fromLabel} ${t('swap.to',{name:claimant?.name||'?'})} · ${sw.role} · ${t('day.'+sw.day)}`, onClick:()=>setView('timeoff') };
     }),
     ...unseenMessageReplies.map(m=>{
       const recipient=employees.find(e=>e.id===m.recipientEmpId);
@@ -1504,6 +1514,7 @@ function Dashboard({ orgId, orgName='Restaurant', isOwner=false, role='owner', t
     addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
     removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight}
     currency={hourlyRate.currency}
+    openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
     s={s} t={t}
   />
 )}

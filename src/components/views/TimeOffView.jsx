@@ -15,9 +15,13 @@ export default function TimeOffView({
       <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:12}}>{t('swap.pendingApprovals')}</div>
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
         {pendingSwaps.map(sw=>{
-          const from=employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId),block=blocks.find(b=>b.id===sw.blockId);
-          return(<div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',borderRadius:10,border:`1px solid ${T.border}`,background:T.surfaceWarm}}>
-            <span style={{fontSize:12,color:T.text,flex:1,minWidth:200}}><b>{from?.name||'?'}</b> {t('swap.to',{name:claimant?.name||'?'})} · {block?.name||''} · {sw.role} · {t('day.'+sw.day)}</span>
+          // No fromEmpId = an open shift the manager posted themselves, now
+          // claimed — there's no "from" person to name, so it reads as the
+          // open shift being taken rather than "? → someone".
+          const isOpenShift=!sw.fromEmpId;
+          const from=isOpenShift?null:employees.find(e=>e.id===sw.fromEmpId),claimant=employees.find(e=>e.id===sw.claimedByEmpId),block=blocks.find(b=>b.id===sw.blockId);
+          return(<div key={sw.id} style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',padding:'10px 14px',borderRadius:10,border:`1px solid ${isOpenShift?T.accent+'33':T.border}`,background:isOpenShift?T.accentLight:T.surfaceWarm}}>
+            <span style={{fontSize:12,color:T.text,flex:1,minWidth:200}}>{isOpenShift?<><b>{t('open.posted')}</b> {t('swap.to',{name:claimant?.name||'?'})}</>:<><b>{from?.name||'?'}</b> {t('swap.to',{name:claimant?.name||'?'})}</>} · {block?.name||''} · {sw.role} · {t('day.'+sw.day)}</span>
             <Btn small variant="success" onClick={()=>approveSwap(sw)}>{t('swap.approve')}</Btn>
             <Btn small variant="danger" onClick={()=>declineSwapManager(sw)}>{t('to.reject')}</Btn>
           </div>);

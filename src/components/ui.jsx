@@ -20,6 +20,29 @@ export function RoleBadge({role,rs}){ const s=rs||DEFAULT_ROLE_STYLES.Other; ret
 
 export function EmpChip({emp,selected,onClick}){ const p=pal(emp); return <button onClick={onClick} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'2px 8px 2px 4px',borderRadius:999,fontSize:11,fontWeight:500,background:selected?p.dot:(isDark()?p.dot+'22':p.bg),color:selected?'#fff':(isDark()?p.dot:p.text),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'all 0.15s',whiteSpace:'nowrap'}}><span style={{width:16,height:16,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:8,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>{emp.name.split(' ')[0]}</button>; }
 
+// The fuller-bodied sibling of EmpChip, for the week grid's day cells where
+// there's room to show more than a first name. Same palette/selected
+// conventions as EmpChip so the two read as the same person, just at
+// different densities — EmpChip is still what's used anywhere genuinely
+// tight (the on-leave banner, the isolated-day row).
+// `time` and `status` are optional: pass the scheduled window and, if
+// something was actually clocked (or a no-show recorded), a
+// {text, tone:'good'|'bad'} to show underneath.
+export function EmpCard({emp,selected,onClick,time,status,title}){
+  const p=pal(emp);
+  const toneColor=status?.tone==='bad'?T.danger:T.success;
+  return <button onClick={onClick} title={title} style={{display:'flex',alignItems:'center',gap:7,width:'100%',padding:'6px 8px',borderRadius:9,background:selected?p.dot:(isDark()?p.dot+'1E':p.bg),border:`1px solid ${selected?p.dot:p.dot+'44'}`,cursor:onClick?'pointer':'default',transition:'box-shadow 0.15s,transform 0.15s,background 0.15s',fontFamily:'inherit',textAlign:'left',boxSizing:'border-box'}}
+    onMouseEnter={e=>{if(!onClick)return;e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}44`;e.currentTarget.style.transform='translateY(-1px)';}}
+    onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
+    <span style={{width:22,height:22,borderRadius:'50%',background:selected?'rgba(255,255,255,0.3)':p.dot,color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,flexShrink:0}}>{initials(emp.name)}</span>
+    <span style={{minWidth:0,flex:1}}>
+      <span style={{display:'block',fontSize:12,fontWeight:600,color:selected?'#fff':(isDark()?p.dot:p.text),whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',lineHeight:1.25}}>{emp.name.split(' ')[0]}</span>
+      {time&&<span style={{display:'block',fontSize:10,color:selected?'rgba(255,255,255,0.85)':(isDark()?p.dot+'AA':p.text),opacity:selected?1:0.75,whiteSpace:'nowrap',lineHeight:1.3}}>{time}</span>}
+      {status&&<span style={{display:'block',fontSize:9,fontWeight:600,color:selected?'#fff':toneColor,whiteSpace:'nowrap',lineHeight:1.3}}>{status.text}</span>}
+    </span>
+  </button>;
+}
+
 // dot reuses T.success/warning/danger directly (not a separate hardcoded
 // hex) so the small status dot and border track dark mode the same way the
 // badge's own background/text already do via T.successLight etc — they'd
