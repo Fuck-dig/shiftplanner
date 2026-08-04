@@ -1985,7 +1985,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     beginGanttDrag={beginGanttDrag} minToHHMM={minToHHMM} collapsedBlocks={collapsedBlocks} setCollapsedBlocks={setCollapsedBlocks} warnings={warnings}
     weekDates={weekDates} handleSlotClick={handleSlotClick} openPicker={openPicker} pickerRoleFilter={pickerRoleFilter} setPickerRoleFilter={setPickerRoleFilter}
     pickerSortBy={pickerSortBy} setPickerSortBy={setPickerSortBy} pickerSearch={pickerSearch} setPickerSearch={setPickerSearch} candidatesForSlot={candidatesForSlot}
-    addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
+    addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} reorderRoles={reorderRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
     removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} search={gridSearch}
     currency={hourlyRate.currency}
     openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}

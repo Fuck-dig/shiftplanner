@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel } from '../ui';
+import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
@@ -22,9 +22,11 @@ export default function WeekView({
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
   currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment, search,
+  reorderRoles,
   s, t,
 }){
   const [foldedRoles,setFoldedRoles]=useState(()=>new Set());
+  const [dragRole,setDragRole]=useState(null);
   const toggleRole=(role)=>setFoldedRoles(prev=>{const next=new Set(prev); if(next.has(role))next.delete(role); else next.add(role); return next;});
   // Ticking "now" marker for the day-isolated Gantt view — only matters
   // when that view is actually showing, but the hook itself has to run
@@ -119,6 +121,10 @@ export default function WeekView({
     // rather than two views disagreeing about what "compact" means.
     const ganttSideW=isMobile?76:112,ganttRowH=gridTight?(isMobile?20:24):(isMobile?28:34);
     const ganttHeadH=gridTight?(isMobile?16:18):(isMobile?18:22);
+    // Extra breathing room ABOVE each group after the first. The flex column
+    // already has gap:8 between every row; this is what makes a role boundary
+    // read as bigger than a row boundary rather than the same size.
+    const ganttGroupGap=gridTight?6:12;
     // ONE list, rendered by BOTH columns. The names and the bars are two
     // separate flex columns relying on identical row heights to line up, so a
     // heading inserted into one and not the other would silently shift every
@@ -136,7 +142,7 @@ export default function WeekView({
     let lastRole=null;
     for(const row of dayRows){
       if(dayGroupBy==='role'&&row.role!==lastRole){
-        ganttItems.push({kind:'head',role:row.role,n:roleCounts[row.role]});
+        ganttItems.push({kind:'head',role:row.role,n:roleCounts[row.role],first:ganttItems.length===0});
         lastRole=row.role;
       }
       // Folding drops the ROWS, never the heading — otherwise a folded group
@@ -169,16 +175,31 @@ export default function WeekView({
               if(it.kind==='head'){
                 const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
                 const folded=foldedRoles.has(it.role);
-                return(<button key={`h-${it.role}-${ii}`} onClick={()=>toggleRole(it.role)}
+                const dropTarget=dragRole&&dragRole!==it.role;
+                // A div rather than a <button> because it has to be both
+                // clickable (fold) and draggable (reorder), and draggable
+                // buttons behave inconsistently across browsers. Same
+                // drag-onto-another-role gesture as the Team grid's dividers,
+                // calling the very same reorderRoles — so the order you set in
+                // one place is the order you see in the other.
+                return(<div key={`h-${it.role}-${ii}`}
+                  onClick={()=>toggleRole(it.role)}
+                  draggable={!!reorderRoles}
+                  onDragStart={()=>setDragRole(it.role)}
+                  onDragEnd={()=>setDragRole(null)}
+                  onDragOver={e=>{if(dropTarget)e.preventDefault();}}
+                  onDrop={e=>{e.preventDefault();if(reorderRoles&&dragRole&&dragRole!==it.role)reorderRoles(dragRole,it.role);setDragRole(null);}}
                   title={folded?t('grid.expandRole',{role:it.role}):t('grid.collapseRole',{role:it.role})}
-                  style={{height:ganttHeadH,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',textAlign:'left',width:'100%'}}>
+                  style={{height:ganttHeadH,marginTop:it.first?0:ganttGroupGap,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',cursor:'pointer',
+                    borderTop:dropTarget?`2px solid ${T.accent}`:'2px solid transparent',opacity:dragRole===it.role?0.4:1,transition:'opacity 0.15s'}}>
                   <span style={{fontSize:8,color:T.text3,transform:folded?'rotate(-90deg)':'none',transition:'transform 0.15s',flexShrink:0,width:8}}>▾</span>
                   <span style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
                   <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:isDark()?rs.dot:rs.text,overflow:'hidden',textOverflow:'ellipsis'}}>{it.role}</span>
                   {/* The count only earns its space when the group is folded —
                       otherwise you can just look at the rows. */}
                   {folded&&<span style={{fontSize:9,fontWeight:600,color:T.text3,flexShrink:0}}>{it.n}</span>}
-                </button>);
+                  {reorderRoles&&<span style={{marginLeft:'auto',flexShrink:0,opacity:0.5}}><GripDots title={t('grid.dragToReorder')}/></span>}
+                </div>);
               }
               const row=it.row;
               const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
@@ -205,7 +226,11 @@ export default function WeekView({
                   // in step. A faint rule in the role's own colour carries the
                   // grouping across the chart, where the names aren't visible.
                   const folded=foldedRoles.has(it.role);
-                  return(<div key={`hb-${it.role}-${ii}`} style={{height:ganttHeadH,display:'flex',alignItems:'center',pointerEvents:'none'}}>
+                  // marginTop and the 2px transparent border mirror the name
+                  // column exactly. Any divergence here shifts every bar out of
+                  // step with its name, and it looks fine until you have enough
+                  // rows to notice.
+                  return(<div key={`hb-${it.role}-${ii}`} style={{height:ganttHeadH,marginTop:it.first?0:ganttGroupGap,borderTop:'2px solid transparent',display:'flex',alignItems:'center',pointerEvents:'none'}}>
                     {/* Solid when open, dashed when folded — the rule is the
                         only thing left of a folded group out here, so it has to
                         say "collapsed" rather than just "divider". */}
