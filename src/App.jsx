@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense, lazy } from 'react';
 import { T, styles, THEMES, computeStyles } from './lib/constants';
 import { load, save } from './lib/storage';
 import { supabase } from './lib/supabase';
+import { retryChunkLoad } from './lib/chunkReload';
 import { listOrgs, acceptPendingInvitations } from './lib/org';
 import { makeT, detectLang } from './i18n';
 import { LoadingScreen } from './components/ui';
@@ -12,9 +13,12 @@ import RestaurantPicker from './components/RestaurantPicker';
 // two never need downloading. Dashboard only became splittable once it moved
 // out of App.jsx; while it lived here every employee downloaded the entire
 // manager app (the largest thing in the bundle) to render a read-only rota.
-const Dashboard    = lazy(() => import('./components/Dashboard'));
-const EmployeeView = lazy(() => import('./components/EmployeeView'));
-const KioskView    = lazy(() => import('./components/KioskView'));
+// Wrapped in retryChunkLoad, not bare lazy(): after a deploy the service
+// worker swaps in and purges the old precache, so an already-open tab asks for
+// chunk hashes that no longer exist and white-screens. See lib/chunkReload.js.
+const Dashboard    = lazy(() => retryChunkLoad(() => import('./components/Dashboard')));
+const EmployeeView = lazy(() => retryChunkLoad(() => import('./components/EmployeeView')));
+const KioskView    = lazy(() => retryChunkLoad(() => import('./components/KioskView')));
 
 // ─── Outer App — auth gate ────────────────────────────────────────────────────
 export default function App(){

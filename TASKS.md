@@ -13,14 +13,17 @@
 ## Verify — needs your hands, not mine
 
 Nothing here can be closed by tests. These are the ones where "it builds and
-153 tests pass" proves nothing.
+163 tests pass" proves nothing.
 
-- [ ] **Test the 3 Aug changes** — 6/10 — three commits of UI change
-  (staff Requests rebuild, archived-staff fix, archive→open-shifts) have had
-  **no human eyes on them**. Checklist is in `TESTING-today.md`; 23 steps, ~10
-  minutes. Section A is the one that matters — it covers a bug that was live
-  for staff. The single most important step is A8: a past shift must still show
-  an archived person's real name and colour, or archiving is eating history.
+- [ ] **Finish the test pass — sections B and D** — 5/10 — the manager side is
+  done (4 Aug). Passed: leave+shift shows two cards with the warning border;
+  A8 confirmed, an archived person's PAST shift still renders with their real
+  name and colour; archive/restore persists. Still untested because they need
+  a **staff login**: section B (the whole rebuilt staff Requests tab) and
+  section D steps 22–23 (the manager's approvals queue, which needs a pending
+  claim to exist). Also still untested: archiving with **OK** on the prompt —
+  the run on 4 Aug answered Cancel, so the shifts→open-shifts path has never
+  actually executed.
 - [ ] **Confirm push notifications actually arrive** — 5/10 — subscribe
   and the toggles are confirmed working on rorota.net; *delivery* is not. Needs
   a phone. Four paths to check: new/changed shifts on publish, time-off and swap
@@ -39,6 +42,16 @@ Nothing here can be closed by tests. These are the ones where "it builds and
   deliberately deferred.
 
 ## Bugs
+
+- [ ] **Declining the archive prompt strands an invisible shift** — 5/10 —
+  `archiveEmp` archives the person *before* the confirm and independently of
+  it, so answering Cancel to "post their upcoming shifts as open shifts?"
+  leaves them archived **and** still rostered. Seen live: Lars Lang sat in
+  Former Staff while still holding Sat 8 Aug Dinner. The trap is that Team view
+  filters archived people, so their row is gone — the shift cannot be seen or
+  removed in the person-oriented view at all, only in Week view. Options: keep
+  the row while they hold upcoming assignments, warn on decline, or make it a
+  three-way choice (repost / leave them on / cancel the archive).
 
 - [ ] **#4 Undo doesn't survive a reload** — 5/10 — reported, not yet
   reproduced. The logic reads correctly (undo writes through the same debounced
