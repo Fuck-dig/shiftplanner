@@ -97,13 +97,6 @@ Things the manager has that staff do not, and vice versa.
 
 ## Infrastructure
 
-- [ ] **Turn on branch protection so CI actually gates** — 4/10 — the code side
-  is done: CI now runs on every branch (not just main) and cancels superseded
-  runs, and `DEPLOYING.md` documents the branch → preview → merge flow. **But
-  none of it binds until you add the ruleset in GitHub Settings → Branches**
-  requiring a PR and the `test-and-build` check on `main`. Until then CI stays
-  advisory and pushing to main still ships straight to the restaurant. ~10
-  minutes, and only you can do it.
 - [ ] **Decide about a preview Supabase project** — 3/10 — deliberately NOT
   done. Preview deployments talk to the real database, so a preview is safe for
   looking at layout and unsafe for archiving someone or publishing a week. A
