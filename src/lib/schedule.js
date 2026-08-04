@@ -220,6 +220,24 @@ export function workingCount(schedule, blocks, day, employees){
   return ids.size;
 }
 
+// How many people on the roster have at least one shift anywhere in the week,
+// and how many are on the roster at all — the "{n} of {total} scheduled"
+// counter above the Team grid.
+//
+// Both halves must ignore archived people. `total` counting them was the more
+// visible half: archiving someone left the denominator unchanged, so the
+// counter claimed a headcount that no longer matched the rows beneath it.
+export function scheduledCount(schedule, employees){
+  const active = activeOnly(employees);
+  const ids = new Set();
+  for (const day of Object.values(schedule || {})) {
+    for (const list of Object.values(day || {})) {
+      for (const a of (list || [])) ids.add(a.empId);
+    }
+  }
+  return { n: active.filter(e => ids.has(e.id)).length, total: active.length };
+}
+
 export function activeOnly(employees){ return (employees||[]).filter(e=>!e.archived); }
 
 export function effectiveRolesFor(emp,schedule,blocks){

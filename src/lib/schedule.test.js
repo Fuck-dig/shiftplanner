@@ -12,7 +12,7 @@ import {
   pruneOrphanedAssignments,
   applyAssignmentDrop,
   removeUpcomingAssignments,
-  WEEKS_PER_MONTH, activeOnly, workingCount } from './schedule';
+  WEEKS_PER_MONTH, activeOnly, workingCount, scheduledCount } from './schedule';
 
 // These are the functions that ultimately decide how many hours an employee
 // is credited with and how much that costs — bugs here show up as a wrong
@@ -560,5 +560,28 @@ describe('removeUpcomingAssignments — cleared detail', () => {
     // defaults to, and the wrong person would claim it.
     const r=removeUpcomingAssignments(schedules,'x','2026-08-04',monday,days);
     expect(r.cleared.map(c=>c.role).sort()).toEqual(['Chef','Waiter']);
+  });
+});
+
+describe('scheduledCount', () => {
+  const schedule={Mon:{lunch:[{empId:'a'},{empId:'b'}]},Tue:{lunch:[{empId:'a'}]}};
+
+  it('counts each person once across the whole week', () => {
+    const roster=[{id:'a'},{id:'b'},{id:'c'}];
+    expect(scheduledCount(schedule,roster)).toEqual({n:2,total:3});
+  });
+
+  it('excludes archived people from BOTH halves', () => {
+    // THE BUG: total counted archived people, so archiving someone left the
+    // denominator unchanged and the counter claimed a headcount that no
+    // longer matched the rows below it. 'b' is archived AND scheduled, so
+    // this catches it if either half is wrong.
+    const roster=[{id:'a'},{id:'b',archived:true},{id:'c'}];
+    expect(scheduledCount(schedule,roster)).toEqual({n:1,total:2});
+  });
+
+  it('survives an empty or missing schedule', () => {
+    expect(scheduledCount(null,[{id:'a'}])).toEqual({n:0,total:1});
+    expect(scheduledCount({},[])).toEqual({n:0,total:0});
   });
 });
