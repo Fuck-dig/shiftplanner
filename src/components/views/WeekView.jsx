@@ -8,6 +8,10 @@ import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel } from '../ui';
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
 // hours summary card at the bottom.
+// Same shape as the Team grid's collapsedRoles: a Set of role names the user
+// has folded away. Deliberately NOT persisted — it's a "let me look at just the
+// kitchen for a second" gesture, not a preference, and coming back tomorrow to
+// half your rota hidden would be alarming.
 export default function WeekView({
   schedule, blocks, employees, offThisWeek, generate, generateMonth,
   dayFilter, setDayFilter, selected, setSelected, dayGroupBy, setDayGroupBy,
@@ -20,6 +24,8 @@ export default function WeekView({
   currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment, search,
   s, t,
 }){
+  const [foldedRoles,setFoldedRoles]=useState(()=>new Set());
+  const toggleRole=(role)=>setFoldedRoles(prev=>{const next=new Set(prev); if(next.has(role))next.delete(role); else next.add(role); return next;});
   // Ticking "now" marker for the day-isolated Gantt view — only matters
   // when that view is actually showing, but the hook itself has to run
   // unconditionally (before the empty-schedule early return below) per
@@ -124,10 +130,18 @@ export default function WeekView({
     // noise. Previously the only cue that the list WAS grouped was a 8px dot
     // beside each name, so you had to decode the colours to find where one
     // role ended and the next began.
+    const roleCounts={};
+    for(const r of dayRows) roleCounts[r.role]=(roleCounts[r.role]||0)+1;
     const ganttItems=[];
     let lastRole=null;
     for(const row of dayRows){
-      if(dayGroupBy==='role'&&row.role!==lastRole){ ganttItems.push({kind:'head',role:row.role}); lastRole=row.role; }
+      if(dayGroupBy==='role'&&row.role!==lastRole){
+        ganttItems.push({kind:'head',role:row.role,n:roleCounts[row.role]});
+        lastRole=row.role;
+      }
+      // Folding drops the ROWS, never the heading — otherwise a folded group
+      // vanishes completely and there's nothing left to click to get it back.
+      if(dayGroupBy==='role'&&foldedRoles.has(row.role)) continue;
       ganttItems.push({kind:'row',row});
     }
     timeline=(
@@ -154,10 +168,17 @@ export default function WeekView({
             {ganttItems.map((it,ii)=>{
               if(it.kind==='head'){
                 const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
-                return(<div key={`h-${it.role}-${ii}`} style={{height:ganttHeadH,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden'}}>
+                const folded=foldedRoles.has(it.role);
+                return(<button key={`h-${it.role}-${ii}`} onClick={()=>toggleRole(it.role)}
+                  title={folded?t('grid.expandRole',{role:it.role}):t('grid.collapseRole',{role:it.role})}
+                  style={{height:ganttHeadH,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',textAlign:'left',width:'100%'}}>
+                  <span style={{fontSize:8,color:T.text3,transform:folded?'rotate(-90deg)':'none',transition:'transform 0.15s',flexShrink:0,width:8}}>▾</span>
                   <span style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
                   <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:isDark()?rs.dot:rs.text,overflow:'hidden',textOverflow:'ellipsis'}}>{it.role}</span>
-                </div>);
+                  {/* The count only earns its space when the group is folded —
+                      otherwise you can just look at the rows. */}
+                  {folded&&<span style={{fontSize:9,fontWeight:600,color:T.text3,flexShrink:0}}>{it.n}</span>}
+                </button>);
               }
               const row=it.row;
               const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
@@ -183,8 +204,14 @@ export default function WeekView({
                   // Matches the heading's height exactly so the two columns stay
                   // in step. A faint rule in the role's own colour carries the
                   // grouping across the chart, where the names aren't visible.
+                  const folded=foldedRoles.has(it.role);
                   return(<div key={`hb-${it.role}-${ii}`} style={{height:ganttHeadH,display:'flex',alignItems:'center',pointerEvents:'none'}}>
-                    <div style={{height:1,width:'100%',background:`linear-gradient(to right, ${rs.dot}55, transparent)`}}/>
+                    {/* Solid when open, dashed when folded — the rule is the
+                        only thing left of a folded group out here, so it has to
+                        say "collapsed" rather than just "divider". */}
+                    <div style={folded
+                      ?{height:0,width:'100%',borderTop:`1px dashed ${rs.dot}66`}
+                      :{height:1,width:'100%',background:`linear-gradient(to right, ${rs.dot}55, transparent)`}}/>
                   </div>);
                 }
                 const row=it.row;
