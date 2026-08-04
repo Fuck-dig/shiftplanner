@@ -112,6 +112,24 @@ export default function WeekView({
     // grid's own Compact/Comfortable toggle uses, so it's one shared setting
     // rather than two views disagreeing about what "compact" means.
     const ganttSideW=isMobile?76:112,ganttRowH=gridTight?(isMobile?20:24):(isMobile?28:34);
+    const ganttHeadH=gridTight?(isMobile?16:18):(isMobile?18:22);
+    // ONE list, rendered by BOTH columns. The names and the bars are two
+    // separate flex columns relying on identical row heights to line up, so a
+    // heading inserted into one and not the other would silently shift every
+    // name out of step with its bar. Building the sequence once and rendering
+    // it twice makes that impossible rather than merely unlikely.
+    //
+    // Headings only when grouped by role — sorted by name there is no group to
+    // head, and a "Manager / Bartender / Waiter" label per person would be
+    // noise. Previously the only cue that the list WAS grouped was a 8px dot
+    // beside each name, so you had to decode the colours to find where one
+    // role ended and the next began.
+    const ganttItems=[];
+    let lastRole=null;
+    for(const row of dayRows){
+      if(dayGroupBy==='role'&&row.role!==lastRole){ ganttItems.push({kind:'head',role:row.role}); lastRole=row.role; }
+      ganttItems.push({kind:'row',row});
+    }
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
@@ -133,7 +151,23 @@ export default function WeekView({
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;const dim=!matchesSearch(row.name);return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',opacity:dim?0.28:1,transition:'opacity 0.15s'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+            {ganttItems.map((it,ii)=>{
+              if(it.kind==='head'){
+                const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
+                return(<div key={`h-${it.role}-${ii}`} style={{height:ganttHeadH,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden'}}>
+                  <span style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
+                  <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:isDark()?rs.dot:rs.text,overflow:'hidden',textOverflow:'ellipsis'}}>{it.role}</span>
+                </div>);
+              }
+              const row=it.row;
+              const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
+              const dim=!matchesSearch(row.name);
+              return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',opacity:dim?0.28:1,transition:'opacity 0.15s'}}>
+                {/* Dot stays even with a heading above: sorted BY NAME there is
+                    no heading at all, so it's the only role cue there. */}
+                <span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}
+              </div>);
+            })}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -143,7 +177,17 @@ export default function WeekView({
               </div>
             )}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
-              {dayRows.map(row=>{
+              {ganttItems.map((it,ii)=>{
+                if(it.kind==='head'){
+                  const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
+                  // Matches the heading's height exactly so the two columns stay
+                  // in step. A faint rule in the role's own colour carries the
+                  // grouping across the chart, where the names aren't visible.
+                  return(<div key={`hb-${it.role}-${ii}`} style={{height:ganttHeadH,display:'flex',alignItems:'center',pointerEvents:'none'}}>
+                    <div style={{height:1,width:'100%',background:`linear-gradient(to right, ${rs.dot}55, transparent)`}}/>
+                  </div>);
+                }
+                const row=it.row;
                 const dimRow=!matchesSearch(row.name);
                 return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6,opacity:dimRow?0.28:1,filter:dimRow?'grayscale(1)':'none',transition:'opacity 0.15s,filter 0.15s'}}>
                   {row.merged.map((seg,si)=>{
