@@ -27,6 +27,12 @@ export default function WeekView({
 }){
   const [foldedRoles,setFoldedRoles]=useState(()=>new Set());
   const [dragRole,setDragRole]=useState(null);
+  // Position of a role in the user's saved order. A role can legitimately be
+  // absent from allRoles — an assignment can outlive the role being removed
+  // from a block — and indexOf returns -1 for those, which would sort them
+  // FIRST, ahead of everything deliberately ordered. Push them to the end
+  // instead, where an unrecognised role belongs.
+  const roleRank=(role)=>{const i=allRoles.indexOf(role); return i===-1?Number.MAX_SAFE_INTEGER:i;};
   const toggleRole=(role)=>setFoldedRoles(prev=>{const next=new Set(prev); if(next.has(role))next.delete(role); else next.add(role); return next;});
   // Ticking "now" marker for the day-isolated Gantt view — only matters
   // when that view is actually showing, but the hook itself has to run
@@ -104,7 +110,7 @@ export default function WeekView({
   const dayRows=[...byEmp.values()].map(r=>{
     const merged=[...r.segs].sort((a,b)=>a.start-b.start);
     return {...r,merged};
-  }).sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
+  }).sort((a,b)=>dayGroupBy==='role'?(roleRank(a.role)-roleRank(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
   let timeline=null;
   if(effectiveDay&&dayRows.length){
@@ -154,7 +160,19 @@ export default function WeekView({
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
+            {/* Driven by allRoles (your saved role order), NOT by the order
+                rows happen to fall in. Deriving it from dayRows meant the
+                legend reshuffled every time you switched By role / By name —
+                sorted by name, roles appeared in whatever order the first
+                alphabetical person of each landed. A legend is a key to the
+                colours; it shouldn't move when the sort does. Filtered to
+                roles actually on today, so it stays a legend for what's on
+                screen rather than a list of every role you've ever defined.
+                Built from the roles PRESENT and then sorted by that saved
+                order, rather than filtering allRoles — so a role that isn't in
+                allRoles still gets a legend entry instead of appearing on the
+                chart with no key. */}
+            {[...new Set(dayRows.map(r=>r.role))].sort((x,y)=>roleRank(x)-roleRank(y)).map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
