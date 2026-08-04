@@ -32,14 +32,26 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Security
 
-- [ ] **Wages are readable by any org member at the database level** — 6/10 — `employee_documents` was tightened to manager-only RLS on 28 Jul, but
-  wages are a **column** on `employees`, and Postgres RLS filters rows, not
-  columns. Every login shares the same `authenticated` database role, so the
-  manager-only wage UI is a gate with nothing behind it: any employee who opens
-  devtools and calls the REST endpoint with the anon key that ships in the
-  bundle can read every colleague's wage. Fixing it properly means splitting
-  wage into its own manager-only table — the larger change that migration
-  deliberately deferred.
+- [ ] **Split the `for all` policies on employees / blocks / schedules / time_off**
+  — 7/10 — from the base schema. `for all using (is_member(org_id))` means any
+  employee can, via the REST API: approve their own time off (`status` is just
+  a column), delete every schedule, or rewrite anyone's roles and max hours.
+  The manager-only UI is the only thing stopping them, and it isn't a control.
+  Staff genuinely need INSERT/DELETE on their own `time_off` rows and UPDATE on
+  their own `employees` row, so this needs care rather than a blanket lockdown.
+- [ ] **Get the live schema into version control** — 5/10 — the base tables and
+  several policies exist only in the dashboard. Both security findings today
+  came from things the repo didn't contain. `supabase/audit_security.sql` dumps
+  the real state; the output should be committed and kept current.
+- [ ] **Any employee can rename the org and rewrite its settings** — 4/10 —
+  `"members update orgs" for update using (is_member(id))`, including the
+  settings JSON.
+- [ ] **Blanket grants to `authenticated` are a footgun** — 4/10 — `grant
+  select, insert, update, delete on all tables … to authenticated` plus `alter
+  default privileges … grant … to authenticated` means every FUTURE table is
+  fully writable by any logged-in user the moment it exists. Harmless while RLS
+  is enabled with good policies; the mechanism by which the next hole arrives
+  silently.
 
 ## Bugs
 

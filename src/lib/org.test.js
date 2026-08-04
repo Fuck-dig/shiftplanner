@@ -26,12 +26,12 @@ vi.mock('./supabase', () => ({
   supabase: {
     from: (table) => makeBuilder(table),
     auth: { getUser: async () => ({ data: { user: state.user } }) },
-    rpc: async () => ({ data: null, error: null }),
+    rpc: async (fn, args) => { state.ops.push({ rpc: fn, args }); return { data: state.rpcData ?? null, error: state.rpcError ?? null }; },
   },
   functionsUrl: 'https://example.test/functions/v1',
 }));
 
-const { listOrgs } = await import('./org');
+const { listOrgs, acceptPendingInvitations } = await import('./org');
 
 beforeEach(() => { state.ops = []; state.data = {}; state.errors = {}; state.user = { id: 'user-1' }; });
 
@@ -89,5 +89,42 @@ describe('listOrgs', () => {
     // drop the user on the empty picker instead of showing an error.
     state.errors.memberships = { message: 'network' };
     await expect(listOrgs()).rejects.toBeTruthy();
+  });
+});
+
+describe('acceptPendingInvitations — privilege escalation guard', () => {
+  beforeEach(() => { state.ops = []; state.rpcData = undefined; state.rpcError = undefined; });
+
+  it('delegates to the database function instead of writing from the client', async () => {
+    // The old version read invitations, inserted a membership with a role the
+    // CLIENT supplied, then marked the invite used. That required RLS to let
+    // the browser write to both tables — and it did, so broadly that any
+    // logged-in user could rewrite any invitation row and make themselves an
+    // owner of someone else's restaurant.
+    state.rpcData = 2;
+    await expect(acceptPendingInvitations()).resolves.toBe(2);
+    expect(state.ops).toContainEqual(expect.objectContaining({ rpc: 'accept_my_invitations' }));
+  });
+
+  it('never touches the invitations or memberships tables directly', async () => {
+    // If this fails, a client-side write path has been reintroduced and the
+    // role is choosable by the caller again. That IS the vulnerability.
+    state.rpcData = 1;
+    await acceptPendingInvitations();
+    const tables = state.ops.map((o) => o.table).filter(Boolean);
+    expect(tables).not.toContain('invitations');
+    expect(tables).not.toContain('memberships');
+  });
+
+  it('sends no role — the database reads it off the invitation row', async () => {
+    state.rpcData = 1;
+    await acceptPendingInvitations();
+    const call = state.ops.find((o) => o.rpc === 'accept_my_invitations');
+    expect(JSON.stringify(call.args ?? {})).not.toMatch(/owner|manager|role/i);
+  });
+
+  it('surfaces a failure rather than quietly reporting success', async () => {
+    state.rpcError = new Error('permission denied');
+    await expect(acceptPendingInvitations()).rejects.toThrow('permission denied');
   });
 });

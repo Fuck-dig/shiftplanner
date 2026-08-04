@@ -87,41 +87,21 @@ export async function createInvitation(orgId, email, role='employee'){
 // aggregate error (after attempting all invites) if any failed, so a bad
 // invite doesn't silently vanish and doesn't block the others either.
 export async function acceptPendingInvitations(){
+  // Server-side now. This used to read the invitations table, insert a
+  // membership with `role: invite.role`, then mark the invite used — three
+  // client-side writes, which meant RLS had to allow the browser to write to
+  // both tables. It did, far too broadly: any logged-in user could rewrite any
+  // invitation row (email, role, used_at) and hand themselves ownership of
+  // someone else's restaurant. See
+  // 20260804180000_fix_invitation_privilege_escalation.sql.
+  //
+  // accept_my_invitations() reads the role out of the invitation row inside
+  // the database, so it is no longer something a caller can choose.
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return 0;
-
-  // createInvitation() stores the email lowercased — match the same way here,
-  // otherwise a casing difference between how the manager typed the invite
-  // and how the invited person's account email is capitalized means the
-  // invite is silently never found, and they end up with zero orgs.
-  const { data: invites, error: fetchErr } = await supabase
-    .from('invitations')
-    .select('id, org_id, role')
-    .eq('email', (user.email||'').toLowerCase().trim())
-    .is('used_at', null);
-  if (fetchErr) throw fetchErr;
-
-  if (!invites || invites.length === 0) return 0;
-
-  let accepted = 0;
-  const errors = [];
-  for (const invite of invites) {
-    // Add to memberships. If this fails, do NOT mark the invite as used —
-    // otherwise a failed write silently loses the invitation forever.
-    const { error: memErr } = await supabase.from('memberships').upsert(
-      { org_id: invite.org_id, user_id: user.id, role: invite.role },
-      { onConflict: 'org_id,user_id' }
-    );
-    if (memErr) { errors.push(memErr); continue; }
-    // Mark invite as used
-    const { error: usedErr } = await supabase.from('invitations')
-      .update({ used_at: new Date().toISOString() })
-      .eq('id', invite.id);
-    if (usedErr) { errors.push(usedErr); continue; }
-    accepted++;
-  }
-  if (errors.length) throw new Error(`Failed to accept ${errors.length} invitation(s): ${errors[0].message}`);
-  return accepted;
+  const { data, error } = await supabase.rpc('accept_my_invitations');
+  if (error) throw error;
+  return data || 0;
 }
 
 // List pending invitations for an org
