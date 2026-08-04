@@ -3,7 +3,9 @@
 export let LOCALE = 'en-GB';
 export function setLocale(l){ LOCALE = l; }
 
-export function startOfToday(){
+// Not exported: used only by getWeekDates/todayISO below. It was exported
+// for no caller.
+function startOfToday(){
   const d = new Date(); d.setHours(0,0,0,0); return d;
 }
 
@@ -31,6 +33,28 @@ export function weekOffsetFromDate(date){
   monday.setHours(0,0,0,0);
   const baseMonday=getMondayDate(0);
   return Math.round((monday-baseMonday)/(7*24*3600*1000));
+}
+
+// Step the isolated-day view forward/back by `delta` days, returning where it
+// lands: which week offset, and which weekday.
+//
+// Both the manager's and the employee's schedule had their own copy of this.
+// The manager's inlined its own version of weekOffsetFromDate, omitting the
+// setHours(0,0,0,0) normalisation. I assumed that was a latent bug and wrote a
+// DST test for it — then mutation-tested by deleting the guard, and every test
+// still passed. It turns out the guard cannot change the answer: the worst
+// combined drift (a full day of time-of-day plus an hour of DST) is 0.15 of a
+// week, and Math.round needs 0.5 to flip. So the two implementations were
+// always equivalent; this is deduplication, not a bug fix. The guard stays
+// because it costs nothing and makes the intent obvious.
+//
+// `days` is passed in rather than imported to keep this module free of
+// constants.js (which imports from here).
+export function stepDay(current, delta, days){
+  const nd = new Date(current);
+  nd.setDate(current.getDate() + delta);
+  const dow = nd.getDay();
+  return { weekOffset: weekOffsetFromDate(nd), day: days[dow === 0 ? 6 : dow - 1] };
 }
 
 export function weekKey(off){

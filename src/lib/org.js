@@ -68,14 +68,6 @@ export async function removeMember(orgId, userId){
   if (error) throw error;
 }
 
-// Look up a user by email (returns their user_id or null)
-// Uses a server-side RPC since we can't query auth.users from the client directly
-export async function findUserByEmail(email){
-  const { data, error } = await supabase
-    .rpc('find_user_by_email', { lookup_email: email });
-  if (error) throw error;
-  return data; // user_id or null
-}
 
 // ─── Invitations ──────────────────────────────────────────────────────────────
 

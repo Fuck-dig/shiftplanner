@@ -102,7 +102,15 @@ export function Btn({children,onClick,disabled,variant='primary',small}){
   return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant]}}>{children}</button>;
 }
 
-export function SectionLabel({children}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:6}}>{children}</div>; }
+// The small uppercase label above a group of things.
+//
+// This existed already, but thirteen places had hand-rolled their own instead,
+// drifting into two font sizes, two letter-spacings and four different
+// margins — so the same kind of label was visibly different depending on which
+// screen you were on. `mb` covers the only variation that was ever deliberate
+// (spacing), and `style` is the escape hatch for the one instance that also
+// carries layout padding.
+export function SectionLabel({children,mb,style}){ return <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',marginBottom:mb??6,...style}}>{children}</div>; }
 
 // The on/off pill switch used for every settings toggle in the app (email
 // notifications, push notifications, "allow replies", etc.) — previously

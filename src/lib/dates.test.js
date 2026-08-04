@@ -11,8 +11,7 @@ import {
   weekOffsetFromDate,
   weekKey,
   getMonthOffsets,
-  todayISO,
-} from './dates';
+  todayISO, stepDay } from './dates';
 
 // Every "current week" function here (getMondayDate, getWeekDates, weekKey,
 // weekOffsetFromDate, todayISO, getMonthOffsets) is relative to whatever
@@ -126,5 +125,52 @@ describe('dates (relative to "now" — fake timers)', () => {
     vi.setSystemTime(new Date(2026, 6, 1));
     const offsets = getMonthOffsets(0); // "the month containing this week"
     expect(offsets.length).toBeGreaterThan(0);
+  });
+});
+
+describe('stepDay', () => {
+  const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+  it('moves to the next weekday within the same week', () => {
+    const wed=new Date(2026,7,5); // Wed 5 Aug 2026
+    expect(stepDay(wed,1,DAYS).day).toBe('Thu');
+    expect(stepDay(wed,-1,DAYS).day).toBe('Tue');
+  });
+
+  it('rolls over the week boundary in both directions', () => {
+    // Sunday +1 must land on Monday of the FOLLOWING week, not wrap within
+    // the current one — the off-by-one that makes "next day" jump backwards
+    // six days.
+    const sun=new Date(2026,7,9);
+    const fwd=stepDay(sun,1,DAYS);
+    expect(fwd.day).toBe('Mon');
+    expect(fwd.weekOffset).toBe(stepDay(sun,0,DAYS).weekOffset+1);
+
+    const mon=new Date(2026,7,10);
+    const back=stepDay(mon,-1,DAYS);
+    expect(back.day).toBe('Sun');
+    expect(back.weekOffset).toBe(stepDay(mon,0,DAYS).weekOffset-1);
+  });
+
+  it('agrees with weekOffsetFromDate across a DST boundary', () => {
+    // Europe/Copenhagen clocks go back on the last Sunday of October, so this
+    // is the case most likely to trip week arithmetic. Worth stating plainly:
+    // this test does NOT prove the setHours(0,0,0,0) guard in
+    // weekOffsetFromDate is load-bearing — deleting that guard leaves every
+    // test here passing, because the drift it corrects is far too small to
+    // move a Math.round. What this does pin down is that stepping across the
+    // boundary lands on the right week at all.
+    const beforeDST=new Date(2026,9,24); // Sat 24 Oct 2026
+    const afterDST=new Date(2026,9,26);  // Mon 26 Oct 2026
+    expect(stepDay(beforeDST,0,DAYS).weekOffset).toBe(weekOffsetFromDate(beforeDST));
+    expect(stepDay(afterDST,0,DAYS).weekOffset).toBe(weekOffsetFromDate(afterDST));
+    expect(stepDay(beforeDST,2,DAYS).weekOffset).toBe(weekOffsetFromDate(afterDST));
+  });
+
+  it('handles a delta big enough to cross several weeks', () => {
+    const wed=new Date(2026,7,5);
+    const r=stepDay(wed,21,DAYS);
+    expect(r.day).toBe('Wed');
+    expect(r.weekOffset).toBe(stepDay(wed,0,DAYS).weekOffset+3);
   });
 });

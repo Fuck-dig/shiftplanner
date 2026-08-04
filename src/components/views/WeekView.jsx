@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpCard, Btn } from '../ui';
+import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
@@ -408,7 +408,7 @@ export default function WeekView({
                           return createPortal(
                           <div onClick={closePicker} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
                             <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(440px,100%)',maxHeight:'min(78vh,620px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
-                              <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',padding:'16px 18px 10px',flexShrink:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</div>
+                              <SectionLabel style={{padding:'16px 18px 10px',flexShrink:0,marginBottom:0}}>{t('week.addRoleDay',{role,day:t('day.'+day)})}</SectionLabel>
                               <div style={{padding:'0 18px 10px',flexShrink:0}}>
                                 <input autoFocus value={pickerSearch} onChange={e=>setPickerSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:'100%'}}/>
                               </div>

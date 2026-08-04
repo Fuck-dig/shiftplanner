@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
-import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
+import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES, backdrop } from '../lib/constants';
+import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
 import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, workingCount } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
@@ -198,11 +198,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // arrows always jumping a whole week regardless of what's isolated. Same
   // behaviour as the manager's own nav arrows.
   const shiftDay = (delta) => {
-    const cur = weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
-    const nd = new Date(cur); nd.setDate(cur.getDate()+delta);
-    setWeekOffset(weekOffsetFromDate(nd));
-    const dow = nd.getDay();
-    setDayFilter(DAYS[dow===0?6:dow-1]);
+    const {weekOffset:off,day}=stepDay(weekDates[DAYS.indexOf(dayFilter||DAYS[0])],delta,DAYS);
+    setWeekOffset(off); setDayFilter(day);
   };
   // Coverage math (dayCoverage, inside MonthView) needs the universe of role
   // names blocks actually require staffing for — roleStyles itself isn't
@@ -350,36 +347,22 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
   const me = employees.find(e=>e.id===myId);
 
-  const saveMyName = (newName) => {
-    updateEmployeeSelfProfile(myId, { name: newName })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,name:newName}:e)))
+  // Six near-identical copies of the same four lines collapsed into one: they
+  // differed only by which field they wrote. Optimistic in the same way they
+  // all were — the local row updates only AFTER the write resolves, so a
+  // rejected write (RLS, offline) leaves the UI showing the truth rather than
+  // a value the server never accepted.
+  const saveMine = (field) => (value) => {
+    updateEmployeeSelfProfile(myId, { [field]: value })
+      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,[field]:value}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
-  const saveMyColor = (palIdx) => {
-    updateEmployeeSelfProfile(myId, { palIdx })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,palIdx}:e)))
-      .catch(err=>alert(err.message||'Failed to save'));
-  };
-  const saveMyPhone = (phone) => {
-    updateEmployeeSelfProfile(myId, { phone })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,phone}:e)))
-      .catch(err=>alert(err.message||'Failed to save'));
-  };
-  const saveMyAvailability = (availability) => {
-    updateEmployeeSelfProfile(myId, { availability })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,availability}:e)))
-      .catch(err=>alert(err.message||'Failed to save'));
-  };
-  const saveMyEmailNotifications = (emailNotifications) => {
-    updateEmployeeSelfProfile(myId, { emailNotifications })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,emailNotifications}:e)))
-      .catch(err=>alert(err.message||'Failed to save'));
-  };
-  const saveMyPushPrefs = (pushPrefs) => {
-    updateEmployeeSelfProfile(myId, { pushPrefs })
-      .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,pushPrefs}:e)))
-      .catch(err=>alert(err.message||'Failed to save'));
-  };
+  const saveMyName               = saveMine('name');
+  const saveMyColor              = saveMine('palIdx');
+  const saveMyPhone              = saveMine('phone');
+  const saveMyAvailability       = saveMine('availability');
+  const saveMyEmailNotifications = saveMine('emailNotifications');
+  const saveMyPushPrefs          = saveMine('pushPrefs');
 
   // Single choke point for every employee-to-employee notification (swap
   // requests, claims, accept/decline) — the in-app row is always created;
@@ -825,7 +808,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   );
 
   return (<>
-    <div style={{minHeight:'100vh',width:'100%',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
+    <div style={{minHeight:'100vh',width:'100%',...backdrop(),fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       {/* Nav */}
       <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',gap:isMobile?6:0,height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.15)'}}>
         <div style={{display:'flex',alignItems:'baseline',gap:9,flex:1,minWidth:0,overflow:'hidden'}}>
@@ -976,7 +959,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             underneath each other instead of overlapping; measured rather
             than hardcoded because this bar wraps to two lines on narrow
             screens and with longer translated labels. */}
-        <div ref={navBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,paddingBottom:8}}>
+        <div ref={navBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,...backdrop(),paddingTop:8,paddingBottom:8}}>
           <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
             <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>‹</button>
             <WeekPicker
@@ -1055,8 +1038,8 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               flat rectangle out of the page's ambient radial-gradient
               backdrop as it scrolls over content, instead of blending in. */}
           {me && (
-            <div style={{position:'sticky',top:(isMobile?50:56)+navBarH,zIndex:15,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,paddingBottom:10}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('emp.yourShifts')}</div>
+            <div style={{position:'sticky',top:(isMobile?50:56)+navBarH,zIndex:15,...backdrop(),paddingTop:8,paddingBottom:10}}>
+              <SectionLabel>{t('emp.yourShifts')}</SectionLabel>
               <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px solid ${T.accent}55`,boxShadow:'0 8px 20px -10px rgba(33,27,21,0.3)'}}>
                 {renderTeamRow(me,0,{ignoreSearch:true})}
               </div>
@@ -1069,7 +1052,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               something up for grabs. */}
           {myId && openShiftsThisWeek.length>0 && (
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:6}}>{t('open.rowLabel')}</div>
+              <SectionLabel>{t('open.rowLabel')}</SectionLabel>
               <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch',border:`1.5px dashed ${T.accent}55`}}>
                 {renderOpenShiftsRow()}
               </div>
@@ -1358,11 +1341,11 @@ function StaffInfoModal({ emp, isMe, roleStyles, roleColorFor, onClose, t }){
         </div>
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           <div>
-            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3}}>{t('profile.email')}</div>
+            <SectionLabel mb={3}>{t('profile.email')}</SectionLabel>
             <div style={{fontSize:13,color:T.text}}>{emp.email||t('dir.noContact')}</div>
           </div>
           <div>
-            <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3}}>{t('profile.phone')}</div>
+            <SectionLabel mb={3}>{t('profile.phone')}</SectionLabel>
             <div style={{fontSize:13,color:T.text}}>{emp.phone||t('dir.noContact')}</div>
           </div>
         </div>

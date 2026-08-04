@@ -1,14 +1,14 @@
 import { useState, useEffect, useMemo, useRef, Suspense, lazy, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
-import { getWeekDates, getMondayDate, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
+import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS, backdrop } from '../lib/constants';
+import { getWeekDates, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly } from '../lib/schedule';
 import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import { supabase } from '../lib/supabase';
-import { RoleBadge, EmpCard, Btn, TimePicker, WeekPicker, LoadingScreen } from './ui';
+import { RoleBadge, EmpCard, Btn, TimePicker, WeekPicker, LoadingScreen, SectionLabel } from './ui';
 import NotificationBell from './NotificationBell';
 import EmployeesView from './views/EmployeesView';
 import TimeOffView from './views/TimeOffView';
@@ -501,14 +501,8 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const offThisWeek=activeEmployees.filter(e=>weekDates.some(d=>isOnTimeOff(e.id,d,timeOff)));
   const wkISOs=weekDates.map(dateToISO);
   const shiftDay=(delta)=>{
-    const cur=weekDates[DAYS.indexOf(dayFilter||DAYS[0])];
-    const nd=new Date(cur); nd.setDate(cur.getDate()+delta);
-    const dow=nd.getDay();
-    const mondayOfNd=new Date(nd); mondayOfNd.setDate(nd.getDate()-(dow===0?6:dow-1));
-    const baseMonday=getMondayDate(0);
-    const newOffset=Math.round((mondayOfNd-baseMonday)/(7*86400000));
-    setWeekOffset(newOffset);
-    setDayFilter(DAYS[dow===0?6:dow-1]);
+    const {weekOffset:off,day}=stepDay(weekDates[DAYS.indexOf(dayFilter||DAYS[0])],delta,DAYS);
+    setWeekOffset(off); setDayFilter(day);
   };
 
   const generate=(forOff=weekOffset)=>{
@@ -1483,7 +1477,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const s=styles;
 
   return (<>
-    <div style={{minHeight:'100vh',width:'100vw',background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
+    <div style={{minHeight:'100vh',width:'100vw',...backdrop(),fontFamily:"'Hanken Grotesk',sans-serif",color:T.text,fontSize:13}}>
       <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:isMobile?'0 12px':'0 24px',display:'flex',alignItems:'center',height:56,position:'sticky',top:0,zIndex:100,boxShadow:'0 2px 14px -8px rgba(33,27,21,0.18)'}}>
         <div style={{display:'flex',alignItems:'center',gap:12,marginRight:isMobile?'auto':36,minWidth:0,overflow:'hidden'}}>
           <button onClick={onBack} style={{display:'flex',alignItems:'center',gap:5,padding:'4px 8px',borderRadius:7,background:'transparent',border:'none',cursor:'pointer',color:T.text3,fontFamily:'inherit',fontSize:12,flexShrink:0}} onMouseEnter={e=>e.currentTarget.style.color=T.text} onMouseLeave={e=>e.currentTarget.style.color=T.text3}>{'‹ '+t('to.all')}</button>
@@ -1568,7 +1562,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   <div onClick={closeShiftModal} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
     <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
       <div style={{padding:'16px 18px 10px',flexShrink:0}}>
-        <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:10}}>{t('emp.addShiftFor',{name:shiftModalEmp.name})}</div>
+        <SectionLabel mb={10}>{t('emp.addShiftFor',{name:shiftModalEmp.name})}</SectionLabel>
         <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
           <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
             <button onClick={()=>setShiftModalMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
@@ -1673,7 +1667,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     <div onClick={closeEditSlot} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
       <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(380px,100%)',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
         <div style={{padding:'16px 18px 12px'}}>
-          <div style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:4}}>{t('week.editShift')}</div>
+          <SectionLabel mb={4}>{t('week.editShift')}</SectionLabel>
           <div style={{fontSize:15,fontWeight:600,color:T.text}}>{emp?.name||entry.name}</div>
           <div style={{fontSize:12,color:T.text3,marginTop:2}}>{block.name} · {t('day.'+day)}</div>
         </div>
@@ -1848,7 +1842,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
-  <div ref={scheduleBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed',paddingTop:8,marginTop:-8,paddingBottom:8}}>
+  <div ref={scheduleBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,...backdrop(),paddingTop:8,marginTop:-8,paddingBottom:8}}>
     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
       <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
       <WeekPicker

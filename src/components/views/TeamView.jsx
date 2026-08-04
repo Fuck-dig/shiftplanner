@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
+import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES, backdrop } from '../../lib/constants';
 import { dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
@@ -78,7 +78,7 @@ export default function TeamView({
         live in their own sticky bar right here now live one level up, folded
         into the same row as the date nav and Week/Month/Team tabs — one
         toolbar instead of two stacked ones. */}
-    <div style={{position:'sticky',top:stickyTop??98,zIndex:19,background:T.bg,backgroundImage:isDark()?'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)':'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',backgroundAttachment:'fixed'}}>
+    <div style={{position:'sticky',top:stickyTop??98,zIndex:19,...backdrop()}}>
       <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
         {/* Header */}
         <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>

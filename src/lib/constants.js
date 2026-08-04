@@ -28,6 +28,27 @@ export const T = { ...THEMES.light };
 // re-deriving it locally, so theme-aware colors stay consistent everywhere.
 export function isDark(){ return T.bg === THEMES.dark.bg; }
 
+// The app's ambient backdrop: two soft radial washes over T.bg, fixed to the
+// viewport so they stay put as content scrolls past.
+//
+// Every sticky bar has to repeat this rather than just using a flat T.bg,
+// because a flat panel scrolling over the gradient cuts a visible rectangle
+// out of it. That's legitimate — but it was copy-pasted byte-for-byte in six
+// places across three files, which is six chances for them to drift apart and
+// is why the clipping artefacts (#11) appear inconsistently between bars.
+//
+// A function, not a constant: isDark() has to be read at render time, or a
+// theme switch wouldn't repaint it.
+export function backdrop(){
+  return {
+    background: T.bg,
+    backgroundImage: isDark()
+      ? 'radial-gradient(circle at 12% 6%, rgba(217,122,74,0.07), transparent 38%), radial-gradient(circle at 88% 94%, rgba(95,174,122,0.06), transparent 42%)'
+      : 'radial-gradient(circle at 12% 6%, rgba(191,90,44,0.045), transparent 38%), radial-gradient(circle at 88% 94%, rgba(61,122,82,0.04), transparent 42%)',
+    backgroundAttachment: 'fixed',
+  };
+}
+
 export function computeStyles(){
   return {
     card:      { background:T.surface, border:`1px solid ${T.border}`, borderRadius:14, padding:20, boxShadow:'0 1px 2px rgba(33,27,21,0.03), 0 12px 30px -20px rgba(33,27,21,0.25)' },

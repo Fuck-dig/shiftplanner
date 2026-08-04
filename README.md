@@ -1,16 +1,89 @@
-# React + Vite
+# Rorota
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Shift scheduling for restaurants. Managers build a week's rota, publish it, and
+handle time off, swaps and open shifts; staff see their own schedule, book time
+off, give shifts away and claim open ones.
 
-Currently, two official plugins are available:
+Live at [rorota.net](https://rorota.net).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+- **React 19 + Vite** — no framework, no router; the app is a handful of
+  top-level views switched by state
+- **Supabase** — auth, Postgres with row-level security, Storage for employee
+  documents, and Edge Functions for email/push
+- **No CSS files.** Styling is inline, driven by a design-token object (`T`) in
+  `src/lib/constants.js`. Light/dark is a swap of that object, so anything
+  reading a raw hex instead of a token is a bug.
+- **Five languages** (da/de/en/es/fr) in `src/i18n.js`. Key parity across all
+  five is enforced by a test, so adding a string to one means adding it to all.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Running it
 
-## Expanding the ESLint configuration
+```bash
+npm install
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Needs a `.env` with:
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_VAPID_PUBLIC_KEY=...     # web push; optional for local work
+```
+
+## Before calling a change done
+
+```bash
+npm run lint:ci    # hooks + undefined-identifier gate — see below
+npm test           # vitest
+npm run build
+```
+
+**`vite build` passing is not verification.** It does not check for undefined
+identifiers, and it does not catch rules-of-hooks violations — a hook placed
+below an early `return` builds cleanly and white-screens in production. That
+has happened. `lint:ci` is the gate that catches it; run all three.
+
+## Layout
+
+```
+src/
+  App.jsx              auth + org gate, lazy-loads the three top-level views
+  components/
+    Dashboard.jsx      the manager's app
+    EmployeeView.jsx   the staff app
+    KioskView.jsx      shared punch-in screen
+    ui.jsx             shared primitives (Btn, EmpCard, RequestRow, …)
+    views/             the manager's tabs (Week, Team, Costs, Coverage, …)
+  lib/
+    constants.js       design tokens, blocks, availability presets
+    schedule.js        scheduling maths — the most heavily tested module
+    data.js            every Supabase read/write
+    dates.js           week/day arithmetic
+  i18n.js              all five languages
+supabase/
+  migrations/          apply in the Supabase SQL editor; all are re-runnable
+  functions/           send-invite, send-notification, send-push,
+                       send-shift-reminders
+```
+
+## Conventions worth knowing
+
+- **Archiving is not deleting.** An archived employee stays in the `employees`
+  array so past shifts keep their name and colour. Use `activeOnly(employees)`
+  for anything forward-looking; use the full array for lookups by id.
+- **Migrations must be re-runnable.** Postgres has no
+  `create policy if not exists`, so every policy is `drop policy if exists`
+  first. `supabase/check_migrations.sql` reports which have been applied.
+- **The audit table is append-only** — no update or delete policies. Old action
+  names must keep their i18n strings, because rows already written still render.
+- Comments explain *why*, not *what*. If something looks odd, the comment
+  above it usually says which bug it exists to prevent.
+
+## Docs
+
+- `TASKS.md` — the backlog, each item severity-rated 1–10
+- `TESTING.md` — manual test passes for manager and staff
+- `BRIEFING.md` — architecture and state-of-the-app notes
