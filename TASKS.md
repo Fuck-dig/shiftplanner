@@ -32,26 +32,38 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Security
 
-- [ ] **Split the `for all` policies on employees / blocks / schedules / time_off**
-  — 7/10 — from the base schema. `for all using (is_member(org_id))` means any
-  employee can, via the REST API: approve their own time off (`status` is just
-  a column), delete every schedule, or rewrite anyone's roles and max hours.
-  The manager-only UI is the only thing stopping them, and it isn't a control.
-  Staff genuinely need INSERT/DELETE on their own `time_off` rows and UPDATE on
-  their own `employees` row, so this needs care rather than a blanket lockdown.
-- [ ] **Get the live schema into version control** — 5/10 — the base tables and
-  several policies exist only in the dashboard. Both security findings today
-  came from things the repo didn't contain. `supabase/audit_security.sql` dumps
-  the real state; the output should be committed and kept current.
-- [ ] **Any employee can rename the org and rewrite its settings** — 4/10 —
-  `"members update orgs" for update using (is_member(id))`, including the
-  settings JSON.
+- [ ] **RUN THIS: `20260804210000_drop_overlapping_permissive_policies.sql`** —
+  5/10 — `20260804200000` is applied and verified, but its own check found a
+  second, dashboard-created UPDATE policy on `organizations` that no file in
+  this repo had ever created. Permissive policies are **OR'd**, so the loosest
+  wins and the manager-gating was doing nothing — any employee could still
+  rename the restaurant. This drops it, and ends with a standing check for any
+  other table+command carrying more than one permissive policy. Checked first:
+  `organizations` is written only from the manager Dashboard, so nothing breaks.
+- [ ] **Test the staff side after the policy split** — 5/10 — `20260804200000`
+  is live. Nothing in the verification proves the app still WORKS for a staff
+  login. Confirm: request time off, withdraw it while pending, change your own
+  name / colour / availability, and that the kiosk still clocks people in. If
+  one fails, say which and the specific policy gets widened rather than the lot
+  reverted.
+- [ ] **Paste the live schema snapshot into `supabase/schema/live_snapshot.md`**
+  — 3/10 — the scaffolding is committed (`dump_live_schema.sql` + a README with
+  the routine). What's missing is one run of the dump and a commit of its
+  output, after the migration above lands so the snapshot reflects the end
+  state rather than the middle.
+- [ ] **Tighten the remaining org-membership-only tables** — 4/10 — out of
+  scope for the migration above and still wide: `shift_swaps`, `notifications`,
+  `messages`, `message_replies`, `schedule_templates`, `push_subscriptions`,
+  `daily_revenue`. Staff legitimately write to most of them (claiming shifts,
+  marking things read), so each needs the same per-operation treatment rather
+  than a blanket lock. `daily_revenue` is the one to do first — staff have no
+  reason to read the restaurant's takings at all.
 - [ ] **Blanket grants to `authenticated` are a footgun** — 4/10 — `grant
   select, insert, update, delete on all tables … to authenticated` plus `alter
   default privileges … grant … to authenticated` means every FUTURE table is
-  fully writable by any logged-in user the moment it exists. Harmless while RLS
-  is enabled with good policies; the mechanism by which the next hole arrives
-  silently.
+  fully writable by any logged-in user from the moment it exists. Harmless
+  while RLS is on with good policies; the mechanism by which the next hole
+  arrives quietly.
 
 ## Bugs
 

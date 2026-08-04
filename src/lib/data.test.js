@@ -39,11 +39,14 @@ function makeBuilder(table) {
 }
 
 vi.mock('./supabase', () => ({
-  supabase: { from: (table) => makeBuilder(table) },
+  supabase: {
+    from: (table) => makeBuilder(table),
+    rpc: async (fn, args) => { state.ops.push({ rpc: fn, args }); return { data: state.rpcData ?? null, error: state.rpcError ?? null }; },
+  },
   functionsUrl: 'https://example.test/functions/v1',
 }));
 
-const { fetchEmployees, syncEmployees, syncSchedules } = await import('./data');
+const { fetchEmployees, syncEmployees, syncSchedules, updateEmployeeSelfProfile } = await import('./data');
 
 const opsFor = (table, type) => state.ops.filter(o => o.table === table && (!type || o.type === type));
 
@@ -257,5 +260,42 @@ describe('archived employees', () => {
     await syncEmployees('org1', [{ id: 'e1', name: 'Ann', roles: ['Waiter'], archived: true }]);
     const del = opsFor('employees', 'delete')[0];
     expect(del.filters).toContainEqual({ op: 'not', col: 'id', operator: 'in', val: '(e1)' });
+  });
+});
+
+describe('updateEmployeeSelfProfile — column whitelist guard', () => {
+  beforeEach(() => { state.ops = []; state.rpcData = undefined; state.rpcError = undefined; });
+
+  it('goes through the database function, never a direct table update', async () => {
+    // A direct UPDATE on employees needs a row-level "edit your own row"
+    // policy — and RLS filters ROWS, not COLUMNS, so that same policy would
+    // let someone raise their own max_hours or grant themselves Manager.
+    await updateEmployeeSelfProfile('org-1', { name: 'Sofie' });
+    expect(state.ops).toContainEqual(expect.objectContaining({ rpc: 'update_my_profile' }));
+    expect(state.ops.map((o) => o.table).filter(Boolean)).not.toContain('employees');
+  });
+
+  it('never sends an employee id — the server resolves who you are', async () => {
+    // If a caller could name the row, "your own row" becomes a claim the
+    // client makes rather than a fact the database establishes.
+    await updateEmployeeSelfProfile('org-1', { name: 'Sofie' });
+    const call = state.ops.find((o) => o.rpc === 'update_my_profile');
+    expect(Object.keys(call.args)).not.toContain('p_employee_id');
+    expect(JSON.stringify(call.args)).not.toMatch(/emp[-_]?id/i);
+  });
+
+  it('sends only the six whitelisted fields, so a stray key cannot ride along', async () => {
+    await updateEmployeeSelfProfile('org-1', { name: 'Sofie', palIdx: 3, roles: ['Manager'], maxHours: 99 });
+    const call = state.ops.find((o) => o.rpc === 'update_my_profile');
+    expect(Object.keys(call.args).sort()).toEqual([
+      'p_availability', 'p_email_notifications', 'p_name', 'p_org', 'p_pal_idx', 'p_phone', 'p_push_prefs',
+    ]);
+    expect(JSON.stringify(call.args)).not.toMatch(/Manager|99/);
+  });
+
+  it('surfaces a rejection instead of failing silently', async () => {
+    state.rpcError = new Error('no employee record for this login');
+    await expect(updateEmployeeSelfProfile('org-1', { name: 'x' }))
+      .rejects.toThrow('no employee record');
   });
 });

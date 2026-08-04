@@ -610,16 +610,26 @@ export async function deleteTemplate(id){
 // only ever holds a read snapshot of the whole org's roster, not something
 // it's safe to resync wholesale on every keystroke from an employee's own
 // session (that's Dashboard/manager territory).
-export async function updateEmployeeSelfProfile(empId, { name, palIdx, phone, availability, emailNotifications, pushPrefs } = {}){
-  const row = {};
-  if (name != null)   row.name = name;
-  if (palIdx != null)  row.pal_idx = palIdx;
-  if (phone != null)  row.phone = phone;
-  if (availability != null) row.availability = availability;
-  if (emailNotifications != null) row.email_notifications = emailNotifications;
-  if (pushPrefs != null) row.push_prefs = pushPrefs;
-  if (Object.keys(row).length === 0) return;
-  const { error } = await supabase.from('employees').update(row).eq('id', empId);
+export async function updateEmployeeSelfProfile(orgId, { name, palIdx, phone, availability, emailNotifications, pushPrefs } = {}){
+  // Goes through a database function, not a direct UPDATE on employees.
+  //
+  // RLS filters ROWS, not COLUMNS, so a "you may edit your own row" policy
+  // would also have let someone raise their own max_hours, give themselves the
+  // Manager role, or change their kiosk PIN. Column-level GRANTs can't fix that
+  // either, because managers and staff share the same `authenticated` database
+  // role. update_my_profile whitelists the six presentation columns instead,
+  // and works out WHICH row is yours server-side from your session email — the
+  // caller no longer names an employee id at all.
+  // See 20260804200000_split_for_all_policies.sql.
+  const { error } = await supabase.rpc('update_my_profile', {
+    p_org:                 orgId,
+    p_name:                name ?? null,
+    p_pal_idx:             palIdx ?? null,
+    p_phone:               phone ?? null,
+    p_availability:        availability ?? null,
+    p_email_notifications: emailNotifications ?? null,
+    p_push_prefs:          pushPrefs ?? null,
+  });
   if (error) throw error;
 }
 

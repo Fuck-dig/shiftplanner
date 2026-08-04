@@ -353,7 +353,9 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // rejected write (RLS, offline) leaves the UI showing the truth rather than
   // a value the server never accepted.
   const saveMine = (field) => (value) => {
-    updateEmployeeSelfProfile(myId, { [field]: value })
+    // orgId, not myId: the database now works out which row is yours from your
+    // session email, so the client no longer gets to name an employee id.
+    updateEmployeeSelfProfile(orgId, { [field]: value })
       .then(()=>setEmployees(p=>p.map(e=>e.id===myId?{...e,[field]:value}:e)))
       .catch(err=>alert(err.message||'Failed to save'));
   };
