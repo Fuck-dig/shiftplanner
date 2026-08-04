@@ -84,6 +84,7 @@ supabase/
 
 ## Docs
 
-- `TASKS.md` — the backlog, each item severity-rated 1–10
+- `TASKS.md` — what's left, each item severity-rated 1–10
+- `CHANGELOG.md` — what's been done, and why
 - `TESTING.md` — manual test passes for manager and staff
 - `BRIEFING.md` — architecture and state-of-the-app notes
