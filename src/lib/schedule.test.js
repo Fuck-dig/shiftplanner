@@ -12,7 +12,7 @@ import {
   pruneOrphanedAssignments,
   applyAssignmentDrop,
   removeUpcomingAssignments,
-  WEEKS_PER_MONTH, activeOnly } from './schedule';
+  WEEKS_PER_MONTH, activeOnly, workingCount } from './schedule';
 
 // These are the functions that ultimately decide how many hours an employee
 // is credited with and how much that costs — bugs here show up as a wrong
@@ -501,5 +501,64 @@ describe('activeOnly', () => {
   it('survives a null roster rather than throwing mid-render', () => {
     expect(activeOnly(null)).toEqual([]);
     expect(activeOnly(undefined)).toEqual([]);
+  });
+});
+
+describe('workingCount', () => {
+  const blocks=[{id:'lunch'},{id:'dinner'}];
+  const schedule={Mon:{lunch:[{empId:'a',role:'Waiter'},{empId:'b',role:'Chef'}],dinner:[{empId:'a',role:'Waiter'}]}};
+  const roster=[{id:'a',name:'Sofie'},{id:'b',name:'Lars'}];
+
+  it('counts each person once however many blocks they work', () => {
+    // 'a' works lunch AND dinner — that is one person working, not two.
+    expect(workingCount(schedule,blocks,'Mon',roster)).toBe(2);
+  });
+
+  it('does not count someone who has been archived', () => {
+    // THE BUG: the tally read empIds straight out of the schedule, so an
+    // archived person still holding an assignment was counted even though
+    // their row is hidden — a footer reading "2 working" above one visible row.
+    const withArchived=[{id:'a',name:'Sofie'},{id:'b',name:'Lars',archived:true}];
+    expect(workingCount(schedule,blocks,'Mon',withArchived)).toBe(1);
+  });
+
+  it('returns 0 for a day nobody is on, and survives a missing schedule', () => {
+    expect(workingCount(schedule,blocks,'Sun',roster)).toBe(0);
+    expect(workingCount(null,blocks,'Mon',roster)).toBe(0);
+    expect(workingCount(schedule,blocks,'Mon',[])).toBe(0);
+  });
+});
+
+describe('removeUpcomingAssignments — cleared detail', () => {
+  const days=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const monday=(wk)=>new Date(wk);
+  const schedules={
+    '2026-08-03':{schedule:{
+      Mon:{lunch:[{empId:'x',role:'Waiter'}]},          // 3 Aug — past
+      Wed:{lunch:[{empId:'x',role:'Chef'}],dinner:[{empId:'x',role:'Waiter'}]}, // 5 Aug — upcoming
+    }},
+  };
+
+  it('reports which assignments it removed, not just how many', () => {
+    // Without this the audit log could say "cleared 2 shifts" and nothing —
+    // not restore, not a re-post — could ever act on those two shifts.
+    const r=removeUpcomingAssignments(schedules,'x','2026-08-04',monday,days);
+    expect(r.removed).toBe(2);
+    expect(r.cleared).toEqual([
+      {weekKey:'2026-08-03',day:'Wed',blockId:'lunch',role:'Chef'},
+      {weekKey:'2026-08-03',day:'Wed',blockId:'dinner',role:'Waiter'},
+    ]);
+  });
+
+  it('never reports a past shift as cleared', () => {
+    const r=removeUpcomingAssignments(schedules,'x','2026-08-04',monday,days);
+    expect(r.cleared.some(c=>c.day==='Mon')).toBe(false);
+  });
+
+  it('carries the role through, so a re-posted open shift asks for the right one', () => {
+    // Losing the role here would advertise a Chef shift as whatever the block
+    // defaults to, and the wrong person would claim it.
+    const r=removeUpcomingAssignments(schedules,'x','2026-08-04',monday,days);
+    expect(r.cleared.map(c=>c.role).sort()).toEqual(['Chef','Waiter']);
   });
 });

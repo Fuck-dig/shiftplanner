@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, workingCount } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -1116,7 +1116,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
               <div style={{padding:isMobile?'10px 12px':'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
               {DAYS.map((day,di)=>{
-                const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
+                const count=workingCount(schedule,blocks,day,activeEmployees);
                 const onLeave=activeEmployees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
                 return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
                   <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -235,7 +235,7 @@ export default function TeamView({
       <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
         <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
         {DAYS.map((day,di)=>{
-          const count=[...new Set(blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map(a=>a.empId)))].length;
+          const count=workingCount(schedule,blocks,day,gridEmployees);
           const onLeave=gridEmployees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
           return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
             <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>

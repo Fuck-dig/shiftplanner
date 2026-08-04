@@ -1221,7 +1221,20 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       const upcoming=removeUpcomingAssignments(schedules,id,todayISO(),weekKeyToMonday,DAYS);
       if(upcoming&&confirm(t('emp.archiveClearUpcoming',{name:who,n:upcoming.removed}))){
         setSchedules(upcoming.schedules);
-        audit('employee_shifts_cleared',{who,n:upcoming.removed},null);
+        // Their upcoming shifts are RE-POSTED as open shifts rather than
+        // simply deleted. Deleting was quietly destructive: archive sits next
+        // to a Restore button, so it reads as reversible, but the assignments
+        // were gone and the audit log kept only a count — nothing could put
+        // them back. Re-advertising instead means nothing is lost, the gap
+        // becomes something the team can actually claim, and restoring is
+        // non-lossy: whatever nobody took is still sitting there as an open
+        // shift. Deliberately reuses the open-shift pipeline (fromEmpId null)
+        // rather than a parallel one, so claiming and approval work as normal.
+        Promise.all(upcoming.cleared.map(c=>
+          createShiftSwap(orgId,{weekKey:c.weekKey,day:c.day,blockId:c.blockId,role:c.role,fromEmpId:null,toEmpId:null,status:'open'})
+            .catch(err=>{ console.error('Re-post open shift failed:',err); return null; })
+        )).then(reloadSwaps);
+        audit('employee_shifts_reposted',{who,n:upcoming.removed},null);
       }
     }
     // Roster changes belong in the log too — "why is this person gone from the

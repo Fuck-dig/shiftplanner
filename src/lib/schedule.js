@@ -201,6 +201,25 @@ export function calcWageCost(e,hours){
 // inline in six places under three different names — and was simply absent
 // from the staff and kiosk views, so staff kept seeing colleagues the
 // manager had already archived.
+// How many people are actually working a given day, for the column tallies
+// under the grids.
+//
+// Counting distinct empIds straight out of the schedule — which is what these
+// tallies used to do — counts anyone still holding an assignment, including
+// people who have been archived and whose ROW is hidden. The result was a
+// footer saying "10 working" above nine visible rows: not merely wrong, but
+// wrong in a way that contradicts what's on screen right next to it.
+export function workingCount(schedule, blocks, day, employees){
+  const active = new Set(activeOnly(employees).map(e=>e.id));
+  const ids = new Set();
+  for (const b of (blocks||[])) {
+    for (const a of (schedule?.[day]?.[b.id] || [])) {
+      if (active.has(a.empId)) ids.add(a.empId);
+    }
+  }
+  return ids.size;
+}
+
 export function activeOnly(employees){ return (employees||[]).filter(e=>!e.archived); }
 
 export function effectiveRolesFor(emp,schedule,blocks){
@@ -393,6 +412,7 @@ export function dayCoverage(schedule,blocks,day,allRoles){ if(!schedule||!schedu
 // remove.
 export function removeUpcomingAssignments(schedulesByWeek, empId, fromISO, weekKeyToMondayFn, days) {
   let removed = 0;
+  const cleared = [];
   const out = {};
   for (const [wk, entry] of Object.entries(schedulesByWeek || {})) {
     if (!entry?.schedule) { out[wk] = entry; continue; }
@@ -409,6 +429,14 @@ export function removeUpcomingAssignments(schedulesByWeek, empId, fromISO, weekK
       for (const [blockId, list] of Object.entries(byBlock || {})) {
         if (!future) { newByBlock[blockId] = list; continue; }
         const kept = (list || []).filter(a => a.empId !== empId);
+        // Record each dropped assignment, not just a tally. A count is enough
+        // to write "cleared 3 shifts" in the audit log but useless for doing
+        // anything ABOUT those three shifts — which is why archiving used to
+        // be quietly irreversible: the information needed to reinstate or
+        // re-advertise them was thrown away at the moment of deletion.
+        for (const a of (list || [])) {
+          if (a.empId === empId) cleared.push({ weekKey: wk, day, blockId, role: a.role });
+        }
         removed += (list || []).length - kept.length;
         newByBlock[blockId] = kept;
       }
@@ -416,5 +444,5 @@ export function removeUpcomingAssignments(schedulesByWeek, empId, fromISO, weekK
     }
     out[wk] = { ...entry, schedule: newSchedule };
   }
-  return removed ? { schedules: out, removed } : null;
+  return removed ? { schedules: out, removed, cleared } : null;
 }
