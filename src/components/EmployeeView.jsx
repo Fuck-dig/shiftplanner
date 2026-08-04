@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, workingCount } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, rosterForWeek, workingCount } from '../lib/schedule';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -241,10 +241,13 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     const first=allRoles.find(r=>eff.has(r));
     return [e.id, first||null];
   }));
+  // Same rule as the manager's Team grid: still-here people, plus anyone
+  // archived who has a shift in this particular week.
+  const weekRoster = rosterForWeek(employees, schedule);
   const gridRows = gridGroupBy==='role'
-    ? allRoles.filter(role=>activeEmployees.some(e=>primaryRoleFor.get(e.id)===role))
-        .flatMap(role=>[...activeEmployees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
-    : [...activeEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
+    ? allRoles.filter(role=>weekRoster.some(e=>primaryRoleFor.get(e.id)===role))
+        .flatMap(role=>[...weekRoster].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
+    : [...weekRoster].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const toggleRoleCollapse = (role) => setCollapsedRoles(prev=>{ const next=new Set(prev); if(next.has(role)) next.delete(role); else next.add(role); return next; });
   // roleStyles (the manager's real, Supabase-synced colours) covers most
   // roles, but a role can exist here before it's ever been styled in

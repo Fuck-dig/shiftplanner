@@ -12,7 +12,7 @@ import {
   pruneOrphanedAssignments,
   applyAssignmentDrop,
   removeUpcomingAssignments,
-  WEEKS_PER_MONTH, activeOnly, workingCount, scheduledCount } from './schedule';
+  WEEKS_PER_MONTH, activeOnly, workingCount, scheduledCount, rosterForWeek } from './schedule';
 
 // These are the functions that ultimately decide how many hours an employee
 // is credited with and how much that costs — bugs here show up as a wrong
@@ -583,5 +583,45 @@ describe('scheduledCount', () => {
   it('survives an empty or missing schedule', () => {
     expect(scheduledCount(null,[{id:'a'}])).toEqual({n:0,total:1});
     expect(scheduledCount({},[])).toEqual({n:0,total:0});
+  });
+});
+
+describe('rosterForWeek', () => {
+  const roster=[
+    {id:'a',name:'Sofie'},
+    {id:'b',name:'Lars',archived:true},
+    {id:'c',name:'Henrik',archived:true},
+  ];
+  const schedule={Mon:{lunch:[{empId:'a'},{empId:'b'}]}};
+
+  it('keeps everyone still on the team', () => {
+    expect(rosterForWeek(roster,schedule).map(e=>e.id)).toContain('a');
+  });
+
+  it('shows an archived person who has a shift THIS week', () => {
+    // The point of the whole helper. Without this, scrolling back to a
+    // finished week shows no row for someone who worked it — and an upcoming
+    // shift left behind by archiving is invisible in the view a manager uses.
+    expect(rosterForWeek(roster,schedule).map(e=>e.id)).toContain('b');
+  });
+
+  it('does NOT show an archived person with nothing on this week', () => {
+    // Otherwise every departed employee accumulates on every week forever.
+    expect(rosterForWeek(roster,schedule).map(e=>e.id)).not.toContain('c');
+  });
+
+  it('drops all archived people when the week is empty', () => {
+    expect(rosterForWeek(roster,{}).map(e=>e.id)).toEqual(['a']);
+    expect(rosterForWeek(roster,null).map(e=>e.id)).toEqual(['a']);
+  });
+
+  it('preserves roster order rather than moving archived people to the end', () => {
+    // The grid sorts by name afterwards, but a helper that reorders would make
+    // that sort load-bearing without anyone realising.
+    expect(rosterForWeek(roster,schedule).map(e=>e.id)).toEqual(['a','b']);
+  });
+
+  it('survives a null roster', () => {
+    expect(rosterForWeek(null,schedule)).toEqual([]);
   });
 });

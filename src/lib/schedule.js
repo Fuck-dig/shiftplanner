@@ -238,6 +238,33 @@ export function scheduledCount(schedule, employees){
   return { n: active.filter(e => ids.has(e.id)).length, total: active.length };
 }
 
+// Who gets a ROW in a person-per-row grid for one particular week.
+//
+// activeOnly() is right for pickers and headcounts — you can't roster someone
+// who has left. But a grid is also a record of what HAPPENED, and filtering
+// archived people out of it created two separate problems:
+//
+//   * Scroll back to a finished week and the person who worked it has no row,
+//     even though their shift is sitting there in the data. Week view (grouped
+//     by role) still showed them, so the two grids disagreed about history.
+//   * Worse: archiving someone while they still hold an UPCOMING shift left
+//     that shift completely invisible in the view a manager actually uses.
+//     Seen live on 4 Aug — Lars Lang in Former Staff, still on Sat 8 Aug, and
+//     no row anywhere to notice or remove it from.
+//
+// So: everyone still on the team, PLUS anyone archived who actually has an
+// assignment in THIS week. Archived people don't clutter weeks they had
+// nothing to do with, and a shift can never hide behind an archived person.
+export function rosterForWeek(employees, schedule){
+  const assigned = new Set();
+  for (const day of Object.values(schedule || {})) {
+    for (const list of Object.values(day || {})) {
+      for (const a of (list || [])) assigned.add(a.empId);
+    }
+  }
+  return (employees || []).filter(e => !e.archived || assigned.has(e.id));
+}
+
 export function activeOnly(employees){ return (employees||[]).filter(e=>!e.archived); }
 
 export function effectiveRolesFor(emp,schedule,blocks){
