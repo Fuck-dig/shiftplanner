@@ -84,6 +84,7 @@ supabase/
 
 ## Docs
 
+- `DEPLOYING.md` — branch → preview → merge, and why previews touch real data
 - `TASKS.md` — what's left, each item severity-rated 1–10
 - `CHANGELOG.md` — what's been done, and why
 - `TESTING.md` — manual test passes for manager and staff

@@ -1,10 +1,20 @@
 name: CI
 
 on:
+  # Every branch, not just main. The whole point of the branch -> preview ->
+  # merge flow is that work is checked BEFORE it reaches main, so CI has to
+  # run there too — gating only main means the gate opens after the horse has
+  # bolted.
   push:
-    branches: [main]
   pull_request:
     branches: [main]
+
+# A second push to the same branch makes the first run pointless. Cancel it
+# rather than queueing, so the answer you're waiting on is about the code you
+# actually have.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test-and-build:

@@ -13,7 +13,7 @@
 ## Verify — needs your hands, not mine
 
 Nothing here can be closed by tests. These are the ones where "it builds and
-163 tests pass" proves nothing.
+171 tests pass" proves nothing.
 
 - [ ] **Finish the test pass — sections B and D** — 5/10 — the manager side is
   done (4 Aug). Passed: leave+shift shows two cards with the warning border;
@@ -32,38 +32,25 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Security
 
-- [ ] **RUN THIS: `20260804210000_drop_overlapping_permissive_policies.sql`** —
-  5/10 — `20260804200000` is applied and verified, but its own check found a
-  second, dashboard-created UPDATE policy on `organizations` that no file in
-  this repo had ever created. Permissive policies are **OR'd**, so the loosest
-  wins and the manager-gating was doing nothing — any employee could still
-  rename the restaurant. This drops it, and ends with a standing check for any
-  other table+command carrying more than one permissive policy. Checked first:
-  `organizations` is written only from the manager Dashboard, so nothing breaks.
-- [ ] **Test the staff side after the policy split** — 5/10 — `20260804200000`
-  is live. Nothing in the verification proves the app still WORKS for a staff
-  login. Confirm: request time off, withdraw it while pending, change your own
-  name / colour / availability, and that the kiosk still clocks people in. If
-  one fails, say which and the specific policy gets widened rather than the lot
-  reverted.
-- [ ] **Paste the live schema snapshot into `supabase/schema/live_snapshot.md`**
-  — 3/10 — the scaffolding is committed (`dump_live_schema.sql` + a README with
-  the routine). What's missing is one run of the dump and a commit of its
-  output, after the migration above lands so the snapshot reflects the end
-  state rather than the middle.
-- [ ] **Tighten the remaining org-membership-only tables** — 4/10 — out of
-  scope for the migration above and still wide: `shift_swaps`, `notifications`,
-  `messages`, `message_replies`, `schedule_templates`, `push_subscriptions`,
-  `daily_revenue`. Staff legitimately write to most of them (claiming shifts,
-  marking things read), so each needs the same per-operation treatment rather
-  than a blanket lock. `daily_revenue` is the one to do first — staff have no
-  reason to read the restaurant's takings at all.
+- [ ] **Tighten the remaining org-membership-only tables** — 4/10 — the four
+  big ones are done; these are still gated only on "are you in this org":
+  `shift_swaps`, `notifications`, `messages`, `message_replies`,
+  `schedule_templates`, `push_subscriptions`, `daily_revenue`. Staff
+  legitimately write to most of them (claiming shifts, marking things read), so
+  each needs the same per-operation treatment rather than a blanket lock.
+  **`daily_revenue` first** — staff have no reason to read the restaurant's
+  takings at all, so it's the one with a clean answer.
 - [ ] **Blanket grants to `authenticated` are a footgun** — 4/10 — `grant
   select, insert, update, delete on all tables … to authenticated` plus `alter
   default privileges … grant … to authenticated` means every FUTURE table is
   fully writable by any logged-in user from the moment it exists. Harmless
   while RLS is on with good policies; the mechanism by which the next hole
-  arrives quietly.
+  arrives quietly. A new table with RLS left off is wide open from birth.
+- [ ] **Commit the first live schema snapshot** — 3/10 — the scaffolding is in
+  (`supabase/schema/`: dump script, annotated baseline, README with the
+  routine). What's missing is one run of `dump_live_schema.sql` and a commit of
+  its output to `live_snapshot.md`, so future diffs have a baseline to diff
+  against. Do it now that the policy work has settled.
 
 ## Bugs
 
@@ -110,9 +97,20 @@ Things the manager has that staff do not, and vice versa.
 
 ## Infrastructure
 
-- [ ] **No staging environment** — 4/10 — every change goes from local
-  edits straight to production via a manual `git push`, with no gate in between.
-  Today is the argument for it: three commits shipped untested.
+- [ ] **Turn on branch protection so CI actually gates** — 4/10 — the code side
+  is done: CI now runs on every branch (not just main) and cancels superseded
+  runs, and `DEPLOYING.md` documents the branch → preview → merge flow. **But
+  none of it binds until you add the ruleset in GitHub Settings → Branches**
+  requiring a PR and the `test-and-build` check on `main`. Until then CI stays
+  advisory and pushing to main still ships straight to the restaurant. ~10
+  minutes, and only you can do it.
+- [ ] **Decide about a preview Supabase project** — 3/10 — deliberately NOT
+  done. Preview deployments talk to the real database, so a preview is safe for
+  looking at layout and unsafe for archiving someone or publishing a week. A
+  second Supabase project would fix that but means keeping two schemas in step.
+  At 3 users that trade probably isn't worth it; worth revisiting when a broken
+  preview would actually cost something. Documented in `DEPLOYING.md` so it's a
+  known trade rather than a surprise.
 - [ ] **Two `react-hooks/set-state-in-effect` errors** — 3/10 — `App.jsx:73` and `Dashboard.jsx:216`. Real React warnings about cascading
   renders, not lint noise. Left deliberately because both are load-bearing
   bootstrap effects; `lint:ci` still passes because its config gates on the
