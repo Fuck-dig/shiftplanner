@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { singleFlight } from './singleFlight';
 
 // All organizations (restaurants) the current user belongs to, oldest first.
 // Two plain queries (no relational embed) so it's robust to schema-cache state.
@@ -103,6 +104,12 @@ export async function acceptPendingInvitations(){
   if (error) throw error;
   return data || 0;
 }
+
+// What App.jsx should call. Both boot paths (getSession and onAuthStateChange)
+// legitimately fire on a fresh login; this makes that one database call rather
+// than two racing ones. See lib/singleFlight.js for why the dedupe lives here
+// rather than at either call site.
+export const acceptPendingInvitationsOnce = singleFlight(acceptPendingInvitations);
 
 // List pending invitations for an org
 export async function listInvitations(orgId){
