@@ -11,6 +11,29 @@ export function LoadingScreen() {
   return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,color:T.text3,fontFamily:"'Hanken Grotesk',sans-serif",fontSize:26}}><span style={{fontFamily:'Fraunces, Georgia, serif',opacity:0.5}}>Rorota</span></div>;
 }
 
+// Shown when a load FAILED, as opposed to returned nothing.
+//
+// The distinction is the whole point. Until 6 Aug 2026 App.jsx turned a failed
+// listOrgs() into `setOrgs([])`, so an owner whose request never came back was
+// shown the new-user screen: "Create your first restaurant." During that day's
+// outage that is exactly what rorota.net told the owner of a live restaurant —
+// alarming on its own, and an active invitation to create a duplicate org while
+// the real one was merely unreachable.
+//
+// An empty result and a failure are different facts and must look different.
+export function LoadFailedScreen({title,body,retryLabel,onRetry}){
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:T.bg,padding:24,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+      <div style={{maxWidth:380,textAlign:'center'}}>
+        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:26,color:T.text3,opacity:0.5,marginBottom:24}}>Rorota</div>
+        <div style={{fontSize:15,fontWeight:600,color:T.text,marginBottom:8}}>{title}</div>
+        <div style={{fontSize:13,color:T.text2,lineHeight:1.5,marginBottom:20}}>{body}</div>
+        <Btn onClick={onRetry}>{retryLabel}</Btn>
+      </div>
+    </div>
+  );
+}
+
 export function Avatar({emp,size=32}){ const p=pal(emp); return <div style={{width:size,height:size,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.35,fontWeight:600,flexShrink:0,border:`1.5px solid ${p.dot}22`}}>{initials(emp.name)}</div>; }
 
 // Drag-handle affordance drawn from plain dots rather than a unicode glyph —

@@ -92,6 +92,14 @@ Things the manager has that staff do not, and vice versa.
 
 ## Infrastructure
 
+- [ ] **Decide what to do with `20260806140000_fix_accept_invitations_hang.sql`** —
+  2/10 — WRITTEN, NOT APPLIED, and not the fix for anything that actually
+  happened. It was built on a wrong diagnosis of the 6 Aug outage (see
+  CHANGELOG). Its three guards — a 5s `statement_timeout`, an advisory lock and
+  `for update skip locked` — are still reasonable defence for a function on the
+  boot path, and the client-side `singleFlight` now makes the concurrent-call
+  case it was aimed at much rarer. Decide deliberately: apply it as defence in
+  depth, or delete it so it doesn't sit around looking like pending work.
 - [ ] **Decide about a preview Supabase project** — 3/10 — deliberately NOT
   done. Preview deployments talk to the real database, so a preview is safe for
   looking at layout and unsafe for archiving someone or publishing a week. A

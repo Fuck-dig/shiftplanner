@@ -3,9 +3,10 @@ import { T, styles, THEMES, computeStyles } from './lib/constants';
 import { load, save } from './lib/storage';
 import { supabase } from './lib/supabase';
 import { retryChunkLoad } from './lib/chunkReload';
-import { listOrgs, acceptPendingInvitations } from './lib/org';
+import { listOrgs, acceptPendingInvitationsOnce } from './lib/org';
+import { withTimeout } from './lib/withTimeout';
 import { makeT, detectLang } from './i18n';
-import { LoadingScreen } from './components/ui';
+import { LoadingScreen, LoadFailedScreen } from './components/ui';
 import Auth from './components/Auth';
 import RestaurantPicker from './components/RestaurantPicker';
 
@@ -48,6 +49,11 @@ export default function App(){
 
   const [session,setSession]    =useState(undefined);
   const [orgs,setOrgs]          =useState(undefined);
+  // Three states, not two: undefined = still loading, [] = you genuinely
+  // belong to no restaurants, orgsError set = we don't know. Collapsing the
+  // third into the second is what showed a live owner the new-user screen
+  // during the 6 Aug outage.
+  const [orgsError,setOrgsError]=useState(null);
   const [orgTick,setOrgTick]    =useState(0);
   const [activeOrg,setActiveOrg]=useState(null); // always starts null — user picks on login
 
@@ -64,26 +70,46 @@ export default function App(){
       // refetch. This is exactly the path taken on a normal page load with
       // an already-established session (e.g. right after signing up/logging
       // in), which is the common case for someone accepting an invite.
-      if(data.session) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
+      //
+      // acceptPendingInvitationsOnce, not acceptPendingInvitations: this call
+      // and the onAuthStateChange one below both fire on a normal login, and
+      // running the accept transaction twice concurrently made the two
+      // transactions contend. singleFlight collapses them into one round trip.
+      //
+      // No alert() on failure. An alert during boot blocks the whole app on a
+      // problem the person can do nothing about, and a failed accept is not
+      // fatal — the invitation stays pending and the next load retries it. Log
+      // it and let the org list render.
+      if(data.session) acceptPendingInvitationsOnce().then(()=>setOrgTick(t=>t+1)).catch(err=>console.error('accepting invitations failed',err));
     });
     const{data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{
       setSession(s);
-      if(s) acceptPendingInvitations().then(()=>setOrgTick(t=>t+1)).catch(err=>{console.error(err);alert(err.message||'Failed to accept a pending team invitation. Please refresh and try again.');});
+      if(s) acceptPendingInvitationsOnce().then(()=>setOrgTick(t=>t+1)).catch(err=>console.error('accepting invitations failed',err));
     });
     return()=>sub.subscription.unsubscribe();
   },[]);
 
   useEffect(()=>{
-    if(!session){setOrgs(undefined);return;}
+    if(!session){setOrgs(undefined);setOrgsError(null);return;}
     let alive=true;
-    listOrgs().then(list=>{if(alive)setOrgs(list);}).catch(e=>{console.error(e);if(alive)setOrgs([]);});
+    // 15s, not because a healthy load ever takes that long (it's ~200ms) but
+    // because this is the LAST screen before the app is usable — waiting a bit
+    // too long is cheaper than telling someone on hotel wifi it's broken when
+    // it isn't. What it rules out is the indefinite splash: on 6 Aug the
+    // request never came back at all, so nothing below ever ran.
+    withTimeout(listOrgs(),15000,'restaurants')
+      .then(list=>{if(alive){setOrgs(list);setOrgsError(null);}})
+      // Was `setOrgs([])`, which made "the request failed" indistinguishable
+      // from "you have no restaurants" and sent an owner to the new-user
+      // screen. Leave orgs undefined and record the error instead.
+      .catch(e=>{console.error('loading restaurants failed',e);if(alive){setOrgs(undefined);setOrgsError(e);}});
     return()=>{alive=false;};
   },[session,orgTick]);
 
   // Don't auto-select — let user pick from RestaurantPicker
 
   const switchOrg =id=>{setActiveOrg(id);try{localStorage.setItem('sa2_active_org',id);}catch{}};
-  const reloadOrgs=async()=>{setOrgs(undefined);setOrgTick(t=>t+1);};
+  const reloadOrgs=async()=>{setOrgs(undefined);setOrgsError(null);setOrgTick(t=>t+1);};
 
   // Kiosk mode is just a URL flag (?kiosk=1) — see KioskView.jsx and the
   // isManager branch below for why that's an adequate gate rather than a
@@ -93,6 +119,15 @@ export default function App(){
   let content;
   if(session===undefined) content=<LoadingScreen/>;
   else if(!session) content=<Auth toggleTheme={toggleTheme}/>;
+  // Before the orgs===undefined check, or a failure would render as a
+  // permanent loading splash instead — which is the OTHER way this outage
+  // presented, and just as unactionable.
+  else if(orgsError) content=<LoadFailedScreen
+    title={bannerT('loadfail.title')}
+    body={bannerT('loadfail.body')}
+    retryLabel={bannerT('loadfail.retry')}
+    onRetry={reloadOrgs}
+  />;
   else if(orgs===undefined) content=<LoadingScreen/>;
   // Show restaurant picker if no active org selected or user has no orgs yet
   else if(!activeOrg||!orgs.find(o=>o.id===activeOrg)){
