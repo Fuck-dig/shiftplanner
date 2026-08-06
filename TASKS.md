@@ -54,31 +54,26 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Bugs
 
-- [ ] **Declining the archive prompt strands an invisible shift** — 5/10 —
-  `archiveEmp` archives the person *before* the confirm and independently of
-  it, so answering Cancel to "post their upcoming shifts as open shifts?"
-  leaves them archived **and** still rostered. Seen live: Lars Lang sat in
-  Former Staff while still holding Sat 8 Aug Dinner. The trap is that Team view
-  filters archived people, so their row is gone — the shift cannot be seen or
-  removed in the person-oriented view at all, only in Week view. Options: keep
-  the row while they hold upcoming assignments, warn on decline, or make it a
-  three-way choice (repost / leave them on / cancel the archive).
-
+- [ ] **Archiving still leaves upcoming shifts on the rota when you decline** —
+  3/10 — DOWNGRADED from 5/10, because the dangerous half is fixed: the shift is
+  no longer invisible. `rosterForWeek` now gives an archived person a row in any
+  week they actually have a shift, so you can see and remove it. What remains is
+  only that `archiveEmp` archives BEFORE the confirm and independently of it, so
+  answering Cancel leaves them archived and still rostered — visible now, but
+  still a slightly odd state to land in. Fix would be a three-way prompt
+  (repost / leave them on / cancel the archive) rather than a yes-no.
 - [ ] **#4 Undo doesn't survive a reload** — 5/10 — reported, not yet
   reproduced. The logic reads correctly (undo writes through the same debounced
   save as any other edit), so I don't want to fix it blind. If it recurs, the
   useful details are: how long after the edit you clicked Undo, and whether the
   change came back immediately on reload or only later.
-- [ ] **Team view hides an archived person's PAST rows** — 3/10 — the
-  person-row grids filter archived staff, which is right for upcoming weeks but
-  means a finished week shows no row for someone who has since left, even though
-  they worked it. Week view (role-based) still shows them, so the history isn't
-  lost — the two grids just disagree. Probably wants the filter to depend on
-  whether the week is in the past.
-- [ ] **Rest-conflict warnings are thinner on the staff side** — 3/10 — `hasRestConflict` is used 5 times in Dashboard and twice in EmployeeView. Some
-  of that gap is legitimate (manager-only editing affordances), but worth
-  confirming a staff member sees a too-short turnaround on their own roster
-  rather than only the manager seeing it.
+- [ ] **Should an EXISTING rest conflict be visible on the grids?** — 2/10 —
+  reframed after checking, because the old entry was wrong. There is no
+  staff-vs-manager gap: both sides warn at the moment you'd CREATE a clash
+  (manager on edit and on drag, staff on claiming an open shift), and **neither
+  grid shows an existing one** once it's there. That's coherent — warn at the
+  point of decision — so this is a design question, not a bug. Worth deciding
+  deliberately rather than leaving as an accident of where the checks landed.
 - [ ] **#11 Gradient/clipping artefacts around the sticky bars** — 2/10 — the fixed-attachment radial gradient clips oddly against borders, most
   visibly on the right edge of the nav. Much cheaper to fix than it was: the
   3 Aug cleanup collapsed six copy-pasted copies into one `backdrop()` in
@@ -97,13 +92,6 @@ Things the manager has that staff do not, and vice versa.
 
 ## Infrastructure
 
-- [ ] **Turn on branch protection so CI actually gates** — 4/10 — the code side
-  is done: CI now runs on every branch (not just main) and cancels superseded
-  runs, and `DEPLOYING.md` documents the branch → preview → merge flow. **But
-  none of it binds until you add the ruleset in GitHub Settings → Branches**
-  requiring a PR and the `test-and-build` check on `main`. Until then CI stays
-  advisory and pushing to main still ships straight to the restaurant. ~10
-  minutes, and only you can do it.
 - [ ] **Decide about a preview Supabase project** — 3/10 — deliberately NOT
   done. Preview deployments talk to the real database, so a preview is safe for
   looking at layout and unsafe for archiving someone or publishing a week. A
@@ -124,8 +112,6 @@ None of this is user-visible. Do it when it stops a bug repeating, not for tidin
   keeps needing fixing twice in two places (archived filtering, `shiftDay`, the
   request rows). Splitting data-fetching out would make the next shared fix a
   single edit.
-- [ ] **Delete the stale checkout flow** — 2/10 — dead code from an
-  earlier direction, still shipping in the bundle.
 - [ ] **`i18n.js` is 2634 lines with all five languages inline** — 2/10 — works fine, and the parity test protects it. Splitting per language would
   make diffs readable, but it's churn with no user-visible payoff.
 - [ ] **Fold `TESTING-today.md` into `TESTING.md`** — 1/10 — it's a

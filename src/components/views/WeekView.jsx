@@ -3,11 +3,15 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel } from '../ui';
+import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
 // hours summary card at the bottom.
+// Same shape as the Team grid's collapsedRoles: a Set of role names the user
+// has folded away. Deliberately NOT persisted — it's a "let me look at just the
+// kitchen for a second" gesture, not a preference, and coming back tomorrow to
+// half your rota hidden would be alarming.
 export default function WeekView({
   schedule, blocks, employees, offThisWeek, generate, generateMonth,
   dayFilter, setDayFilter, selected, setSelected, dayGroupBy, setDayGroupBy,
@@ -18,8 +22,18 @@ export default function WeekView({
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
   currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment, search,
+  reorderRoles,
   s, t,
 }){
+  const [foldedRoles,setFoldedRoles]=useState(()=>new Set());
+  const [dragRole,setDragRole]=useState(null);
+  // Position of a role in the user's saved order. A role can legitimately be
+  // absent from allRoles — an assignment can outlive the role being removed
+  // from a block — and indexOf returns -1 for those, which would sort them
+  // FIRST, ahead of everything deliberately ordered. Push them to the end
+  // instead, where an unrecognised role belongs.
+  const roleRank=(role)=>{const i=allRoles.indexOf(role); return i===-1?Number.MAX_SAFE_INTEGER:i;};
+  const toggleRole=(role)=>setFoldedRoles(prev=>{const next=new Set(prev); if(next.has(role))next.delete(role); else next.add(role); return next;});
   // Ticking "now" marker for the day-isolated Gantt view — only matters
   // when that view is actually showing, but the hook itself has to run
   // unconditionally (before the empty-schedule early return below) per
@@ -96,7 +110,7 @@ export default function WeekView({
   const dayRows=[...byEmp.values()].map(r=>{
     const merged=[...r.segs].sort((a,b)=>a.start-b.start);
     return {...r,merged};
-  }).sort((a,b)=>dayGroupBy==='role'?(allRoles.indexOf(a.role)-allRoles.indexOf(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
+  }).sort((a,b)=>dayGroupBy==='role'?(roleRank(a.role)-roleRank(b.role))||a.name.localeCompare(b.name):a.name.localeCompare(b.name));
   const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
   let timeline=null;
   if(effectiveDay&&dayRows.length){
@@ -112,11 +126,53 @@ export default function WeekView({
     // grid's own Compact/Comfortable toggle uses, so it's one shared setting
     // rather than two views disagreeing about what "compact" means.
     const ganttSideW=isMobile?76:112,ganttRowH=gridTight?(isMobile?20:24):(isMobile?28:34);
+    const ganttHeadH=gridTight?(isMobile?16:18):(isMobile?18:22);
+    // Extra breathing room ABOVE each group after the first. The flex column
+    // already has gap:8 between every row; this is what makes a role boundary
+    // read as bigger than a row boundary rather than the same size.
+    const ganttGroupGap=gridTight?6:12;
+    // ONE list, rendered by BOTH columns. The names and the bars are two
+    // separate flex columns relying on identical row heights to line up, so a
+    // heading inserted into one and not the other would silently shift every
+    // name out of step with its bar. Building the sequence once and rendering
+    // it twice makes that impossible rather than merely unlikely.
+    //
+    // Headings only when grouped by role — sorted by name there is no group to
+    // head, and a "Manager / Bartender / Waiter" label per person would be
+    // noise. Previously the only cue that the list WAS grouped was a 8px dot
+    // beside each name, so you had to decode the colours to find where one
+    // role ended and the next began.
+    const roleCounts={};
+    for(const r of dayRows) roleCounts[r.role]=(roleCounts[r.role]||0)+1;
+    const ganttItems=[];
+    let lastRole=null;
+    for(const row of dayRows){
+      if(dayGroupBy==='role'&&row.role!==lastRole){
+        ganttItems.push({kind:'head',role:row.role,n:roleCounts[row.role],first:ganttItems.length===0});
+        lastRole=row.role;
+      }
+      // Folding drops the ROWS, never the heading — otherwise a folded group
+      // vanishes completely and there's nothing left to click to get it back.
+      if(dayGroupBy==='role'&&foldedRoles.has(row.role)) continue;
+      ganttItems.push({kind:'row',row});
+    }
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:10,minWidth:isMobile?480:'auto'}}>
           <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
-            {[...new Set(dayRows.map(r=>r.role))].map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
+            {/* Driven by allRoles (your saved role order), NOT by the order
+                rows happen to fall in. Deriving it from dayRows meant the
+                legend reshuffled every time you switched By role / By name —
+                sorted by name, roles appeared in whatever order the first
+                alphabetical person of each landed. A legend is a key to the
+                colours; it shouldn't move when the sort does. Filtered to
+                roles actually on today, so it stays a legend for what's on
+                screen rather than a list of every role you've ever defined.
+                Built from the roles PRESENT and then sorted by that saved
+                order, rather than filtering allRoles — so a role that isn't in
+                allRoles still gets a legend entry instead of appearing on the
+                chart with no key. */}
+            {[...new Set(dayRows.map(r=>r.role))].sort((x,y)=>roleRank(x)-roleRank(y)).map(role=>{const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;return(<div key={role} style={{display:'flex',alignItems:'center',gap:5}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/><span style={{fontSize:11,color:T.text2}}>{role}</span></div>);})}
           </div>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
             <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
@@ -133,7 +189,45 @@ export default function WeekView({
         </div>
         <div style={{display:'flex',gap:8,minWidth:isMobile?480:'auto'}}>
           <div style={{width:ganttSideW,flexShrink:0,display:'flex',flexDirection:'column',gap:8}}>
-            {dayRows.map(row=>{const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;const dim=!matchesSearch(row.name);return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',opacity:dim?0.28:1,transition:'opacity 0.15s'}}><span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}</div>);})}
+            {ganttItems.map((it,ii)=>{
+              if(it.kind==='head'){
+                const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
+                const folded=foldedRoles.has(it.role);
+                const dropTarget=dragRole&&dragRole!==it.role;
+                // A div rather than a <button> because it has to be both
+                // clickable (fold) and draggable (reorder), and draggable
+                // buttons behave inconsistently across browsers. Same
+                // drag-onto-another-role gesture as the Team grid's dividers,
+                // calling the very same reorderRoles — so the order you set in
+                // one place is the order you see in the other.
+                return(<div key={`h-${it.role}-${ii}`}
+                  onClick={()=>toggleRole(it.role)}
+                  draggable={!!reorderRoles}
+                  onDragStart={()=>setDragRole(it.role)}
+                  onDragEnd={()=>setDragRole(null)}
+                  onDragOver={e=>{if(dropTarget)e.preventDefault();}}
+                  onDrop={e=>{e.preventDefault();if(reorderRoles&&dragRole&&dragRole!==it.role)reorderRoles(dragRole,it.role);setDragRole(null);}}
+                  title={folded?t('grid.expandRole',{role:it.role}):t('grid.collapseRole',{role:it.role})}
+                  style={{height:ganttHeadH,marginTop:it.first?0:ganttGroupGap,display:'flex',alignItems:'center',gap:5,whiteSpace:'nowrap',overflow:'hidden',cursor:'pointer',
+                    borderTop:dropTarget?`2px solid ${T.accent}`:'2px solid transparent',opacity:dragRole===it.role?0.4:1,transition:'opacity 0.15s'}}>
+                  <span style={{fontSize:8,color:T.text3,transform:folded?'rotate(-90deg)':'none',transition:'transform 0.15s',flexShrink:0,width:8}}>▾</span>
+                  <span style={{width:6,height:6,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>
+                  <span style={{fontSize:10,fontWeight:600,letterSpacing:'0.06em',textTransform:'uppercase',color:isDark()?rs.dot:rs.text,overflow:'hidden',textOverflow:'ellipsis'}}>{it.role}</span>
+                  {/* The count only earns its space when the group is folded —
+                      otherwise you can just look at the rows. */}
+                  {folded&&<span style={{fontSize:9,fontWeight:600,color:T.text3,flexShrink:0}}>{it.n}</span>}
+                  {reorderRoles&&<span style={{marginLeft:'auto',flexShrink:0,opacity:0.5}}><GripDots title={t('grid.dragToReorder')}/></span>}
+                </div>);
+              }
+              const row=it.row;
+              const rs=roleStyles[row.role]||DEFAULT_ROLE_STYLES.Other;
+              const dim=!matchesSearch(row.name);
+              return(<div key={row.empId} style={{height:ganttRowH,display:'flex',alignItems:'center',gap:6,fontSize:gridTight?(isMobile?11:12):(isMobile?12:13),fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',opacity:dim?0.28:1,transition:'opacity 0.15s'}}>
+                {/* Dot stays even with a heading above: sorted BY NAME there is
+                    no heading at all, so it's the only role cue there. */}
+                <span style={{width:8,height:8,borderRadius:'50%',background:rs.dot,flexShrink:0}}/>{row.name}
+              </div>);
+            })}
           </div>
           <div style={{position:'relative',flex:1}}>
             {ticks.map(m=>(<div key={m} style={{position:'absolute',left:`${(m-rangeStart)/totalMin*100}%`,top:0,bottom:0,width:1,zIndex:2,pointerEvents:'none',background:m===rangeStart||m===rangeEnd?'transparent':T.border}}/>))}
@@ -143,7 +237,27 @@ export default function WeekView({
               </div>
             )}
             <div style={{display:'flex',flexDirection:'column',gap:8,position:'relative'}}>
-              {dayRows.map(row=>{
+              {ganttItems.map((it,ii)=>{
+                if(it.kind==='head'){
+                  const rs=roleStyles[it.role]||DEFAULT_ROLE_STYLES.Other;
+                  // Matches the heading's height exactly so the two columns stay
+                  // in step. A faint rule in the role's own colour carries the
+                  // grouping across the chart, where the names aren't visible.
+                  const folded=foldedRoles.has(it.role);
+                  // marginTop and the 2px transparent border mirror the name
+                  // column exactly. Any divergence here shifts every bar out of
+                  // step with its name, and it looks fine until you have enough
+                  // rows to notice.
+                  return(<div key={`hb-${it.role}-${ii}`} style={{height:ganttHeadH,marginTop:it.first?0:ganttGroupGap,borderTop:'2px solid transparent',display:'flex',alignItems:'center',pointerEvents:'none'}}>
+                    {/* Solid when open, dashed when folded — the rule is the
+                        only thing left of a folded group out here, so it has to
+                        say "collapsed" rather than just "divider". */}
+                    <div style={folded
+                      ?{height:0,width:'100%',borderTop:`1px dashed ${rs.dot}66`}
+                      :{height:1,width:'100%',background:`linear-gradient(to right, ${rs.dot}55, transparent)`}}/>
+                  </div>);
+                }
+                const row=it.row;
                 const dimRow=!matchesSearch(row.name);
                 return(<div key={row.empId} style={{position:'relative',height:ganttRowH,background:T.surfaceWarm,borderRadius:6,opacity:dimRow?0.28:1,filter:dimRow?'grayscale(1)':'none',transition:'opacity 0.15s,filter 0.15s'}}>
                   {row.merged.map((seg,si)=>{

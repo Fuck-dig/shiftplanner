@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES, backdrop } from '../../lib/constants';
 import { dateToISO, LOCALE } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -52,11 +52,17 @@ export default function TeamView({
   // the roster's shape and role grouping intact while you're looking.
   const gq=gridSearch.trim().toLowerCase();
   const matchesSearch=(name)=>!gq||(name||'').toLowerCase().includes(gq);
-  // Archived people are excluded from the ROWS (you can't schedule someone who
-  // has left) but deliberately still present in `employees` for lookups — a
-  // shift they worked before leaving must still render with their real name
-  // and colour rather than falling back to a generic card.
-  const gridEmployees=activeOnly(employees);
+  // Rows = everyone still on the team, PLUS anyone archived who actually has a
+  // shift in THIS week. See rosterForWeek — filtering archived people out
+  // unconditionally hid their finished weeks AND, worse, hid an upcoming shift
+  // they were still holding when they were archived.
+  const gridEmployees=rosterForWeek(employees,schedule);
+  // The footer counts a different thing from the rows, on purpose. Rows are a
+  // record of the WEEK, so they include someone who has since left. The tallies
+  // describe the TEAM YOU HAVE, so they don't — archiving someone should still
+  // make "N of M staff" drop by one. Same reason workingCount() filters
+  // internally rather than trusting whatever list it's handed.
+  const rosterNow=activeOnly(employees);
   const effRoles=new Map(gridEmployees.map(e=>[e.id,effectiveRolesFor(e,schedule,blocks)]));
   const primaryRoleFor=new Map(gridEmployees.map(e=>{
     const eff=effRoles.get(e.id);
@@ -236,7 +242,7 @@ export default function TeamView({
         <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
         {DAYS.map((day,di)=>{
           const count=workingCount(schedule,blocks,day,gridEmployees);
-          const onLeave=gridEmployees.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
+          const onLeave=rosterNow.filter(e=>isOnTimeOff(e.id,weekDates[di],timeOff)).length;
           return(<div key={day} style={{padding:'10px 12px',textAlign:'center',borderRight:di<6?`1px solid ${T.border}`:'none'}}>
             <div style={{fontSize:15,fontWeight:700,color:count===0?T.text3:T.text}}>{count}</div>
             <div style={{fontSize:10,color:T.text3}}>{t('grid.workingLabel')}</div>
@@ -247,8 +253,8 @@ export default function TeamView({
     </div>
     <div style={{marginTop:16,padding:'12px 16px',background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'}}>
       <span style={{fontSize:11,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em'}}>{t('staff.weekSummary')}</span>
-      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{gridEmployees.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
-      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{gridEmployees.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:gridEmployees.length})}</span>
+      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{rosterNow.reduce((acc,e)=>acc+empHours(e.id),0)}h</b>{t('staff.totalHours')}</span>
+      <span style={{fontSize:12,color:T.text2}}><b style={{color:T.text}}>{rosterNow.filter(e=>empHours(e.id)>0).length}</b>{t('staff.staffWorking',{n:rosterNow.length})}</span>
       {offThisWeek.length>0&&<span style={{fontSize:12,color:T.warning}}><b>{offThisWeek.length}</b>{t('staff.onLeaveCount')}</span>}
     </div>
   </div>
