@@ -149,7 +149,7 @@ export default function CostsView({
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
   toMoney, toMoneyRaw, employees, timeOff, roleStyles, setView, orgName,
   revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
-  hasWages,
+  hasWages, orgSickPct, setOrgSickPct,
   s, t,
 }){
   // Local echo of whatever's being typed into a revenue box right now, so a
@@ -205,6 +205,15 @@ export default function CostsView({
         {!hasWages&&<input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>}
         <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
         {!hasWages&&<span style={{fontSize:11,color:T.text3}}>/h</span>}
+      </div>
+      {/* The restaurant-wide sick pay default. Lives here beside currency
+          because that is already where org-level cost settings are set — there
+          is no general org-settings screen in Rorota, and inventing one for a
+          single number would be a worse answer than following the pattern. */}
+      <div style={{display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
+        <span style={{fontSize:11,color:T.text3}}>{t('cost.sickPayDefault')}</span>
+        <input type="number" min="0" max="100" step="1" value={orgSickPct??''} onChange={e=>{const v=e.target.value;setOrgSickPct(v===''?'':Math.max(0,Math.min(100,Number(v))));}} onBlur={e=>{if(e.target.value==='')setOrgSickPct(0);}} style={{width:52,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
+        <span style={{fontSize:11,color:T.text3}}>%</span>
       </div>
     </div>
     {((costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)])))?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
@@ -331,6 +340,15 @@ export default function CostsView({
             </div>
           )}
         </div>
+        {(()=>{
+          // Surfaced as its own line rather than folded silently into the total:
+          // sick pay is money you're spending on hours nobody worked, and that
+          // is precisely the number a manager wants to be able to see.
+          const totalSickHrs=data.reduce((n,d)=>n+(d.sickHrs||0),0);
+          if(!totalSickHrs) return null;
+          const totalSickCost=data.reduce((n,d)=>n+(d.sickCost||0),0);
+          return <div style={{fontSize:12,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:10,padding:'10px 14px'}}>{t('cost.sickSummary',{h:Number(totalSickHrs.toFixed(1)),m:toMoney(totalSickCost)})}</div>;
+        })()}
         <CollapsibleCard
           id="costs-emp-breakdown" s={s}
           title={t('cost.empBreakdown')}
@@ -346,7 +364,7 @@ export default function CostsView({
             {empSearch&&<button onClick={()=>setEmpSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {empRowsShown.map(({emp,hours,corrected,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
+            {empRowsShown.map(({emp,hours,corrected,sickHrs=0,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
               <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 80px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}><Avatar emp={emp} size={26}/><div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div></div>
                 <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>
@@ -359,9 +377,12 @@ export default function CostsView({
                     {corrected>0&&<span title={t('cost.correctedHint',{n:corrected})} style={{width:5,height:5,borderRadius:'50%',background:T.success,display:'inline-block'}}/>}
                   </div>
                   <div style={{fontSize:10,color:T.text3}}>{t('cost.ofN',{n:emp.maxHours})}</div>
+                  {/* Without this a row can read "0h" and still carry a cost,
+                      which looks like a bug rather than sick pay. */}
+                  {sickHrs>0&&<div style={{fontSize:9,color:T.warning,marginTop:1}}>{t('cost.sickHours',{n:sickHrs})}</div>}
                 </div>
                 <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
-                <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>{/* The raw weighted-hours index, meaningful ONLY in the no-wage fallback.
+                <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'&&sickHrs===0?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>{/* The raw weighted-hours index, meaningful ONLY in the no-wage fallback.
                     With wages set it printed the money figure a second time under
                     itself, labelled 'idx' — the same number twice, one of them
                     mislabelled. */}

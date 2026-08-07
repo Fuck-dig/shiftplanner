@@ -44,8 +44,12 @@ const empFromRow = (r) => ({
   pushPrefs:      r.push_prefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
-const DEFAULT_WAGE = { wage:0, contractType:'hourly', contractPeriod:'week' };
-const wageFromRow = (r) => ({ wage:Number(r.wage)||0, contractType:r.contract_type||'hourly', contractPeriod:r.contract_period||'week' });
+// sickPayPct is deliberately NULLABLE all the way through: null means
+// "inherit the org default", 0 means "this person gets nothing". Coercing it
+// to a number here with `|| 0` would erase that distinction at the door and
+// make effectiveSickPct's override logic unreachable.
+const DEFAULT_WAGE = { wage:0, contractType:'hourly', contractPeriod:'week', sickPayPct:null };
+const wageFromRow = (r) => ({ wage:Number(r.wage)||0, contractType:r.contract_type||'hourly', contractPeriod:r.contract_period||'week', sickPayPct:r.sick_pay_pct==null?null:Number(r.sick_pay_pct) });
 
 // A plain employee's RLS has zero policies on employee_wages (by design —
 // see the migration), so this comes back empty for them rather than
@@ -55,7 +59,7 @@ const wageFromRow = (r) => ({ wage:Number(r.wage)||0, contractType:r.contract_ty
 // contractPeriod off an employee object.
 async function fetchEmployeeWages(orgId){
   const { data, error } = await supabase
-    .from('employee_wages').select('employee_id, wage, contract_type, contract_period')
+    .from('employee_wages').select('employee_id, wage, contract_type, contract_period, sick_pay_pct')
     .eq('org_id', orgId);
   if (error) { console.error('fetchEmployeeWages failed (expected for a non-manager login):', error); return {}; }
   return Object.fromEntries((data||[]).map(r => [r.employee_id, wageFromRow(r)]));
@@ -87,7 +91,10 @@ export async function syncEmployees(orgId, employees){
   const { error: e2 } = await del;
   if (e2) throw e2;
 
-  const wageRows = employees.map(e => ({ employee_id:e.id, org_id:orgId, wage:e.wage||0, contract_type:e.contractType||'hourly', contract_period:e.contractPeriod||'week' }));
+  const wageRows = employees.map(e => ({ employee_id:e.id, org_id:orgId, wage:e.wage||0, contract_type:e.contractType||'hourly', contract_period:e.contractPeriod||'week',
+    // '' (a cleared input) and undefined both mean inherit, and must land as
+    // SQL null rather than 0 — 0 is a different, deliberate answer.
+    sick_pay_pct:(e.sickPayPct===''||e.sickPayPct==null)?null:Number(e.sickPayPct) }));
   if (wageRows.length){
     const { error: e3 } = await supabase.from('employee_wages').upsert(wageRows, { onConflict: 'employee_id' });
     if (e3) throw e3;
@@ -663,6 +670,21 @@ export async function fetchOrgCurrency(orgId){
   const { data, error } = await supabase.from('organizations').select('currency').eq('id', orgId).single();
   if (error) throw error;
   return data?.currency || 'kr';
+}
+
+// The restaurant-wide sick pay default. Readable by any member (it's a policy
+// number, not personal data); writes to `organizations` are manager-gated by
+// RLS, so a staff session simply can't change it.
+export async function fetchOrgSickPct(orgId){
+  const { data, error } = await supabase.from('organizations').select('sick_pay_pct').eq('id', orgId).single();
+  if (error) throw error;
+  // ?? not ||, so a restaurant that genuinely pays 0% keeps its 0.
+  return data?.sick_pay_pct ?? 100;
+}
+
+export async function saveOrgSickPct(orgId, pct){
+  const { error } = await supabase.from('organizations').update({ sick_pay_pct: pct }).eq('id', orgId);
+  if (error) throw error;
 }
 
 export async function saveOrgCurrency(orgId, currency){

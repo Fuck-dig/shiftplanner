@@ -49,9 +49,55 @@ export function actualTimeRange(a,b){
 // clock/kiosk records it live. `noShow` short-circuits to 0 regardless of
 // any recorded times.
 export function actualAssignmentHours(a,b){
-  if(a.noShow) return 0;
+  // `sick` behaves like `noShow` HERE and only here: nobody worked those
+  // hours, so anything counting hours worked — the "32h of 40" figure, the
+  // over-max warning, coverage — must not see them. What makes sick different
+  // from a no-show is that you still PAY for it, at whatever rate applies; that
+  // lives in sickHoursFor/calcSickCost below rather than being smuggled into
+  // the hours total, so hours keeps meaning one thing.
+  if(a.noShow||a.sick) return 0;
   const { startMin, endMin } = actualTimeRange(a,b);
   return (endMin-startMin)/60;
+}
+
+// Hours someone is being PAID for but did not work, because the shift was
+// marked sick. Deliberately the SCHEDULED length, not any actual/clocked
+// range: a sick shift has no clocked times, and what you owe is based on the
+// shift they were rostered for.
+export function sickHoursFor(a,b){
+  if(!a?.sick) return 0;
+  return assignmentHours(a,b);
+}
+
+// A sick shift is still an unfilled slot. Coverage counts what will actually
+// be staffed, so a shift nobody is turning up for must read as a gap — that's
+// the operationally useful half of marking someone sick, and it is separate
+// from the money.
+export function coversSlot(a){ return !!a && !a.sick; }
+
+// The percentage of normal pay a sick shift costs. Per-employee value wins
+// when set; otherwise the org default. Deliberately NOT defaulted to 100 here
+// — an org that has never configured this should get 0 and see no phantom
+// cost, rather than have the app quietly invent a liability. The org default
+// is what carries the 100, and it is set explicitly.
+export function effectiveSickPct(emp, orgDefault){
+  const own = emp?.sickPayPct;
+  if(own!=null && own!=='' && !Number.isNaN(Number(own))) return Number(own);
+  const org = Number(orgDefault);
+  return Number.isFinite(org) ? org : 0;
+}
+
+// What a run of sick hours costs. Uses the same effectiveHourlyRate as normal
+// pay so salaried and hourly staff are handled identically, and falls back to
+// the priority heuristic when no wage is set, exactly like calcWageCost — so
+// the two modes of the Costs tab stay internally consistent.
+export function calcSickCost(emp, sickHrs, pct){
+  if(!sickHrs) return 0;
+  const share = (Number(pct)||0)/100;
+  if(share<=0) return 0;
+  const rate = effectiveHourlyRate(emp);
+  if(rate==null) return parseFloat((sickHrs*(emp?.priority||100)/100*share).toFixed(2));
+  return parseFloat((sickHrs*rate*share).toFixed(2));
 }
 const prio=e=>e.priority??e.salaryPct??100;
 
