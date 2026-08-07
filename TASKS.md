@@ -32,14 +32,14 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Security
 
-- [ ] **Tighten the remaining org-membership-only tables** — 4/10 — the four
-  big ones are done; these are still gated only on "are you in this org":
-  `shift_swaps`, `notifications`, `messages`, `message_replies`,
-  `schedule_templates`, `push_subscriptions`, `daily_revenue`. Staff
-  legitimately write to most of them (claiming shifts, marking things read), so
-  each needs the same per-operation treatment rather than a blanket lock.
-  **`daily_revenue` first** — staff have no reason to read the restaurant's
-  takings at all, so it's the one with a clean answer.
+- [ ] **Tighten the remaining org-membership-only tables** — 4/10 — `daily_revenue` is now done (7 Aug, applied and verified). Still gated only
+  on "are you in this org": `shift_swaps`, `notifications`, `messages`,
+  `message_replies`, `schedule_templates`, `push_subscriptions`. These are the
+  harder half, deliberately left: staff legitimately WRITE to all of them
+  (claiming a shift, marking a message read), so each needs per-operation
+  thought about which writes to allow rather than the blanket manager-only lock
+  `daily_revenue` could take. Don't do them in one sweep — one table at a time,
+  each checked against every call in `lib/data.js`.
 - [ ] **Blanket grants to `authenticated` are a footgun** — 4/10 — `grant
   select, insert, update, delete on all tables … to authenticated` plus `alter
   default privileges … grant … to authenticated` means every FUTURE table is
