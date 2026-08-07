@@ -3,7 +3,48 @@ import { T, pal } from '../../lib/constants';
 import { fmt, getMonthOffsets, weekKey, dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff } from '../../lib/schedule';
 import { escapeHtml } from '../../lib/html';
+import { load, save } from '../../lib/storage';
 import { Avatar, RoleBadge, Btn } from '../ui';
+
+// Which Costs sections are folded away, remembered per browser. Costs is a
+// page people come back to with one question in mind — "what did last week
+// cost" or "who is over their hours" — and having to scroll past the section
+// you don't want every time is the friction being removed here.
+//
+// Same chevron and rotation as the role groups and shift blocks elsewhere, so
+// a fold reads as a fold wherever you meet one.
+const COLLAPSE_KEY = 'sa2_costs_collapsed';
+
+function CollapsibleCard({ id, title, desc, aside, collapsed, onToggle, s, children }) {
+  return (
+    <div style={s.card}>
+      <div
+        onClick={onToggle}
+        // A header that collapses a section has to look like it does something.
+        // Cursor + the chevron are the whole affordance; there is no separate
+        // button, because the entire strip is the target — easier to hit, and
+        // it matches how the shift blocks in the staff view already behave.
+        style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',userSelect:'none',marginBottom:collapsed?0:16}}
+        role="button"
+        tabIndex={0}
+        aria-expanded={!collapsed}
+        aria-controls={id}
+        onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onToggle();}}}
+      >
+        <span style={{fontSize:11,color:T.text3,transform:collapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block',marginTop:4}}>▾</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:desc?4:0}}>{title}</div>
+          {desc&&<div style={{fontSize:12,color:T.text2}}>{desc}</div>}
+        </div>
+        {/* Anything the section wants visible even while folded — a total, a
+            match count. Stops a collapsed section from hiding the one number
+            you came for. */}
+        {aside&&<div style={{flexShrink:0,fontSize:12,color:T.text3,paddingTop:2}}>{aside}</div>}
+      </div>
+      {!collapsed&&<div id={id}>{children}</div>}
+    </div>
+  );
+}
 
 // CSV field escaping — wrap in quotes (doubling any embedded quotes) only
 // when the value actually needs it, so simple values stay readable in the
@@ -116,6 +157,19 @@ export default function CostsView({
   // real revenue map (and Supabase) onBlur, not on every keystroke.
   const [revenueDraft, setRevenueDraft] = useState({});
   const moneyFmt=n=>`${hourlyRate.currency} ${Math.round(n).toLocaleString(LOCALE)}`;
+
+  const [collapsed,setCollapsedRaw]=useState(()=>load(COLLAPSE_KEY,{}));
+  const toggleSection=key=>setCollapsedRaw(prev=>{const next={...prev,[key]:!prev[key]};save(COLLAPSE_KEY,next);return next;});
+
+  // Costs has its own search box rather than sharing Dashboard's gridSearch.
+  // That one is deliberately shared between Team and Week because they show the
+  // same roster and you'd expect the filter to follow you between them; Costs
+  // is a different question, and carrying a half-typed name into it from
+  // another screen would be surprising rather than helpful.
+  const [empSearch,setEmpSearch]=useState('');
+  const q=empSearch.trim().toLowerCase();
+  // Name OR role, matching dir.searchPlaceholder's promise elsewhere in the app.
+  const matchesSearch=emp=>!q||emp.name.toLowerCase().includes(q)||(emp.roles||[]).some(r=>r.toLowerCase().includes(q));
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
@@ -154,6 +208,13 @@ export default function CostsView({
       const revenueTotal=costsMode==='month'?monthRevenueTotal:weekRevenueTotal;
       const laborPct=revenueTotal>0?(laborCostMoney/revenueTotal*100):null;
       const profit=revenueTotal-laborCostMoney;
+      // Search narrows the LIST only — the summary cards, Cost by role and the
+      // revenue comparison all keep describing the whole team. Searching is a
+      // way to find someone, not a filter on what the restaurant costs, and a
+      // headline figure that quietly meant "three of your staff" would be worse
+      // than useless. The match count in the section header says which is which.
+      const empRowsSorted=[...data].sort((a,b)=>b.costUnits-a.costUnits);
+      const empRowsShown=empRowsSorted.filter(d=>matchesSearch(d.emp));
       const periodLabel=costsMode==='month'
         ?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'})
         :`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`;
@@ -245,11 +306,22 @@ export default function CostsView({
             </div>
           )}
         </div>
-        <div style={s.card}>
-          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.empBreakdown')}</div>
-          <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.empBreakdownDesc')}</div>
+        <CollapsibleCard
+          id="costs-emp-breakdown" s={s}
+          title={t('cost.empBreakdown')}
+          desc={t('cost.empBreakdownDesc')}
+          // Only while searching, and shown even when the section is folded, so
+          // a collapsed card can't hide the fact that a filter is active.
+          aside={q?`${empRowsShown.length} ${t('cost.ofN',{n:empRowsSorted.length})}`:null}
+          collapsed={!!collapsed.emp}
+          onToggle={()=>toggleSection('emp')}
+        >
+          <div style={{position:'relative',display:'inline-block',marginBottom:12}}>
+            <input value={empSearch} onChange={e=>setEmpSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:180,padding:'5px 26px 5px 10px',fontSize:12}}/>
+            {empSearch&&<button onClick={()=>setEmpSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
+          </div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
-            {[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,corrected,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
+            {empRowsShown.map(({emp,hours,corrected,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
               <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 80px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}><Avatar emp={emp} size={26}/><div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div></div>
                 <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>
@@ -266,10 +338,17 @@ export default function CostsView({
                 <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
                 <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div><div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div></div>}</div>
               </div>);})}
+            {/* Guarded on q: with no search active an empty list means the team
+                is empty, and "no staff match that search" would be a lie. */}
+            {q&&empRowsShown.length===0&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noMatch')}</div>}
           </div>
-        </div>
-        <div style={s.card}>
-          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:16}}>{t('cost.costByRole')}</div>
+        </CollapsibleCard>
+        <CollapsibleCard
+          id="costs-by-role" s={s}
+          title={t('cost.costByRole')}
+          collapsed={!!collapsed.role}
+          onToggle={()=>toggleSection('role')}
+        >
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {Object.entries(roleCosts).filter(([,v])=>v>0).sort(([,a],[,b])=>b-a).map(([role,cost])=>{const rs=roleStyles[role]||{dot:'#9C9088'},pct=maxRC>0?(cost/maxRC*100):0,cnt=data.filter(d=>(d.emp.roles||[]).includes(role)&&d.hours>0).length;return(
               <div key={role} style={{display:'grid',gridTemplateColumns:'110px 1fr 80px',alignItems:'center',gap:12}}>
@@ -279,7 +358,7 @@ export default function CostsView({
               </div>);})}
             {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>}
           </div>
-        </div>
+        </CollapsibleCard>
         <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>{t('cost.infoBox')}</div>
       </>);
     })()}
