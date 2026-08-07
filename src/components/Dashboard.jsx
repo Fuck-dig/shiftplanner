@@ -2041,6 +2041,11 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     monthCostData={monthCostData} costData={costData} totalMonthCostUnits={totalMonthCostUnits} totalCostUnits={totalCostUnits} maxMonthCostUnits={maxMonthCostUnits} maxCostUnits={maxCostUnits} monthRoleCosts={monthRoleCosts} weekRoleCosts={weekRoleCosts}
     toMoney={toMoney} toMoneyRaw={toMoneyRaw} employees={employees} timeOff={timeOff} roleStyles={roleStyles} setView={setView} orgName={orgName}
     revenue={revenue} onSaveRevenue={saveRevenueForDate} dailyLaborCostByDate={dailyLaborCostByDate} monthRevenueTotal={monthRevenueTotal}
+    // Costs has two quite different meanings depending on this flag and used to
+    // describe only the second one. With wages set, every figure is real money
+    // (hours x that person's rate); without, it's a unitless index built from
+    // priority %. The view needs to know which, or its labels lie.
+    hasWages={hasWages}
     s={s} t={t}
   />
 )}

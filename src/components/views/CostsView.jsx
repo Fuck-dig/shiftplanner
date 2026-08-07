@@ -149,6 +149,7 @@ export default function CostsView({
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
   toMoney, toMoneyRaw, employees, timeOff, roleStyles, setView, orgName,
   revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
+  hasWages,
   s, t,
 }){
   // Local echo of whatever's being typed into a revenue box right now, so a
@@ -170,6 +171,14 @@ export default function CostsView({
   const q=empSearch.trim().toLowerCase();
   // Name OR role, matching dir.searchPlaceholder's promise elsewhere in the app.
   const matchesSearch=emp=>!q||emp.name.toLowerCase().includes(q)||(emp.roles||[]).some(r=>r.toLowerCase().includes(q));
+
+  // Every one of these strings was written for the cost-INDEX mode and was
+  // simply wrong once wages existed: the subtitle claimed the figure came from
+  // "base rate x salary%" when it came from each person's own hourly rate, and
+  // the info box told you to set a base rate that no longer changes anything.
+  const estCostSub=hasWages
+    ? t('cost.estimatedCostSubWages')
+    : t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency});
   return (<div style={{display:'flex',flexDirection:'column',gap:16}}>
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
       <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
@@ -186,11 +195,16 @@ export default function CostsView({
           {costsWeekOffset!==0&&<button onClick={()=>setCostsWeekOffset(0)} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:11,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>}
         </div>
       )}
+      {/* The base rate is the fallback pricing for orgs with no wages entered:
+          cost index x this number. Once everyone has a real wage it stops
+          affecting a single figure on the page and only the currency still
+          matters — so showing a rate box that silently does nothing is worse
+          than showing no rate box. Collapses to a currency field instead. */}
       <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
-        <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
-        <input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
+        <span style={{fontSize:11,color:T.text3}}>{hasWages?t('cost.currency'):t('cost.baseRate')}</span>
+        {!hasWages&&<input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>}
         <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
-        <span style={{fontSize:11,color:T.text3}}>/h</span>
+        {!hasWages&&<span style={{fontSize:11,color:T.text3}}>/h</span>}
       </div>
     </div>
     {((costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)])))?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
@@ -226,7 +240,7 @@ export default function CostsView({
       };
       const viewReport=()=>{
         const statCards=[
-          {label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency})},
+          {label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:estCostSub},
           {label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub')},
           {label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub')},
           {label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub')},
@@ -250,11 +264,22 @@ export default function CostsView({
           <Btn small variant="ghost" onClick={exportCsv}>{t('cost.exportCsv')}</Btn>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-          {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:t('cost.estimatedCostSub',{rate:hourlyRate.amount,cur:hourlyRate.currency}),color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
+          {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:estCostSub,color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
         </div>
         <div style={s.card}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.revenueTitle')}</div>
           <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('cost.revenueDesc')}</div>
+          {/* Month mode compares two different spans: labour cost counts only
+              weeks that have a schedule, revenue counts every calendar day. If
+              half the month isn't scheduled you get a full month's sales against
+              half a month's wages and the labour % comes out flatteringly low.
+              Only warn when the two actually disagree. */}
+          {costsMode==='month'&&(()=>{
+            const offsets=getMonthOffsets(displayMonth);
+            const generated=offsets.filter(off=>schedules[weekKey(off)]).length;
+            if(generated===0||generated===offsets.length) return null;
+            return <div style={{fontSize:12,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'8px 12px',marginBottom:16}}>{t('cost.monthSpanWarn',{a:generated,b:offsets.length})}</div>;
+          })()}
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:costsMode==='week'?20:0}}>
             <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
               <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.revenue')}</div>
@@ -309,7 +334,7 @@ export default function CostsView({
         <CollapsibleCard
           id="costs-emp-breakdown" s={s}
           title={t('cost.empBreakdown')}
-          desc={t('cost.empBreakdownDesc')}
+          desc={hasWages?t('cost.empBreakdownDescWages'):t('cost.empBreakdownDesc')}
           // Only while searching, and shown even when the section is folded, so
           // a collapsed card can't hide the fact that a filter is active.
           aside={q?`${empRowsShown.length} ${t('cost.ofN',{n:empRowsSorted.length})}`:null}
@@ -336,7 +361,11 @@ export default function CostsView({
                   <div style={{fontSize:10,color:T.text3}}>{t('cost.ofN',{n:emp.maxHours})}</div>
                 </div>
                 <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
-                <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div><div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div></div>}</div>
+                <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>{/* The raw weighted-hours index, meaningful ONLY in the no-wage fallback.
+                    With wages set it printed the money figure a second time under
+                    itself, labelled 'idx' — the same number twice, one of them
+                    mislabelled. */}
+                {!hasWages&&<div style={{fontSize:10,color:T.text3}}>{hours>0?`idx ${costUnits.toFixed(1)}`:''}</div>}</div>}</div>
               </div>);})}
             {/* Guarded on q: with no search active an empty list means the team
                 is empty, and "no staff match that search" would be a lie. */}
@@ -346,6 +375,13 @@ export default function CostsView({
         <CollapsibleCard
           id="costs-by-role" s={s}
           title={t('cost.costByRole')}
+          // Role costs DOUBLE-COUNT anyone with more than one role: their whole
+          // cost is added to every role they hold, so the bars can sum to well
+          // more than the total above. That's the right behaviour for comparing
+          // roles against each other, and badly wrong if you read them as shares
+          // of the total — so say so, but only when someone actually holds two
+          // roles and the warning means something.
+          desc={data.some(d=>d.hours>0&&(d.emp.roles||[]).length>1)?t('cost.roleOverlapNote'):null}
           collapsed={!!collapsed.role}
           onToggle={()=>toggleSection('role')}
         >
@@ -359,7 +395,7 @@ export default function CostsView({
             {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>}
           </div>
         </CollapsibleCard>
-        <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>{t('cost.infoBox')}</div>
+        <div style={{fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,padding:'10px 14px'}}>{hasWages?t('cost.infoBoxWages'):t('cost.infoBox')}</div>
       </>);
     })()}
   </div>);
