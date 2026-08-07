@@ -349,6 +349,7 @@ export const STRINGS = {
     'cost.off':'off',
     'cost.costByRole':'Cost by role',
     'cost.noHours':'No hours assigned yet',
+    'cost.noMatch':'No staff match that search',
     'cost.infoBox':'Estimated cost = hours worked × salary% × base hourly rate. Set your actual base rate (top right) to see real salary numbers. The index shown under each amount is the raw weighted-hours figure — useful for comparing relative cost between employees regardless of rate.',
 
     'team.title':'Team Access',
@@ -870,6 +871,7 @@ export const STRINGS = {
     'cost.off':'fri',
     'cost.costByRole':'Omkostning pr. rolle',
     'cost.noHours':'Ingen timer tildelt endnu',
+    'cost.noMatch':'Ingen medarbejdere matcher søgningen',
     'cost.infoBox':'Anslået omkostning = arbejdstimer × løn% × grundtimesats. Angiv din faktiske grundsats (øverst til højre) for at se rigtige lønbeløb. Indekset under hvert beløb er det rå vægtede timetal — nyttigt til at sammenligne relativ omkostning mellem ansatte uanset sats.',
 
     'team.title':'Teamadgang',
@@ -1391,6 +1393,7 @@ export const STRINGS = {
     'cost.off':'libre',
     'cost.costByRole':'Coste por rol',
     'cost.noHours':'Aún no hay horas asignadas',
+    'cost.noMatch':'Ningún empleado coincide con la búsqueda',
     'cost.infoBox':'Coste estimado = horas trabajadas × salario% × tarifa base por hora. Indica tu tarifa base real (arriba a la derecha) para ver cifras salariales reales. El índice bajo cada importe es la cifra bruta de horas ponderadas — útil para comparar el coste relativo entre empleados independientemente de la tarifa.',
 
     'team.title':'Acceso del equipo',
@@ -1912,6 +1915,7 @@ export const STRINGS = {
     'cost.off':'frei',
     'cost.costByRole':'Kosten nach Rolle',
     'cost.noHours':'Noch keine Stunden zugewiesen',
+    'cost.noMatch':'Keine Mitarbeiter passen zur Suche',
     'cost.infoBox':'Geschätzte Kosten = gearbeitete Stunden × Gehalts-% × Basisstundenlohn. Lege deinen tatsächlichen Basislohn (oben rechts) fest, um echte Lohnzahlen zu sehen. Der unter jedem Betrag angezeigte Index ist die rohe gewichtete Stundenzahl — nützlich, um relative Kosten zwischen Mitarbeitern unabhängig vom Lohn zu vergleichen.',
 
     'team.title':'Teamzugriff',
@@ -2433,6 +2437,7 @@ export const STRINGS = {
     'cost.off':'repos',
     'cost.costByRole':'Coût par rôle',
     'cost.noHours':'Aucune heure assignée pour le moment',
+    'cost.noMatch':'Aucun employé ne correspond à la recherche',
     'cost.infoBox':'Coût estimé = heures travaillées × % salaire × taux horaire de base. Définissez votre taux de base réel (en haut à droite) pour voir les chiffres de salaire réels. L\'indice affiché sous chaque montant est le nombre brut d\'heures pondérées — utile pour comparer le coût relatif entre employés indépendamment du taux.',
 
     'team.title':'Accès de l\'équipe',
