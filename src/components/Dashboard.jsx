@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo, useRef, Suspense, lazy, Fragment } from '
 import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
-import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly, scheduledCount } from '../lib/schedule';
-import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency } from '../lib/data';
+import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly, scheduledCount, sickHoursFor, coversSlot, effectiveSickPct, calcSickCost } from '../lib/schedule';
+import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, saveOrgSickPct } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
@@ -212,10 +212,17 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const dCurrency=useMemo(()=>mkDebounce(v=>saveOrgCurrency(orgId,v),'currency'),[orgId]);
   useEffect(()=>{ if(orgId) dCurrency(hourlyRate.currency); },[hourlyRate.currency,orgId]);
 
+  // The restaurant-wide sick pay default, same org-row + debounce pattern as
+  // currency. Starts null rather than 100 so the first render can't briefly
+  // cost sick shifts at a rate this org never chose; the load effect fills it.
+  const [orgSickPct,setOrgSickPct]=useState(null);
+  const dSickPct=useMemo(()=>mkDebounce(v=>saveOrgSickPct(orgId,v),'sickpct'),[orgId]);
+  const setOrgSickPctAndSave=v=>{ setOrgSickPct(v); if(orgId&&v!==''&&v!=null) dSickPct(Number(v)); };
+
   useEffect(()=>{
     let alive=true; setLoading(true);
-    Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId),fetchOrgCurrency(orgId)])
-      .then(([emps,blks,to,scheds,currency])=>{
+    Promise.all([fetchEmployees(orgId),fetchBlocks(orgId),fetchTimeOff(orgId),fetchSchedules(orgId),fetchOrgCurrency(orgId),fetchOrgSickPct(orgId)])
+      .then(([emps,blks,to,scheds,currency,sickPct])=>{
         if(!alive) return;
         // No more DEFAULT_EMPLOYEES fallback here — a brand-new org with
         // zero employees just shows zero (EmployeesView renders its own
@@ -237,6 +244,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
         // Only the currency field — amount stays whatever this browser had
         // locally, currency now follows the org itself (see saveOrgCurrency).
         setHourlyRateRaw(p=>({...p,currency:currency||p.currency}));
+        setOrgSickPct(sickPct);
       }).catch(err=>{console.error('Load error:',err);if(alive)setLoading(false);});
     return ()=>{alive=false;};
   },[orgId]);
@@ -843,7 +851,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setEditTimes({start:entry.start||block.start,end:entry.end||block.end});
     setEditRole(entry.role);
     setEditActual({
-      mode:entry.noShow?'noshow':(entry.actualStart||entry.actualEnd)?'adjusted':'scheduled',
+      mode:entry.sick?'sick':entry.noShow?'noshow':(entry.actualStart||entry.actualEnd)?'adjusted':'scheduled',
       start:entry.actualStart||entry.start||block.start,
       end:entry.actualEnd||entry.end||block.end,
     });
@@ -868,15 +876,19 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     entry.role=editRole;
     if(editTimes.start===block.start&&editTimes.end===block.end){delete entry.start;delete entry.end;}
     else{entry.start=editTimes.start;entry.end=editTimes.end;}
-    if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    // Each mode clears the others' flags — they're mutually exclusive states of
+    // one shift, and leaving a stale `sick` behind a switch to 'adjusted' would
+    // zero the hours of a shift someone demonstrably worked.
+    if(editActual.mode==='sick'){ entry.sick=true; delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    else if(editActual.mode==='noshow'){ entry.noShow=true; delete entry.sick; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
     else if(editActual.mode==='adjusted'){
-      delete entry.noShow; entry.actualStart=editActual.start; entry.actualEnd=editActual.end;
+      delete entry.noShow; delete entry.sick; entry.actualStart=editActual.start; entry.actualEnd=editActual.end;
       // Manager-editable copies of whatever the punch clock/kiosk recorded —
       // trimmed-empty clears the note entirely rather than storing ''.
       if(editNotes.inNote.trim()) entry.clockInNote=editNotes.inNote.trim(); else delete entry.clockInNote;
       if(editNotes.outNote.trim()) entry.clockNote=editNotes.outNote.trim(); else delete entry.clockNote;
     }
-    else { delete entry.noShow; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
+    else { delete entry.noShow; delete entry.sick; delete entry.actualStart; delete entry.actualEnd; delete entry.clockInNote; delete entry.clockNote; }
     const wasPublishedEdit=isPublished();
     setSchedules(p=>({...p,[wKey]:{...p[wKey],schedule:ns}}));
     if(wasPublishedEdit)notifyShiftChanged([entry.empId],day);
@@ -1392,18 +1404,28 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // so the Costs tab can flag "this figure includes N corrected shift(s)"
   // instead of a plain hours number that looks purely scheduled either way.
   const hoursForSchedule=(ws,empId)=>{
-    if(!ws) return {hours:0,corrected:0};
-    let h=0,corrected=0;
+    if(!ws) return {hours:0,corrected:0,sickHrs:0};
+    let h=0,corrected=0,sickHrs=0;
     DAYS.forEach(day=>blocks.forEach(b=>{
       const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===empId);
-      if(a){ h+=actualAssignmentHours(a,b); if(a.noShow||a.actualStart||a.actualEnd) corrected++; }
+      // actualAssignmentHours already returns 0 for a sick shift, so `h` stays
+      // strictly hours WORKED and the sick hours are accumulated alongside it
+      // rather than mixed in. Keeping them separate is what lets the tab show
+      // a cost for someone with zero hours without the hours figure lying.
+      if(a){ h+=actualAssignmentHours(a,b); sickHrs+=sickHoursFor(a,b); if(a.noShow||a.sick||a.actualStart||a.actualEnd) corrected++; }
     }));
-    return {hours:h,corrected};
+    return {hours:h,corrected,sickHrs};
   };
-  const costData=employees.map(e=>{const{hours,corrected}=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,corrected,costUnits:hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2))};});
+  // Cost of one person's worked hours plus their sick hours at whatever
+  // percentage applies to them. One definition, used by both the week and the
+  // month figures below, so the two can't drift.
+  const workedCostOf=(e,hours)=>hasWages?calcWageCost(e,hours):parseFloat((hours*(e.priority||100)/100).toFixed(2));
+  const sickCostOf=(e,sickHrs)=>calcSickCost(e,sickHrs,effectiveSickPct(e,orgSickPct));
+  const costFor=(e,hours,sickHrs)=>parseFloat((workedCostOf(e,hours)+sickCostOf(e,sickHrs)).toFixed(2));
+  const costData=employees.map(e=>{const{hours,corrected,sickHrs}=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,corrected,sickHrs,sickCost:sickCostOf(e,sickHrs),costUnits:costFor(e,hours,sickHrs)};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
-  const monthCostData=employees.map(e=>{let h=0,corrected=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a){h+=actualAssignmentHours(a,b);if(a.noShow||a.actualStart||a.actualEnd)corrected++;}}));});return{emp:e,hours:h,corrected,costUnits:hasWages?calcWageCost(e,h):parseFloat((h*(e.priority||100)/100).toFixed(2))};});
+  const monthCostData=employees.map(e=>{let h=0,corrected=0,sickHrs=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a){h+=actualAssignmentHours(a,b);sickHrs+=sickHoursFor(a,b);if(a.noShow||a.sick||a.actualStart||a.actualEnd)corrected++;}}));});return{emp:e,hours:h,corrected,sickHrs,sickCost:sickCostOf(e,sickHrs),costUnits:costFor(e,h,sickHrs)};});
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});
@@ -1418,7 +1440,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // assignment scheduled that day, summed the same way costData sums a
   // whole week per employee. Feeds the revenue-vs-labor-cost comparison
   // below (each day's actual sales vs what staffing that day cost).
-  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; const hrs=actualAssignmentHours(a,b); h+=hasWages?calcWageCost(emp,hrs):parseFloat((hrs*(emp.priority||100)/100).toFixed(2)); }); }); return h; };
+  const dailyCostUnits=day=>{ let h=0; blocks.forEach(b=>{ (costsSchedule?.[day]?.[b.id]||[]).forEach(a=>{ const emp=employees.find(e=>e.id===a.empId); if(!emp) return; h+=costFor(emp,actualAssignmentHours(a,b),sickHoursFor(a,b)); }); }); return h; };
   const dailyLaborCostByDate=Object.fromEntries(DAYS.map((day,i)=>[dateToISO(costsWeekDates[i]),toMoneyRaw(dailyCostUnits(day))]));
 
   // Revenue is entered by hand (no POS integration) — one number per
@@ -1434,7 +1456,10 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // silently exclude days that just don't have a published schedule yet.
   const monthRevenueTotal=(()=>{ const{y,m}=displayMonth; const days=new Date(y,m+1,0).getDate(); let total=0; for(let d=1;d<=days;d++){ total+=revenue[dateToISO(new Date(y,m,d))]||0; } return total; })();
 
-  const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=schedule[day]?.[b.id]||[],r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
+  // Sick shifts are excluded from BOTH the filled count and the per-role tally:
+  // somebody who isn't coming in isn't cover, and the point of marking them
+  // sick is that the rota tells you you're short and need a replacement.
+  const totalStats=()=>{if(!schedule)return null;let f=0,m=0;DAYS.forEach(day=>blocks.forEach(b=>{const a=(schedule[day]?.[b.id]||[]).filter(coversSlot),r=getBlockRoles(b,day);f+=a.length;allRoles.forEach(role=>{const need=r[role]||0,got=a.filter(x=>x.role===role).length;if(got<need)m+=(need-got);});}));return{filled:f,missing:m};};
   const stats=totalStats();
   const filteredTO=timeOff.filter(to=>{if(toFilter==='pending')return to.status==='Pending';if(toFilter==='approved')return to.status==='Approved';if(toFilter==='this-week')return wkISOs.some(iso=>to.startDate<=iso&&to.endDate>=iso);return true;}).sort((a,b)=>a.startDate.localeCompare(b.startDate));
   const attentionCount=pendingCount+pendingSwaps.length;
@@ -1696,11 +1721,28 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
             {restConflict&&<div style={{fontSize:11,color:T.warning,background:T.warningLight,border:`1px solid ${T.warning}33`,borderRadius:8,padding:'6px 10px'}}>{t('week.warnRestConflict')}</div>}
           </div>
         )}
+        {/* Sick sits OUTSIDE the actual-hours block below, which only renders
+            for shifts that have already happened. Someone signed off for the
+            rest of the week is the normal case, so this has to work on a future
+            shift too — and conceptually being sick is a status of the shift,
+            not a correction to hours that were worked. Marking sick zeroes the
+            hours, pays at the applicable percentage, and re-opens the slot as
+            a gap so you can find cover. */}
+        <div style={{padding:'0 18px 14px'}}>
+          <button
+            onClick={()=>setEditActual(p=>({...p,mode:p.mode==='sick'?'scheduled':'sick'}))}
+            style={{width:'100%',padding:'7px 12px',borderRadius:8,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit',textAlign:'left',background:editActual.mode==='sick'?T.warningLight:'transparent',color:editActual.mode==='sick'?T.warning:T.text2,border:`1px solid ${editActual.mode==='sick'?T.warning+'55':T.border}`}}
+          >
+            {editActual.mode==='sick'?`✓ ${t('week.markedSick')}`:t('week.markSick')}
+          </button>
+          {editActual.mode==='sick'&&<div style={{fontSize:10,color:T.text3,marginTop:5}}>{t('week.markSickHint')}</div>}
+        </div>
         {/* Only shown for a shift that's already happened (today or
             earlier) — a future shift has nothing to record yet, and
             actualAssignmentHours already falls back to the scheduled time
-            whenever this is left alone. */}
-        {dateToISO(weekDates[DAYS.indexOf(day)])<=todayISO() && (
+            whenever this is left alone. Hidden entirely while the shift is
+            marked sick: there are no actual hours to record for one. */}
+        {editActual.mode!=='sick' && dateToISO(weekDates[DAYS.indexOf(day)])<=todayISO() && (
           <div style={{padding:'0 18px 16px',borderTop:`1px solid ${T.border}`,paddingTop:14}}>
             <div style={{fontSize:11,color:T.text3,marginBottom:8}}>{t('emp.actualHours')}</div>
             <div style={{display:'flex',gap:4,marginBottom:editActual.mode==='adjusted'?10:0,flexWrap:'wrap'}}>
@@ -1999,6 +2041,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 {view==='employees'&&(
   <EmployeesView
     employees={employees} allRoles={allRoles} roleStyles={roleStyles}
+    orgSickPct={orgSickPct}
     expandedEmp={expandedEmp} setExpandedEmp={setExpandedEmp}
     updateEmp={updateEmp} updateAvail={updateAvail} toggleDay={toggleDay} applyTemplate={applyTemplate} duplicateEmp={duplicateEmp} removeEmp={removeEmp} archiveEmp={archiveEmp}
     showAddEmp={showAddEmp} setShowAddEmp={setShowAddEmp} newEmp={newEmp} setNewEmp={setNewEmp} addEmployee={addEmployee}
@@ -2046,6 +2089,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // (hours x that person's rate); without, it's a unitless index built from
     // priority %. The view needs to know which, or its labels lie.
     hasWages={hasWages}
+    orgSickPct={orgSickPct} setOrgSickPct={setOrgSickPctAndSave}
     s={s} t={t}
   />
 )}

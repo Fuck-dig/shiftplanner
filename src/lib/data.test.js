@@ -146,8 +146,8 @@ describe('syncEmployees', () => {
     await syncEmployees('org1', [ann, bo]);
     const up = opsFor('employee_wages', 'upsert')[0];
     expect(up.rows).toEqual([
-      { employee_id: 'e1', org_id: 'org1', wage: 150, contract_type: 'hourly',  contract_period: 'week' },
-      { employee_id: 'e2', org_id: 'org1', wage: 200, contract_type: 'monthly', contract_period: 'month' },
+      { employee_id: 'e1', org_id: 'org1', wage: 150, contract_type: 'hourly',  contract_period: 'week',  sick_pay_pct: null },
+      { employee_id: 'e2', org_id: 'org1', wage: 200, contract_type: 'monthly', contract_period: 'month', sick_pay_pct: null },
     ]);
     expect(up.opts).toEqual({ onConflict: 'employee_id' });
   });
@@ -155,7 +155,22 @@ describe('syncEmployees', () => {
   it('defaults a missing wage to 0/hourly/week rather than writing undefined', async () => {
     await syncEmployees('org1', [{ id: 'e3', name: 'Cy', roles: ['Waiter'] }]);
     expect(opsFor('employee_wages', 'upsert')[0].rows[0])
-      .toEqual({ employee_id: 'e3', org_id: 'org1', wage: 0, contract_type: 'hourly', contract_period: 'week' });
+      .toEqual({ employee_id: 'e3', org_id: 'org1', wage: 0, contract_type: 'hourly', contract_period: 'week', sick_pay_pct: null });
+  });
+
+  it('stores an unset sick pay % as null (inherit) and an explicit 0 as 0', async () => {
+    // These are DIFFERENT answers and the whole override mechanism depends on
+    // telling them apart: null means "use the restaurant default", 0 means
+    // "this person gets nothing". A `|| 0` anywhere on this path collapses the
+    // first into the second and silently starts paying people who shouldn't be.
+    await syncEmployees('org1', [
+      { id: 'a', name: 'A', roles: ['Waiter'] },                 // never set
+      { id: 'b', name: 'B', roles: ['Waiter'], sickPayPct: '' }, // cleared in the UI
+      { id: 'c', name: 'C', roles: ['Waiter'], sickPayPct: 0 },  // deliberately none
+      { id: 'd', name: 'D', roles: ['Waiter'], sickPayPct: 50 },
+    ]);
+    expect(opsFor('employee_wages', 'upsert')[0].rows.map(r => r.sick_pay_pct))
+      .toEqual([null, null, 0, 50]);
   });
 
   it('cleans up wage rows for removed employees too, so they don\'t outlive the person', async () => {
