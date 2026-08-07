@@ -8,6 +8,11 @@ Severities are the ones assigned at the time: how worried to be if the item had
 been left alone.
 
 
+## 2026-08-07
+
+- **`daily_revenue` is managers-only on all four operations (severity 4/10)** - APPLIED AND VERIFIED IN PRODUCTION. Its policies were gated only on "are you in this org", so any employee with a login could read every day's takings straight from the REST API - and write to them, or delete them. Not reachable through the UI (Costs lives inside the manager Dashboard, which never renders for an employee login), but RLS is the boundary and the UI is not. Confined to your own org and grants no privileges, hence 4/10 rather than higher. Checked against the client before writing: `fetchDailyRevenue`/`saveDailyRevenue` are called only from Dashboard.jsx, EmployeeView and KioskView never touch them, and `is_manager()` is owner-or-manager - the same set App.jsx already gates Dashboard on, so the database gate and the client gate now agree. Verified live: four policies, one per command, every expression `is_manager(org_id)`, and FOUR ROWS TOTAL - no old policy left sitting permissively alongside, which is the failure mode that made the `organizations` fix inert on 4 Aug. `with_check` written out explicitly on the UPDATE policy rather than left to default, since an absent `with_check` silently reuses USING and that is exactly the mechanism behind the invitations hole.
+
+
 ## 2026-08-06
 
 - **Production outage: Supabase's API layer wedged (severity 9/10 while it lasted)** - rorota.net sat on the loading splash for everyone. RESOLVED by restarting the Supabase project; no data was lost, no schema change was involved, and nothing in this repo caused it. What broke was the middle tier: PostgREST answered unauthenticated requests in 15ms (a 401 needs no database connection) but any request that actually needed one hung forever, while `pg_stat_activity` showed Postgres completely idle - one active backend, nothing waiting on locks, 15 idle connections free. The dashboard's own Service Versions panel corroborated it: Postgres 17.6.1 shown, Auth and PostgREST versions blank. Root cause upstream of us and still unknown; if it recurs the fix is the same restart, and a third occurrence is a support ticket rather than a code change.
