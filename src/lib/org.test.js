@@ -25,7 +25,11 @@ function makeBuilder(table) {
 vi.mock('./supabase', () => ({
   supabase: {
     from: (table) => makeBuilder(table),
-    auth: { getUser: async () => ({ data: { user: state.user } }) },
+    // Mirrors the real shape: a failed getUser RESOLVES with an error field
+    // rather than rejecting. Modelling that faithfully is the whole point —
+    // the old mock had no `error` key at all, which is why every test here
+    // passed while offline was broken in production.
+    auth: { getUser: async () => ({ data: { user: state.userError ? null : state.user }, error: state.userError ?? null }) },
     rpc: async (fn, args) => { state.ops.push({ rpc: fn, args }); return { data: state.rpcData ?? null, error: state.rpcError ?? null }; },
   },
   functionsUrl: 'https://example.test/functions/v1',
@@ -33,7 +37,7 @@ vi.mock('./supabase', () => ({
 
 const { listOrgs, acceptPendingInvitations } = await import('./org');
 
-beforeEach(() => { state.ops = []; state.data = {}; state.errors = {}; state.user = { id: 'user-1' }; });
+beforeEach(() => { state.ops = []; state.data = {}; state.errors = {}; state.user = { id: 'user-1' }; state.userError = null; });
 
 describe('listOrgs', () => {
   it('filters memberships to the signed-in user', async () => {
@@ -82,6 +86,21 @@ describe('listOrgs', () => {
     ];
     state.data.organizations = [{ id: 'o1', name: 'Almus' }];
     expect(await listOrgs()).toEqual([{ id: 'o1', name: 'Almus', role: 'owner' }]);
+  });
+
+  it('throws rather than returning [] when getUser FAILS (the offline case)', async () => {
+    // The regression this file previously missed entirely. Offline,
+    // supabase.auth.getUser() resolves with { data: { user: null }, error } —
+    // it does not reject. Returning [] there is indistinguishable from a real
+    // "you have no restaurants", so the app showed a live owner the new-user
+    // screen: "Welcome to Rorota — create your first restaurant."
+    //
+    // Note this is NOT the same as the signed-out case below: a missing user
+    // with no error still legitimately means [].
+    state.userError = { message: 'Failed to fetch', name: 'AuthRetryableFetchError' };
+    await expect(listOrgs()).rejects.toBeTruthy();
+    // And it must not go on to query anything with a null user.
+    expect(state.ops).toHaveLength(0);
   });
 
   it('throws rather than returning [] when the membership query fails', async () => {
