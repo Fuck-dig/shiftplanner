@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES, backdrop } from '../../lib/constants';
 import { dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek } from '../../lib/schedule';
@@ -25,6 +25,28 @@ export default function TeamView({
   // so unlike the Week grid there's no role/block context to infer — it has to
   // be asked for.
   const [openShiftDay,setOpenShiftDay]=useState(null);
+
+  // The day header and the grid body are two separate horizontally-scrolling
+  // boxes that render the SAME column template. On a desktop the table fits, so
+  // nobody ever scrolled either one and the split was invisible. On a phone it
+  // doesn't fit: you swipe the body, the header stays put, and the shift cards
+  // end up sitting under the wrong day — a rota that is confidently wrong,
+  // which is worse than one that's hard to read.
+  //
+  // Keeping one scrollbar would mean the day header couldn't be sticky, so
+  // instead the two are tied together: whichever one the finger is on drives
+  // the other. The `syncing` latch stops the programmatic scroll from firing
+  // the opposite handler and ping-ponging.
+  const headRef=useRef(null), bodyRef=useRef(null), syncing=useRef(false);
+  const syncScroll=useCallback((from,to)=>()=>{
+    if(syncing.current||!from.current||!to.current) return;
+    syncing.current=true;
+    to.current.scrollLeft=from.current.scrollLeft;
+    // rAF rather than a flag reset on the same tick: the assignment above
+    // queues a scroll event that hasn't fired yet.
+    requestAnimationFrame(()=>{ syncing.current=false; });
+  },[]);
+
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
     <div style={{position:'relative'}}>
@@ -85,7 +107,7 @@ export default function TeamView({
         into the same row as the date nav and Week/Month/Team tabs — one
         toolbar instead of two stacked ones. */}
     <div style={{position:'sticky',top:stickyTop??98,zIndex:19,...backdrop()}}>
-      <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0}}>
+      <div ref={headRef} onScroll={syncScroll(headRef,bodyRef)} style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0,scrollbarWidth:'none'}}>
         {/* Header */}
         <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
@@ -99,7 +121,7 @@ export default function TeamView({
         </div>
       </div>
     </div>
-    <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderTop:'none',borderTopLeftRadius:0,borderTopRightRadius:0}}>
+    <div ref={bodyRef} onScroll={syncScroll(bodyRef,headRef)} style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderTop:'none',borderTopLeftRadius:0,borderTopRightRadius:0}}>
       {/* Open shifts — the Week grid can post one straight into a role cell,
           but Team's rows are people, so this row carries them instead and asks
           which block/role when you add one. */}

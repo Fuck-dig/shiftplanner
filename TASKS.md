@@ -52,6 +52,27 @@ Nothing here can be closed by tests. These are the ones where "it builds and
   its output to `live_snapshot.md`, so future diffs have a baseline to diff
   against. Do it now that the policy work has settled.
 
+## Scheduling engine
+
+- [ ] **Role order silently changes the generated rota** — 6/10 — the highest
+  thing on this list, and found by auditing rather than by anything failing.
+  `buildSchedule` fills roles greedily in `allRoles` order with no backtracking,
+  so a scarce person is consumed by whichever of their roles is considered
+  first. Proven in `buildSchedule.test.js`: same staff, same block, one role
+  order fills both slots and the other leaves the bar unstaffed. `allRoles`
+  comes from `mergeRoleOrder(roleOrder, …)` — the drag-to-reorder list from the
+  day timeline, which was introduced as a **display** preference. Nothing tells
+  you that rearranging it changes who works. Two candidate fixes: fill scarcest
+  role first (order-independent, still greedy, small change), or separate the
+  display order from the solve order entirely. Worth deciding deliberately —
+  scarcest-first is not automatically optimal either.
+- [ ] **The generator has no notion of the shifts already on the rota** — 4/10
+  — `buildSchedule` builds a week from scratch. Rest conflicts and hour caps are
+  computed only against what it assigns in this run, so generating a week that
+  already has manual shifts in it can produce an 11-hour-rest violation with the
+  existing entries. Worth confirming against the real Generate button before
+  acting — I have not verified how the caller merges results.
+
 ## Bugs
 
 - [ ] **Archiving still leaves upcoming shifts on the rota when you decline** —
@@ -88,7 +109,24 @@ Things the manager has that staff do not, and vice versa.
   crossed over, so staff are stuck on one density.
 - [ ] **Mobile layout** — 4/10 — the app is usable on a phone but not
   designed for one. Staff are the people most likely to open it on a phone, and
-  the grids assume a wide viewport.
+  the grids assume a wide viewport. Reviewed on a real phone 7 Aug; the
+  scroll-desync bug found there is FIXED, the rest is below, roughly in the
+  order worth doing.
+  - **Cramped toolbar** — the controls above the grid wrap into four or five
+    rows on a phone (week nav / Week-Month-Team + search / slots + missing +
+    Draft + Confirm / History + Print + Delete), so the rota itself starts
+    halfway down the screen. Needs collapsing into a compact bar with the
+    secondary actions behind a menu, not just smaller chips.
+  - **Elongated shift cards** — a card in the Team grid renders its time over
+    three or four lines ("Dinner / 16:30– / 00:00 / 7.5h") because seven day
+    columns don't fit the width. Tall thin cards, very little rota per screen.
+  - **Fixed-width grids overflow their cards** — Costs' employee breakdown uses
+    `160px 48px 52px 1fr 80px`, so on a phone the cost column sits off the right
+    edge and the whole card scrolls sideways. Same shape of problem as the Team
+    grid, different screens. The Employees action row (Add shift / Message /
+    Clone / Edit / Archive / ×) overflows the same way.
+  - **Long names wrap awkwardly** — "Nikolaj Ry" breaks across two lines in the
+    employee panel where there's clearly room.
 
 ## Infrastructure
 

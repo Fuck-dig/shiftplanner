@@ -464,9 +464,17 @@ export function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
       const hasMgr=assigned.some(a=>isManager(empById.get(a.empId)));
       if(hasMgr||assigned.length===0) return;
 
-      const hiddenMgr=assigned.find(a=>isManager(empById.get(a.empId)));
-      if(hiddenMgr){ hiddenMgr.role='Manager'; return; }
+      // Removed here: a `assigned.find(isManager)` branch that relabelled a
+      // "hidden" manager. It was unreachable — `hasMgr` is `.some()` of the
+      // same predicate over the same array, so reaching this line already
+      // guarantees `.find()` returns undefined. Dead since it was written.
 
+      // Borrow a manager already working another block today. NOTE: in
+      // practice this almost never succeeds, because any other block on the
+      // same day is within MIN_REST_MINUTES of this one, so conflictsWithRest
+      // rejects it. Kept because it is correct and cheap, but it is not the
+      // safety net it looks like — see the noMgr list, which is what actually
+      // tells you a block went unsupervised.
       let fixed=false;
       blocks.forEach(otherB=>{
         if(fixed||otherB.id===b.id) return;
