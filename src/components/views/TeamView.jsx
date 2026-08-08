@@ -1,5 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
-import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES, backdrop } from '../../lib/constants';
+import { useState } from 'react';
+import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE } from '../../lib/dates';
 import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots } from '../ui';
@@ -26,26 +26,19 @@ export default function TeamView({
   // be asked for.
   const [openShiftDay,setOpenShiftDay]=useState(null);
 
-  // The day header and the grid body are two separate horizontally-scrolling
-  // boxes that render the SAME column template. On a desktop the table fits, so
-  // nobody ever scrolled either one and the split was invisible. On a phone it
-  // doesn't fit: you swipe the body, the header stays put, and the shift cards
-  // end up sitting under the wrong day — a rota that is confidently wrong,
-  // which is worse than one that's hard to read.
+  // ONE scroll box, not two. The previous version had the day header and the
+  // grid body in separate horizontally-scrolling boxes with their scrollLeft
+  // values synced in JS. That can never be smooth on iOS: momentum scrolling
+  // runs on the compositor thread and a scroll handler runs a frame or two
+  // behind it, so the header visibly chases the body. Every app that syncs two
+  // scrollers has the same lag.
   //
-  // Keeping one scrollbar would mean the day header couldn't be sticky, so
-  // instead the two are tied together: whichever one the finger is on drives
-  // the other. The `syncing` latch stops the programmatic scroll from firing
-  // the opposite handler and ping-ponging.
-  const headRef=useRef(null), bodyRef=useRef(null), syncing=useRef(false);
-  const syncScroll=useCallback((from,to)=>()=>{
-    if(syncing.current||!from.current||!to.current) return;
-    syncing.current=true;
-    to.current.scrollLeft=from.current.scrollLeft;
-    // rAF rather than a flag reset on the same tick: the assignment above
-    // queues a scroll event that hasn't fired yet.
-    requestAnimationFrame(()=>{ syncing.current=false; });
-  },[]);
+  // Instead the whole grid is one scroll container and the header row is
+  // `position:sticky; top:0` INSIDE it. Sticky is done by the compositor, so
+  // the header physically cannot drift out of step — there is nothing left to
+  // synchronise. The cost is that the grid scrolls within its own height
+  // rather than with the page, which is the standard spreadsheet trade and the
+  // only way to keep a header pinned without JS.
 
   if(!schedule)return(<div style={{...s.card,padding:'52px 32px',textAlign:'center',position:'relative',overflow:'hidden'}}>
     <div style={{position:'absolute',inset:0,backgroundImage:`radial-gradient(circle, ${T.border} 1px, transparent 1px)`,backgroundSize:'24px 24px',opacity:0.5,pointerEvents:'none'}}/>
@@ -106,10 +99,10 @@ export default function TeamView({
         live in their own sticky bar right here now live one level up, folded
         into the same row as the date nav and Week/Month/Team tabs — one
         toolbar instead of two stacked ones. */}
-    <div style={{position:'sticky',top:stickyTop??98,zIndex:19,...backdrop()}}>
-      <div ref={headRef} onScroll={syncScroll(headRef,bodyRef)} style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0,scrollbarWidth:'none'}}>
-        {/* Header */}
-        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+    <div style={{...s.cardFlush,overflow:'auto',maxHeight:`calc(100vh - ${(stickyTop??98)+24}px)`,WebkitOverflowScrolling:'touch'}}>
+        {/* Header — sticky to the TOP OF THIS BOX, so it moves horizontally
+            with the columns for free and stays put vertically. */}
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm,position:'sticky',top:0,zIndex:21}}>
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
@@ -119,9 +112,6 @@ export default function TeamView({
             </button>);
           })}
         </div>
-      </div>
-    </div>
-    <div ref={bodyRef} onScroll={syncScroll(bodyRef,headRef)} style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderTop:'none',borderTopLeftRadius:0,borderTopRightRadius:0}}>
       {/* Open shifts — the Week grid can post one straight into a role cell,
           but Team's rows are people, so this row carries them instead and asks
           which block/role when you add one. */}
