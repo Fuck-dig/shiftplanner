@@ -98,7 +98,7 @@ export default function TeamView({
     :[...gridEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
   const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
-  const gridMinW=isMobile?nameW+7*54:700;
+  const gridMinW=isMobile?nameW+7*104:700;
   return(
   <div>
     {/* Header — sticky so it stays visible while scrolling the employee
@@ -109,7 +109,7 @@ export default function TeamView({
     <div style={{position:'sticky',top:stickyTop??98,zIndex:19,...backdrop()}}>
       <div ref={headRef} onScroll={syncScroll(headRef,bodyRef)} style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',borderBottomLeftRadius:0,borderBottomRightRadius:0,scrollbarWidth:'none'}}>
         {/* Header */}
-        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
           <div style={{padding:gridTight?'10px 14px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('to.employee')}</div>
           {DAYS.map((day,i)=>{
             const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
@@ -126,7 +126,7 @@ export default function TeamView({
           but Team's rows are people, so this row carries them instead and asks
           which block/role when you add one. */}
       {postOpenShift&&(
-        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
+        <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:T.surface}}>
           <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:8}}>
             <span style={{width:gridTight?22:28,height:gridTight?22:28,borderRadius:'50%',background:T.accent+'1E',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:gridTight?11:13,fontWeight:700,flexShrink:0,border:`1.5px dashed ${T.accent}55`}}>?</span>
             <span style={{fontSize:gridTight?11:12,fontWeight:600,color:T.accentText}}>{t('open.rowLabel')}</span>
@@ -178,7 +178,7 @@ export default function TeamView({
             onDragOver={e=>{if(dragRole&&dragRole!==row.role){e.preventDefault();if(dragOverRole!==row.role)setDragOverRole(row.role);}}}
             onDragLeave={()=>{if(dragOverRole===row.role)setDragOverRole(null);}}
             onDrop={e=>{e.preventDefault();reorderRoles&&reorderRoles(dragRole,row.role);setDragRole(null);setDragOverRole(null);}}
-            style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:reorderRoles?'grab':'pointer',userSelect:'none',opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
+            style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:dragOverRole===row.role?`2px solid ${T.accent}`:`2px solid ${T.border}`,borderBottom:`1px solid ${T.border}`,cursor:reorderRoles?'grab':'pointer',userSelect:'none',opacity:dragRole===row.role?0.5:1,transition:'opacity 0.15s,border-color 0.15s'}}>
             <div style={{padding:'6px 14px',display:'flex',alignItems:'center',gap:8,borderRight:`1px solid ${T.border}`}}>
               {reorderRoles&&<GripDots title={t('grid.dragToReorder')}/>}
               <span style={{fontSize:9,color:T.text3,transform:roleCollapsed?'rotate(-90deg)':'none',transition:'transform 0.15s',display:'inline-block'}}>▾</span>
@@ -186,7 +186,7 @@ export default function TeamView({
             </div>
             {DAYS.map((_,i)=><div key={i} style={{borderRight:i<6?`1px solid ${T.border}`:'none'}}/>)}
           </div>}
-          {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface,opacity:matchesSearch(emp.name)?1:0.25,filter:matchesSearch(emp.name)?'none':'grayscale(1)',transition:'opacity 0.15s,filter 0.15s'}}>
+          {!roleCollapsed && <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,borderBottom:`1px solid ${T.border}`,background:ri%2===1?T.surfaceWarm:T.surface,opacity:matchesSearch(emp.name)?1:0.25,filter:matchesSearch(emp.name)?'none':'grayscale(1)',transition:'opacity 0.15s,filter 0.15s'}}>
             {/* Name cell */}
             <div style={{padding:gridTight?'8px 14px':'12px 20px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?8:10,minHeight:rowH}}>
               {!gridTight&&<div style={{width:36,height:36,borderRadius:'50%',background:isDark()?p.dot+'25':p.bg,color:isDark()?p.dot:p.text,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>}
@@ -234,10 +234,10 @@ export default function TeamView({
                   return(
                     <div key={b.id+"-"+realIdx} onClick={()=>openEditSlot(day,b.id,realIdx)} title={onTO?t('staff.leaveClash'):clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${onTO?T.warning:clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:p.dot}}/>
-                      <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1}}>{b.name}</div>
-                      {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>}
+                      <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{b.name}</div>
+                      {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2,whiteSpace:'nowrap'}}>{dispStart}–{dispEnd}</div>}
                       {gridTight&&<div style={{fontSize:9,color:isDark()?p.dot+'99':p.text,opacity:0.7}}>{dispStart.slice(0,5)}</div>}
-                      {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{bh.toFixed(1)}h</div>}
+                      {!gridTight&&<div style={{fontSize:10,color:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1,whiteSpace:'nowrap'}}>{bh.toFixed(1)}h</div>}
                       {/* What actually happened, straight from the punch clock/kiosk —
                           only rendered once someone's actually clocked in (or been
                           marked a no-show), so a not-yet-worked future shift still
@@ -260,7 +260,7 @@ export default function TeamView({
         </div>);
       })}
       {/* Footer */}
-      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,1fr)`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
+      <div style={{display:'grid',gridTemplateColumns:`${nameW}px repeat(7,minmax(0,1fr))`,minWidth:gridMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
         <div style={{padding:'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
         {DAYS.map((day,di)=>{
           const count=workingCount(schedule,blocks,day,gridEmployees);
