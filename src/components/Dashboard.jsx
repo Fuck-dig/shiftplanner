@@ -2013,7 +2013,6 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
     openShiftsForDay={day=>swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&(sw.status==='open'||sw.status==='claimed'))}
     postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
-    stickyTop={56+scheduleBarH}
     s={s} t={t}
   />
 )}
