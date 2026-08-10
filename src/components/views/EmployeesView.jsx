@@ -81,7 +81,10 @@ export default function EmployeesView({
           <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
           <div style={{fontSize:12,color:T.text2}}>{(emp.contractType||'hourly')==='hourly'?`${emp.wage||'—'} ${currency}/h`:`${(emp.wage||0).toLocaleString(LOCALE)} ${currency}/mo`} · max {emp.maxHours}h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div>
         </div>
-        <div style={{display:'flex',gap:6}}>
+        {/* flexWrap, because six buttons do not fit a phone in one line and
+            without it Edit / Archive / delete simply ran off the right edge —
+            unreachable rather than merely ugly. */}
+        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           <Btn onClick={()=>onAddShift(emp)} variant="secondary" small>{'+ '+t('emp.addShift')}</Btn>
           {emp.id!==myId && <Btn onClick={()=>onOpenCompose([emp.id])} variant="ghost" small>{'✉ '+t('msg.message')}</Btn>}
           <Btn onClick={()=>duplicateEmp(emp)} variant="ghost" small>{'⧉ '+t('emp.clone')}</Btn>

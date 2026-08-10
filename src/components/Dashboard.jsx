@@ -141,6 +141,8 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const [lang,setLangRaw]            = useState(()=>load('sa2_lang',detectLang()));
   const [isMobile,setIsMobile]       = useState(()=>typeof window!=='undefined'&&window.innerWidth<860);
   const [mobileMenuOpen,setMobileMenuOpen]=useState(false);
+  // Mobile only: whether the collapsed staff-search box is expanded.
+  const [searchOpen,setSearchOpen]=useState(false);
   const [adminMenuOpen,setAdminMenuOpen]=useState(false);
   const adminMenuRef=useRef(null);
   useEffect(()=>{
@@ -1559,6 +1561,16 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
             <NotificationBell empId={myId} pendingItems={pendingItems} t={t} lang={lang} onNavigate={link=>{setMobileMenuOpen(false);setView('schedule');if(link?.weekOffset!=null)setWeekOffset(link.weekOffset);}}/>
             <button onClick={toggleTheme} style={{width:38,height:38,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text2,cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>{isDark()?'☀':'☾'}</button>
           </div>
+          {/* The schedule actions pulled out of the toolbar above. Only shown
+              when there is actually a week open to act on, so the menu doesn't
+              offer to print or delete nothing. */}
+          {calMode==='week'&&schedule&&(
+            <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`,display:'flex',gap:6,flexWrap:'wrap'}}>
+              <Btn small variant="ghost" onClick={()=>{setMobileMenuOpen(false);setAuditLog([]);fetchScheduleAudit(orgId,wKey).then(setAuditLog);}}>{t('audit.thisWeek')}</Btn>
+              <Btn small variant="ghost" onClick={()=>{setMobileMenuOpen(false);printSchedule();}}>{t('sched.print')}</Btn>
+              <Btn small variant="danger" onClick={()=>{setMobileMenuOpen(false);deleteSchedule();}}>{t('common.delete')}</Btn>
+            </div>
+          )}
           <div style={{marginTop:8}}><Btn onClick={()=>{setMobileMenuOpen(false);calMode==='month'?generateMonth():generate();}} disabled={generating} variant="primary">{generating?t('common.generating'):t('common.generate')}</Btn></div>
           <div style={{marginTop:6}}><Btn onClick={()=>supabase.auth.signOut()} variant="ghost">{t('common.logout')}</Btn></div>
         </div>
@@ -1941,10 +1953,16 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
         everyone else instead, which also keeps the shape of the week intact
         while you look. */}
     {(calMode==='grid'||calMode==='week')&&(
-      <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
-        <input value={gridSearch} onChange={e=>setGridSearch(e.target.value)} placeholder={t('week.searchStaff')} style={{...s.input,width:150,padding:'5px 26px 5px 10px',fontSize:12}}/>
-        {gridSearch&&<button onClick={()=>setGridSearch('')} title={t('common.cancel')} style={{position:'absolute',right:6,background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
-      </span>
+      // On a phone the search box is a whole row's worth of width for something
+      // used occasionally, so it collapses to a magnifier until tapped. It
+      // auto-opens whenever a term is already active, so a filter can never be
+      // running with nothing on screen to show for it.
+      isMobile&&!searchOpen&&!gridSearch
+        ? <button onClick={()=>setSearchOpen(true)} aria-label={t('week.searchStaff')} style={{width:32,height:32,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:14,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,fontFamily:'inherit'}}>⌕</button>
+        : <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+            <input autoFocus={isMobile&&searchOpen} value={gridSearch} onChange={e=>setGridSearch(e.target.value)} onBlur={()=>{if(isMobile&&!gridSearch)setSearchOpen(false);}} placeholder={t('week.searchStaff')} style={{...s.input,width:isMobile?140:150,padding:'5px 26px 5px 10px',fontSize:12}}/>
+            {gridSearch&&<button onClick={()=>{setGridSearch('');if(isMobile)setSearchOpen(false);}} title={t('common.cancel')} style={{position:'absolute',right:6,background:'none',border:'none',cursor:'pointer',color:T.text3,fontSize:13,lineHeight:1,padding:2,fontFamily:'inherit'}}>✕</button>}
+          </span>
     )}
     {calMode==='week'&&dayFilter&&(<button onClick={()=>setDayFilter(null)} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:999,background:T.accentLight,border:`1px solid ${T.accent}44`,color:T.accent,fontSize:12,fontWeight:500,cursor:'pointer',fontFamily:'inherit'}}>{t('week.showingDay',{day:t('day.'+dayFilter)})} ✕</button>)}
     {calMode==='week'&&dayFilter&&(()=>{const offDate=weekDates[DAYS.indexOf(dayFilter)],off=employees.filter(e=>isOnTimeOff(e.id,offDate,timeOff));if(!off.length)return null;return(
@@ -1957,9 +1975,15 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       <div style={{width:1,height:16,background:T.border}}/>
       {confirmed?<span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('sched.confirmed')}</span>:<span style={{fontSize:12,color:T.text3,background:T.surfaceWarm,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.border}`}}>{t('sched.draft')}</span>}
       {confirmed?<Btn small variant="ghost" onClick={unconfirmSchedule}>{t('sched.unconfirm')}</Btn>:<Btn small variant="success" onClick={confirmSchedule}>{t('sched.confirm')}</Btn>}
-      <Btn small variant="ghost" onClick={()=>{setAuditLog([]);fetchScheduleAudit(orgId,wKey).then(setAuditLog);}}>{t('audit.thisWeek')}</Btn>
-      <Btn small variant="ghost" onClick={printSchedule}>{t('sched.print')}</Btn>
-      <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
+      {/* History / Print / Delete are occasional, and on a phone they cost a
+          whole toolbar row that pushed the rota below the fold. On mobile they
+          move into the ☰ menu instead — one tap further away, nothing removed.
+          Slots / missing / Confirm stay: those are what you came to see. */}
+      {!isMobile&&<>
+        <Btn small variant="ghost" onClick={()=>{setAuditLog([]);fetchScheduleAudit(orgId,wKey).then(setAuditLog);}}>{t('audit.thisWeek')}</Btn>
+        <Btn small variant="ghost" onClick={printSchedule}>{t('sched.print')}</Btn>
+        <Btn small variant="danger" onClick={deleteSchedule}>{t('common.delete')}</Btn>
+      </>}
     </div>)}
   </div>
   {/* Leave / coverage notes / warnings used to be three separate full-width
@@ -2087,7 +2111,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // describe only the second one. With wages set, every figure is real money
     // (hours x that person's rate); without, it's a unitless index built from
     // priority %. The view needs to know which, or its labels lie.
-    hasWages={hasWages}
+    hasWages={hasWages} isMobile={isMobile}
     orgSickPct={orgSickPct} setOrgSickPct={setOrgSickPctAndSave}
     s={s} t={t}
   />
