@@ -149,7 +149,7 @@ export default function CostsView({
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
   toMoney, toMoneyRaw, employees, timeOff, roleStyles, setView, orgName,
   revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
-  hasWages, orgSickPct, setOrgSickPct,
+  hasWages, orgSickPct, setOrgSickPct, isMobile,
   s, t,
 }){
   // Local echo of whatever's being typed into a revenue box right now, so a
@@ -319,7 +319,7 @@ export default function CostsView({
                 const dayLabor=dailyLaborCostByDate[iso]||0;
                 const dayPct=dayRevenue>0?(dayLabor/dayRevenue*100):null;
                 return (
-                  <div key={iso} style={{display:'grid',gridTemplateColumns:'110px 130px 100px 1fr 60px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
+                  <div key={iso} style={{display:'grid',gridTemplateColumns:isMobile?'62px minmax(0,1fr) 54px':'110px 130px 100px 1fr 60px',alignItems:'center',gap:isMobile?8:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                     <div style={{fontSize:12,fontWeight:500,color:T.text}}>{fmt(d)}</div>
                     <div style={{display:'flex',alignItems:'center',gap:4,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:7,padding:'2px 8px'}}>
                       <span style={{fontSize:11,color:T.text3}}>{hourlyRate.currency}</span>
@@ -331,8 +331,8 @@ export default function CostsView({
                         style={{width:'100%',border:'none',background:'transparent',fontSize:12,fontFamily:'inherit',textAlign:'right',outline:'none',color:T.text}}
                       />
                     </div>
-                    <div style={{fontSize:12,color:T.text2,textAlign:'right'}}>{dayLabor>0?moneyFmt(dayLabor):'—'}</div>
-                    <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}>{dayPct!=null&&<div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,dayPct)}%`,background:laborPctColor(dayPct),borderRadius:999}}/>}</div>
+                    {!isMobile&&<div style={{fontSize:12,color:T.text2,textAlign:'right'}}>{dayLabor>0?moneyFmt(dayLabor):'—'}</div>}
+                    {!isMobile&&<div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}>{dayPct!=null&&<div style={{position:'absolute',left:0,top:0,height:'100%',width:`${Math.min(100,dayPct)}%`,background:laborPctColor(dayPct),borderRadius:999}}/>}</div>}
                     <div style={{fontSize:12,fontWeight:600,textAlign:'right',color:dayPct==null?T.text3:laborPctColor(dayPct)}}>{dayPct==null?'—':`${dayPct.toFixed(0)}%`}</div>
                   </div>
                 );
@@ -365,9 +365,9 @@ export default function CostsView({
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:6}}>
             {empRowsShown.map(({emp,hours,corrected,sickHrs=0,costUnits})=>{const p=pal(emp),pct=maxCost>0?(costUnits/maxCost*100):0,isOff=weekDates.some(d=>isOnTimeOff(emp.id,d,timeOff));return(
-              <div key={emp.id} style={{display:'grid',gridTemplateColumns:'160px 48px 52px 1fr 80px',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
+              <div key={emp.id} style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0,1fr) 44px 76px':'160px 48px 52px 1fr 80px',alignItems:'center',gap:isMobile?8:10,padding:'8px 0',borderBottom:`1px solid ${T.border}`}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}><Avatar emp={emp} size={26}/><div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:500,color:T.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{emp.name}</div><div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:1}}>{(emp.roles||[]).slice(0,2).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div></div></div>
-                <div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>
+                {!isMobile&&<div style={{textAlign:'center'}}><div style={{fontSize:12,fontWeight:500,color:T.text}}>{emp.priority||100}%</div><div style={{fontSize:10,color:T.text3}}>{t('emp.priority')}</div></div>}
                 {/* corrected>0 flags that this hours figure isn't purely the
                     schedule estimate — at least one shift was clocked in/out
                     or manually adjusted. Small dot, hover for the count. */}
@@ -381,7 +381,7 @@ export default function CostsView({
                       which looks like a bug rather than sick pay. */}
                   {sickHrs>0&&<div style={{fontSize:9,color:T.warning,marginTop:1}}>{t('cost.sickHours',{n:sickHrs})}</div>}
                 </div>
-                <div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>
+                {!isMobile&&<div style={{position:'relative',height:8,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:hours===0?T.border:p.dot,borderRadius:999}}/></div>}
                 <div style={{textAlign:'right'}}>{isOff&&costsMode!=='month'&&sickHrs===0?<span style={{fontSize:10,color:T.warning}}>{t('cost.off')}</span>:<div><div style={{fontSize:12,fontWeight:600,color:hours===0?T.text3:T.text}}>{hours===0?'—':toMoney(costUnits)}</div>{/* The raw weighted-hours index, meaningful ONLY in the no-wage fallback.
                     With wages set it printed the money figure a second time under
                     itself, labelled 'idx' — the same number twice, one of them
@@ -408,9 +408,9 @@ export default function CostsView({
         >
           <div style={{display:'flex',flexDirection:'column',gap:8}}>
             {Object.entries(roleCosts).filter(([,v])=>v>0).sort(([,a],[,b])=>b-a).map(([role,cost])=>{const rs=roleStyles[role]||{dot:'#9C9088'},pct=maxRC>0?(cost/maxRC*100):0,cnt=data.filter(d=>(d.emp.roles||[]).includes(role)&&d.hours>0).length;return(
-              <div key={role} style={{display:'grid',gridTemplateColumns:'110px 1fr 80px',alignItems:'center',gap:12}}>
+              <div key={role} style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0,1fr) 80px':'110px 1fr 80px',alignItems:'center',gap:isMobile?8:12}}>
                 <RoleBadge role={role} rs={rs}/>
-                <div style={{position:'relative',height:10,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:rs.dot,borderRadius:999}}/></div>
+                {!isMobile&&<div style={{position:'relative',height:10,background:T.border,borderRadius:999,overflow:'hidden'}}><div style={{position:'absolute',left:0,top:0,height:'100%',width:`${pct}%`,background:rs.dot,borderRadius:999}}/></div>}
                 <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end'}}><span style={{fontSize:13,fontWeight:600,color:T.text}}>{toMoney(cost)}</span><span style={{fontSize:10,color:T.text3}}>{cnt} staff</span></div>
               </div>);})}
             {Object.values(roleCosts).every(v=>v===0)&&<div style={{fontSize:13,color:T.text3,textAlign:'center',padding:'16px 0'}}>{t('cost.noHours')}</div>}
