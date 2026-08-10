@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
-import { dateToISO, LOCALE } from '../../lib/dates';
+import { dateToISO, LOCALE, fmt } from '../../lib/dates';
 import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek } from '../../lib/schedule';
-import { RoleBadge, Btn, GripDots } from '../ui';
+import { RoleBadge, Btn, GripDots, SectionLabel } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
 export default function TeamView({
@@ -138,25 +139,48 @@ export default function TeamView({
                 </div>
               ))}
               <button onClick={()=>setOpenShiftDay(openShiftDay===day?null:day)} title={t('open.post')} style={{padding:'3px 7px',borderRadius:7,fontSize:10,fontWeight:500,background:'transparent',color:T.accent,border:`1px dashed ${T.accent}55`,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}}>{t('open.postShort')}</button>
-              {openShiftDay===day&&(
-                <div style={{position:'absolute',top:'100%',left:4,zIndex:30,background:T.surface,border:`1px solid ${T.border}`,borderRadius:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)',padding:8,minWidth:150}}>
-                  <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:6}}>{t('open.post')}</div>
-                  {blocks.map(b=>(
-                    <div key={b.id} style={{marginBottom:6}}>
-                      <div style={{fontSize:10,color:T.text3,marginBottom:3}}>{b.name}</div>
-                      <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                        {allRoles.map(r=>(
-                          <button key={r} onClick={()=>{postOpenShift(day,b.id,r);setOpenShiftDay(null);}} style={{padding:'2px 7px',borderRadius:7,fontSize:10,fontWeight:500,background:'transparent',border:`1px solid ${T.border}`,color:T.text2,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                  <button onClick={()=>setOpenShiftDay(null)} style={{fontSize:10,color:T.text3,background:'none',border:'none',cursor:'pointer',fontFamily:'inherit',padding:0}}>{t('common.cancel')}</button>
-                </div>
-              )}
             </div>);
           })}
         </div>
+      )}
+      {/* Posting an open shift now uses the same centred dialog as "Add a
+          shift", rather than a dropdown hanging off a grid cell. The dropdown
+          was a consequence of where it lived: inside a cell of a horizontally
+          scrolling grid, so it had to stay ~150px or be clipped, which meant
+          every block and every role crammed into tiny chips. Rendered through a
+          portal to `document.body` it escapes that box entirely and can use the
+          same shell, spacing and type as the other shift dialog — one shape for
+          "create a shift" wherever you meet it. */}
+      {openShiftDay&&createPortal(
+        <div onClick={()=>setOpenShiftDay(null)} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+            <div style={{padding:'16px 18px 10px',flexShrink:0}}>
+              <SectionLabel mb={4}>{t('open.post')}</SectionLabel>
+              {/* Which day you're posting for was obvious when this hung under
+                  the column; in a centred dialog it has to be said. */}
+              <div style={{fontSize:13,color:T.text2}}>{t('day.'+openShiftDay)} {fmt(weekDates[DAYS.indexOf(openShiftDay)])}</div>
+            </div>
+            <div style={{padding:'0 18px 6px',overflowY:'auto',flex:1}}>
+              {blocks.map(b=>(
+                <div key={b.id} style={{marginBottom:14}}>
+                  <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:7}}>
+                    <span style={{fontSize:14,fontWeight:600,color:T.text}}>{b.name}</span>
+                    <span style={{fontSize:12,color:T.text3}}>{b.start}–{b.end}</span>
+                  </div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                    {allRoles.map(r=>(
+                      <button key={r} onClick={()=>{postOpenShift(openShiftDay,b.id,r);setOpenShiftDay(null);}} style={{padding:'6px 12px',borderRadius:8,fontSize:12,fontWeight:500,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontFamily:'inherit'}}>{r}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'10px 18px 16px',borderTop:`1px solid ${T.border}`,flexShrink:0,display:'flex',justifyContent:'flex-end'}}>
+              <Btn small variant="ghost" onClick={()=>setOpenShiftDay(null)}>{t('common.cancel')}</Btn>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
       {/* Rows */}
       {rows.map((row,ri)=>{
