@@ -441,9 +441,38 @@ export function buildSchedule(employees,blocks,weekDates,timeOffList,allRoles){
       const bh=blockHours(b),rr=getBlockRoles(b,day),assigned=[],assignedInBlock=new Set();
       const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440;
       const startAbs=dayAbs+bs,endAbs=dayAbs+be;
-      allRoles.forEach(role=>{ const need=rr[role]||0; if(!need) return;
-        const eligible=byRole(role).filter(e=>coversBlock(e.availability[day],b)&&!isOff(e.id,iso)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id)&&!conflictsWithRest(e.id,startAbs,endAbs));
-        const ranked=rankPool(eligible,bh);
+      // Who could work this block at all, before anyone is placed. Shared by
+      // the ordering pass and the filling pass so the rule is written once.
+      const eligibleFor=role=>byRole(role).filter(e=>coversBlock(e.availability[day],b)&&!isOff(e.id,iso)&&hw[e.id]+bh<=e.maxHours&&!assignedInBlock.has(e.id)&&!conflictsWithRest(e.id,startAbs,endAbs));
+
+      // SCARCEST ROLE FIRST, rather than the order roles happen to be listed in.
+      //
+      // Filling in list order meant whoever came first got first pick of anyone
+      // qualified for two jobs. With one flexible person and one waiter-only
+      // person covering a Waiter+Bartender block, "Waiter first" spent the
+      // flexible person as a waiter and left the bar empty; "Bartender first"
+      // filled both. Same staff, same block, strictly better rota — decided by
+      // list order. Worse, that list is the drag-to-reorder order from the day
+      // timeline, presented to managers as a display preference, so rearranging
+      // the legend silently changed who worked.
+      //
+      // Sorting by SLACK (candidates minus openings) fixes both problems at
+      // once: it is independent of the incoming order, and it spends scarce
+      // people where they're scarce. A role with one candidate for one opening
+      // (slack 0) is settled before one with six candidates for one (slack 5).
+      //
+      // Still greedy, and greedy is still not optimal — this improves the common
+      // case rather than guaranteeing the best possible rota. See TASKS.md.
+      const openings=allRoles.map(role=>({role,need:rr[role]||0})).filter(x=>x.need>0);
+      const slack=new Map(openings.map(({role,need})=>[role,eligibleFor(role).length-need]));
+      // allRoles index as the tie-break keeps the result deterministic when two
+      // roles are equally constrained, rather than depending on sort stability.
+      openings.sort((a,b)=>(slack.get(a.role)-slack.get(b.role))||(allRoles.indexOf(a.role)-allRoles.indexOf(b.role)));
+
+      openings.forEach(({role,need})=>{
+        // Recomputed, not reused: assignedInBlock has grown since the ordering
+        // pass, so the pool above is stale by the time we get here.
+        const ranked=rankPool(eligibleFor(role),bh);
         for(let i=0;i<need;i++){ if(ranked[i]){ assigned.push({empId:ranked[i].id,name:ranked[i].name,role}); assignedInBlock.add(ranked[i].id); } }
       });
       const hasMgr=assigned.some(a=>isManager(empById.get(a.empId)));
