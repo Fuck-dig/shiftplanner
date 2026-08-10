@@ -628,7 +628,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // without the block you can't tell a lunch from a dinner.
   const swapWhen = (sw) => {
     const b=blocks.find(x=>x.id===sw.blockId);
-    return `${t('day.'+sw.day)} ${fmt(dateForSwap(sw))}${b?` \u00b7 ${b.name} ${b.start}\u2013${b.end}`:''}`;
+    // sw.start/sw.end when the manager gave this open shift its own hours,
+    // otherwise the block's. Showing the block's for a custom-hours shift
+    // would tell someone they are taking the whole evening when the shift
+    // is actually four hours of it — and they'd find out on the day.
+    const from=sw.start||b?.start, to=sw.end||b?.end;
+    return `${t('day.'+sw.day)} ${fmt(dateForSwap(sw))}${b?` · ${b.name} ${from}–${to}`:''}`;
   };
 
   const openShiftsSection = openToAnyone.length>0 ? (
