@@ -378,12 +378,15 @@ export default function WeekView({
             relative to the others. minWidth rises with it so each fixed
             column still has room for a card — narrower viewports scroll
             horizontally, which the wrapper already handles. */}
-        {/* Same rule as the Team grid: compact drops the minimum width so all
-            seven days divide the available space and nothing scrolls sideways.
-            tableLayout:'fixed' is what keeps the columns equal once the minimum
-            is gone. Isolating a single day keeps its own 580 — one column has
-            room to be readable. */}
-        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:(gridTight?0:972)}}>
+        {/* Compact deliberately does NOT drop this minimum, unlike the Team
+            grid. Tried on 7 Aug and reverted: a Team cell in compact is a ~40px
+            chip, but a Week cell stacks avatar chips plus "+ Add" and "+ Open"
+            per role, which needs three or four times that. Removing the minimum
+            squeezed the columns to ~40px with nowhere left to scroll, so the
+            content simply overlapped — avatars on top of each other, buttons
+            colliding. The minimum is what keeps this grid legible; the fix for
+            Week on a phone is fewer columns (isolate a day), not thinner ones. */}
+        <table style={{width:'100%',borderCollapse:'collapse',tableLayout:effectiveDay?'auto':'fixed',minWidth:effectiveDay?580:972}}>
           <thead><tr>
             <th style={{width:132,textAlign:'left',padding:'10px 14px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',background:T.surfaceWarm,borderBottom:`1px solid ${T.border}`}}>{t('week.role')}</th>
             {filterDays.map(day=>{
