@@ -147,11 +147,14 @@ describe('buildSchedule — manager cover', () => {
   });
 });
 
-describe('buildSchedule — role ORDER changes the rota (see CHANGELOG)', () => {
-  // The finding this file was written to demonstrate. Roles are filled greedily
-  // in allRoles order with no backtracking, so whoever is scarce gets consumed
-  // by whichever role is considered first. allRoles is the USER'S drag-to-
-  // reorder order from the day timeline — a setting presented as purely visual.
+describe('buildSchedule — role order must NOT change the rota', () => {
+  // This block previously documented a bug: roles were filled in list order, so
+  // a person qualified for two jobs was spent on whichever came first. "Waiter
+  // first" left the bar empty; "Bartender first" filled both. And that list is
+  // the drag-to-reorder order from the day timeline — a display preference that
+  // silently decided who worked.
+  //
+  // Now roles are filled scarcest-first, so both orders must agree.
   const scenario = (allRoles) => buildSchedule(
     [
       emp('flex', ['Waiter', 'Bartender']),  // the only person who can tend bar
@@ -161,17 +164,63 @@ describe('buildSchedule — role ORDER changes the rota (see CHANGELOG)', () => 
     WEEK, [], allRoles,
   );
 
-  it('Waiter first: the flexible person is used as a waiter and the bar goes unstaffed', () => {
+  it('fills both slots with Waiter listed first', () => {
     const res = scenario(['Waiter', 'Bartender']);
-    const roles = on(res, 'Mon', 'b1').map(a => a.role).sort();
-    expect(roles).toEqual(['Waiter']);
-    expect(on(res, 'Mon', 'b1')).toHaveLength(1);
+    expect(on(res, 'Mon', 'b1').map(a => a.role).sort()).toEqual(['Bartender', 'Waiter']);
   });
 
-  it('Bartender first: BOTH slots fill — a strictly better rota from the same inputs', () => {
+  it('fills both slots with Bartender listed first', () => {
     const res = scenario(['Bartender', 'Waiter']);
-    const roles = on(res, 'Mon', 'b1').map(a => a.role).sort();
-    expect(roles).toEqual(['Bartender', 'Waiter']);
-    expect(on(res, 'Mon', 'b1')).toHaveLength(2);
+    expect(on(res, 'Mon', 'b1').map(a => a.role).sort()).toEqual(['Bartender', 'Waiter']);
+  });
+
+  it('produces an IDENTICAL rota either way — the display order is now inert', () => {
+    // The property that actually matters. Not just "both fill two slots", but
+    // the same people in the same roles, so reordering the legend cannot change
+    // anyone's week.
+    const a = scenario(['Waiter', 'Bartender']);
+    const b = scenario(['Bartender', 'Waiter']);
+    const norm = r => on(r, 'Mon', 'b1').map(x => `${x.empId}:${x.role}`).sort();
+    expect(norm(a)).toEqual(norm(b));
+  });
+
+  it('orders by SLACK (candidates minus openings), not by candidate count', () => {
+    // These two rules disagree here, and only slack gets it right — added after
+    // a mutation test showed the suite passed happily with the rule swapped for
+    // "fewest candidates first".
+    //
+    //   Waiter:    3 candidates (w1, w2, flex) for 3 openings -> slack 0
+    //   Bartender: 2 candidates (b1, flex)     for 1 opening  -> slack 1
+    //
+    // By candidate count, Bartender goes first, takes flex because flex is
+    // cheapest, and Waiter is left with two people for three openings: 3 slots
+    // filled. By slack, Waiter goes first and takes all three including flex,
+    // leaving b1 for the bar: 4 slots filled.
+    const res = buildSchedule(
+      [
+        emp('flex', ['Waiter', 'Bartender'], { wage: 100 }),
+        emp('w1', ['Waiter'], { wage: 200 }),
+        emp('w2', ['Waiter'], { wage: 200 }),
+        emp('bar1', ['Bartender'], { wage: 200 }),
+      ],
+      [block('shift', { Waiter: 3, Bartender: 1 })],
+      WEEK, [], ['Waiter', 'Bartender'],
+    );
+    expect(on(res, 'Mon', 'shift')).toHaveLength(4);
+    expect(Object.fromEntries(on(res, 'Mon', 'shift').map(a => [a.empId, a.role])).bar1).toBe('Bartender');
+  });
+
+  it('spends the scarce person where they are scarce, not on the first role listed', () => {
+    // Two waiter-only staff and one flexible person, needing 2 waiters and a
+    // bartender. Only 'flex' can tend bar, so the correct answer is flex behind
+    // the bar and the other two waiting tables — regardless of order.
+    const res = buildSchedule(
+      [emp('flex', ['Waiter', 'Bartender']), emp('w1', ['Waiter']), emp('w2', ['Waiter'])],
+      [block('b1', { Waiter: 2, Bartender: 1 })],
+      WEEK, [], ['Waiter', 'Bartender'],
+    );
+    const byEmp = Object.fromEntries(on(res, 'Mon', 'b1').map(a => [a.empId, a.role]));
+    expect(byEmp.flex).toBe('Bartender');
+    expect(on(res, 'Mon', 'b1')).toHaveLength(3);
   });
 });

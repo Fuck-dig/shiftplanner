@@ -54,18 +54,18 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Scheduling engine
 
-- [ ] **Role order silently changes the generated rota** — 6/10 — the highest
-  thing on this list, and found by auditing rather than by anything failing.
-  `buildSchedule` fills roles greedily in `allRoles` order with no backtracking,
-  so a scarce person is consumed by whichever of their roles is considered
-  first. Proven in `buildSchedule.test.js`: same staff, same block, one role
-  order fills both slots and the other leaves the bar unstaffed. `allRoles`
-  comes from `mergeRoleOrder(roleOrder, …)` — the drag-to-reorder list from the
-  day timeline, which was introduced as a **display** preference. Nothing tells
-  you that rearranging it changes who works. Two candidate fixes: fill scarcest
-  role first (order-independent, still greedy, small change), or separate the
-  display order from the solve order entirely. Worth deciding deliberately —
-  scarcest-first is not automatically optimal either.
+- [ ] **The generator is still greedy, and greedy is not optimal** — 4/10 —
+  DOWNGRADED from 6/10 now that role order no longer decides the rota (roles are
+  filled scarcest-first, 7 Aug). What remains is the underlying weakness: each
+  role is filled in one pass with no backtracking, so a locally sensible choice
+  can still cost a slot elsewhere. Scarcest-first fixes the common case and the
+  demonstrated one; it does not promise the best possible rota. A real fix is to
+  treat each block as an assignment problem and solve for maximum coverage
+  (~60 lines, order-independent AND provably fills the most slots) — the
+  trade-off being that "cheapest staff" becomes a preference rather than a
+  guarantee, since filling one more slot can mean picking a dearer person.
+  Worth doing only if you see rotas leaving slots open that you can fill by
+  hand — that's the symptom, and it's the one to look for.
 - [ ] **The generator has no notion of the shifts already on the rota** — 4/10
   — `buildSchedule` builds a week from scratch. Rest conflicts and hour caps are
   computed only against what it assigns in this run, so generating a week that
@@ -83,6 +83,15 @@ Nothing here can be closed by tests. These are the ones where "it builds and
   answering Cancel leaves them archived and still rostered — visible now, but
   still a slightly odd state to land in. Fix would be a three-way prompt
   (repost / leave them on / cancel the archive) rather than a yes-no.
+- [ ] **Costs' "Staff scheduled — X of N" counts archived people in N** — 3/10
+  — found on 7 Aug while reading the tab to explain it, then not written down
+  until now, which is how findings get lost. `CostsView` receives the raw
+  `employees` array and uses `employees.length` as the denominator, so every
+  archived person inflates it — the same family as the Team-view headcount bug
+  William caught with "#7 does not drop". The numerator (`workingCount`) is
+  fine. Fix is `activeOnly(employees).length` for N, but check the ROWS
+  separately: the list itself should keep showing archived people who actually
+  worked the period, exactly as `rosterForWeek` does for the grids.
 - [ ] **#4 Undo doesn't survive a reload** — 5/10 — reported, not yet
   reproduced. The logic reads correctly (undo writes through the same debounced
   save as any other edit), so I don't want to fix it blind. If it recurs, the
@@ -107,26 +116,33 @@ Things the manager has that staff do not, and vice versa.
 - [ ] **Staff view has no compact/comfortable density toggle** — 4/10 — `gridTight` exists in Dashboard and WeekView only. This is the feature you
   specifically asked for a while back; it landed on the manager side and never
   crossed over, so staff are stuck on one density.
-- [ ] **Mobile layout** — 4/10 — the app is usable on a phone but not
-  designed for one. Staff are the people most likely to open it on a phone, and
-  the grids assume a wide viewport. Reviewed on a real phone 7 Aug; the
-  scroll-desync bug found there is FIXED, the rest is below, roughly in the
-  order worth doing.
-  - **Cramped toolbar** — the controls above the grid wrap into four or five
-    rows on a phone (week nav / Week-Month-Team + search / slots + missing +
-    Draft + Confirm / History + Print + Delete), so the rota itself starts
-    halfway down the screen. Needs collapsing into a compact bar with the
-    secondary actions behind a menu, not just smaller chips.
-  - **Elongated shift cards** — a card in the Team grid renders its time over
-    three or four lines ("Dinner / 16:30– / 00:00 / 7.5h") because seven day
-    columns don't fit the width. Tall thin cards, very little rota per screen.
-  - **Fixed-width grids overflow their cards** — Costs' employee breakdown uses
-    `160px 48px 52px 1fr 80px`, so on a phone the cost column sits off the right
-    edge and the whole card scrolls sideways. Same shape of problem as the Team
-    grid, different screens. The Employees action row (Add shift / Message /
-    Clone / Edit / Archive / ×) overflows the same way.
-  - **Long names wrap awkwardly** — "Nikolaj Ry" breaks across two lines in the
-    employee panel where there's clearly room.
+- [ ] **Mobile layout — PARKED 7 Aug, pending a real native app** — 3/10 —
+  William's call, and a reasonable one: the remaining problems are all the same
+  problem, which is a desktop grid being forced into 390px. A native app solves
+  that properly instead of by attrition. Everything below is either done or
+  deliberately left; nothing here is broken in production.
+
+  **Fixed and shipped 7 Aug:**
+  - Team grid header/body scroll desync (shifts appeared under the wrong day)
+  - Team grid columns not matching between header and body (`1fr` →
+    `minmax(0,1fr)`), which also fixed the tall thin cards
+  - Team grid now scrolls like the Week grid — one box, no JS
+  - Toolbar down from four rows to two (History/Print/Delete → ☰ menu, search
+    collapses to an icon)
+  - Costs columns and the Employees action row no longer run off-screen
+  - Compact fits the whole week in Team view
+
+  **Deliberately NOT done, with the reason:**
+  - **Compact in WEEK view must keep its 972px minimum.** Tried removing it,
+    reverted: a Week cell stacks avatar chips plus "+ Add" and "+ Open" per
+    role, so at ~40px the content overlaps with nowhere to scroll. Week on a
+    phone wants FEWER columns (isolate a day), not thinner ones. There's a
+    comment on that line so it doesn't get retried.
+  - **Long names wrap** — "Nikolaj Ry" breaks across two lines in the employee
+    panel. Cosmetic, untouched.
+  - **The bigger idea, if this is ever revisited on the web**: give Week view a
+    phone layout that shows one day at a time rather than seven columns. That
+    removes horizontal scrolling as a category rather than mitigating it.
 
 ## Infrastructure
 
