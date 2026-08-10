@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { T, pal } from '../../lib/constants';
 import { fmt, getMonthOffsets, weekKey, dateToISO, LOCALE } from '../../lib/dates';
-import { isOnTimeOff } from '../../lib/schedule';
+import { isOnTimeOff, activeOnly } from '../../lib/schedule';
 import { escapeHtml } from '../../lib/html';
 import { load, save } from '../../lib/storage';
 import { Avatar, RoleBadge, Btn } from '../ui';
@@ -251,7 +251,7 @@ export default function CostsView({
         const statCards=[
           {label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:estCostSub},
           {label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub')},
-          {label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub')},
+          {label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:activeOnly(employees).length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub')},
           {label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub')},
         ];
         const empRows=[...data].sort((a,b)=>b.costUnits-a.costUnits).map(({emp,hours,costUnits})=>({
@@ -273,7 +273,7 @@ export default function CostsView({
           <Btn small variant="ghost" onClick={exportCsv}>{t('cost.exportCsv')}</Btn>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12}}>
-          {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:estCostSub,color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:employees.length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
+          {[{label:t('cost.estimatedCost'),value:toMoney(totalCost),sub:estCostSub,color:T.accent},{label:t('cost.totalHours'),value:totalHours+'h',sub:costsMode==='month'?t('cost.thisMonthSub'):t('cost.thisWeekSub'),color:T.text},{label:t('cost.staffScheduled'),value:`${workingCount} ${t('cost.ofN',{n:activeOnly(employees).length})}`,sub:costsMode==='month'?t('cost.staffMonthSub',{n:getMonthOffsets(displayMonth).filter(off=>schedules[weekKey(off)]).length}):t('cost.staffWeekSub'),color:T.success},{label:t('cost.avgCost'),value:workingCount>0?toMoney(totalCost/workingCount):'—',sub:t('cost.avgCostSub'),color:T.text2}].map(({label,value,sub,color})=>(<div key={label} style={{...s.card,padding:'14px 16px'}}><div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{label}</div><div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:22,fontWeight:500,color,marginBottom:2}}>{value}</div><div style={{fontSize:11,color:T.text3}}>{sub}</div></div>))}
         </div>
         <div style={s.card}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('cost.revenueTitle')}</div>
