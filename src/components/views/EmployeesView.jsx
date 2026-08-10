@@ -78,7 +78,7 @@ export default function EmployeesView({
       <div style={{display:'flex',alignItems:'center',gap:12}}>
         <Avatar emp={emp} size={40}/>
         <div style={{flex:1}}>
-          <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>{emp.name}{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
+          <div style={{fontSize:14,fontWeight:500,display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}><span style={{whiteSpace:'nowrap'}}>{emp.name}</span>{(emp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles[r]}/>)}</div>
           <div style={{fontSize:12,color:T.text2}}>{(emp.contractType||'hourly')==='hourly'?`${emp.wage||'—'} ${currency}/h`:`${(emp.wage||0).toLocaleString(LOCALE)} ${currency}/mo`} · max {emp.maxHours}h/{(emp.contractPeriod||'week')==='month'?'month':'week'}</div>
         </div>
         {/* flexWrap, because six buttons do not fit a phone in one line and

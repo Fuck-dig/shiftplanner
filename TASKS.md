@@ -15,15 +15,16 @@
 Nothing here can be closed by tests. These are the ones where "it builds and
 171 tests pass" proves nothing.
 
-- [ ] **Finish the test pass — sections B and D** — 5/10 — the manager side is
-  done (4 Aug). Passed: leave+shift shows two cards with the warning border;
-  A8 confirmed, an archived person's PAST shift still renders with their real
-  name and colour; archive/restore persists. Still untested because they need
-  a **staff login**: section B (the whole rebuilt staff Requests tab) and
-  section D steps 22–23 (the manager's approvals queue, which needs a pending
-  claim to exist). Also still untested: archiving with **OK** on the prompt —
-  the run on 4 Aug answered Cancel, so the shifts→open-shifts path has never
-  actually executed.
+- [ ] **Finish the test pass — the staff-login half** — 5/10 — the steps now
+  live in **`TESTING.md` section 10**, folded in from the old
+  `TESTING-today.md` on 7 Aug so there's one checklist rather than a file named
+  after a day three weeks ago. The manager side was done on 4 Aug: leave+shift
+  shows two cards with the warning border, an archived person's PAST shift
+  still renders with their real name and colour, archive/restore persists.
+  What's left needs a **staff login**: the whole rebuilt staff Requests tab,
+  the manager's approvals queue (needs a pending claim to exist), and archiving
+  with **OK** on the prompt — the 4 Aug run answered Cancel, so the
+  shifts→open-shifts path has still never actually executed.
 - [ ] **Confirm push notifications actually arrive** — 5/10 — subscribe
   and the toggles are confirmed working on rorota.net; *delivery* is not. Needs
   a phone. Four paths to check: new/changed shifts on publish, time-off and swap
@@ -66,12 +67,24 @@ Nothing here can be closed by tests. These are the ones where "it builds and
   guarantee, since filling one more slot can mean picking a dearer person.
   Worth doing only if you see rotas leaving slots open that you can fill by
   hand — that's the symptom, and it's the one to look for.
-- [ ] **The generator has no notion of the shifts already on the rota** — 4/10
-  — `buildSchedule` builds a week from scratch. Rest conflicts and hour caps are
-  computed only against what it assigns in this run, so generating a week that
-  already has manual shifts in it can produce an 11-hour-rest violation with the
-  existing entries. Worth confirming against the real Generate button before
-  acting — I have not verified how the caller merges results.
+- [ ] **Generate silently replaces a week, including a published one** — 5/10 —
+  replaces the entry I wrote yesterday speculating about rest violations against
+  existing shifts. That was wrong and is now checked: `generate()` does
+  `setSchedules(p=>({...p,[weekKey]:{schedule:s,…}}))`, i.e. it REPLACES the
+  week rather than merging into it, so there is nothing for it to conflict with.
+  The real problem is what that replacement costs. Pressing Generate on a week
+  that already has a schedule discards every manual edit in it, with no
+  confirmation — and it does not check `confirmed`, so it will just as happily
+  rewrite a week you have already published and staff are planning around.
+  Nobody is told; the shifts simply change.
+  This is out of step with the app's own conventions: applying a template
+  confirms first (`tmpl.applyConfirm`) and so does archiving. The empty-state
+  Generate buttons are safe (they only render when no schedule exists), and
+  MonthView's per-week button is guarded by `!ws`. It is specifically the main
+  toolbar button and its mobile-menu twin that are unguarded.
+  Fix: confirm when a schedule already exists, with stronger wording when the
+  week is confirmed/published. Cheap, and it protects the most expensive thing
+  in the app — a rota someone has hand-tuned.
 
 ## Bugs
 
@@ -176,10 +189,6 @@ None of this is user-visible. Do it when it stops a bug repeating, not for tidin
   single edit.
 - [ ] **`i18n.js` is 2634 lines with all five languages inline** — 2/10 — works fine, and the parity test protects it. Splitting per language would
   make diffs readable, but it's churn with no user-visible payoff.
-- [ ] **Fold `TESTING-today.md` into `TESTING.md`** — 1/10 — it's a
-  scratch file for one day's changes and will be misleading by next week. Do
-  this once the test pass above is done.
-
 ## Someday
 
 - [ ] **Onboarding walkthrough / tutorial** — 3/10 — your idea,

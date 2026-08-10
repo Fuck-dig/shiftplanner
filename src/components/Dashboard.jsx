@@ -516,6 +516,16 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   };
 
   const generate=(forOff=weekOffset)=>{
+    // Generate REPLACES the week — it does not merge — so on a week that
+    // already has a schedule it silently discards every manual edit in it. The
+    // app confirms before applying a template and before archiving someone;
+    // this was the one destructive action that didn't ask. A published week
+    // gets stronger wording, because rewriting it changes shifts staff have
+    // already been told about and nobody is notified.
+    const existingWeek=schedules[weekKey(forOff)];
+    if(existingWeek?.schedule){
+      if(!confirm(existingWeek.confirmed?t('sched.regenPublishedConfirm'):t('sched.regenConfirm'))) return;
+    }
     setGenerating(true);setSelected(null);
     setTimeout(()=>{
       const wd=getWeekDates(forOff);
@@ -528,6 +538,14 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   };
 
   const generateMonth=()=>{
+    // Worse than generate(): this rewrites every week in the month. Count what
+    // would actually be lost so the prompt can say, rather than warn vaguely.
+    const offs=getMonthOffsets(displayMonth);
+    const existing=offs.filter(off=>schedules[weekKey(off)]?.schedule);
+    const published=existing.filter(off=>schedules[weekKey(off)]?.confirmed).length;
+    if(existing.length){
+      if(!confirm(published?t('sched.regenMonthPublishedConfirm',{n:existing.length,p:published}):t('sched.regenMonthConfirm',{n:existing.length}))) return;
+    }
     setGenerating(true);setSelected(null);
     setTimeout(()=>{
       const updates={};

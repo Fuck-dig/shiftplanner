@@ -157,6 +157,55 @@ from tests alone.
 
 ---
 
+## 10. Staff Requests tab and the manager approvals queue — STILL UNTESTED
+
+Folded in from `TESTING-today.md` (the 3 Aug change pass) on 7 Aug, because a
+file named "today" is misleading by the following week. Sections A and C of that
+pass were completed on 4 Aug and their findings are in `CHANGELOG.md`; these two
+were never run, because they need a **staff login** as well as a manager one.
+They remain the least-verified part of the app.
+
+**You need:** a staff login and a manager login — two browsers, or one normal
+plus one private window. Use a test person who is not you.
+
+### Staff Requests tab (rebuilt, never tested by a real staff account)
+
+1. **Staff** → Requests. Three separate cards, in this order — not one long
+   list: **Needs you** (accent edge on the left, count badge), **Waiting on
+   others**, **Your time off**. A card with nothing in it should not appear.
+2. The count on the **Needs you** badge matches the number on the **Requests
+   nav tab**. They are the same expression now, so disagreement is a bug.
+3. Every row shows: avatar · badge (Swap / Open shift) · **date** · block name
+   and times · role. Check a **swap request** and a **"requests for your
+   shifts"** row specifically — those two used to show only `Waiter · Thursday`
+   with no date and no block. "Thursday" alone is a fail; it should read like
+   `Thu 06.08 · Dinner 17:00–23:00`.
+4. Buttons work end to end: **accept**, **decline**, **cancel**, **take** an
+   open shift, **cancel a pending time-off request**.
+5. Empty state (clear everything, or use a fresh staff account) says *"No
+   requests"* with a line about what appears here. If it says **"Nothing yet"**,
+   the old notifications string is still wired up — fail.
+6. Switch language (Danish plus one other) on this tab. No blank labels, no raw
+   keys like `req.needsYou` showing through.
+
+### Manager approvals queue — regression check
+
+The request row is shared between the staff and manager sides, so changing one
+can move the other.
+
+7. **Manager** → Requests → pending approvals.
+8. Rows still show the Swap / Open shift badge, the person, the date and the
+   block — and **Approve / Reject** still work.
+
+### Also never executed: archiving with OK
+
+9. **Manager** → Employees → archive someone who has an **upcoming** shift, and
+   answer **OK** to the prompt (the 4 Aug run answered Cancel, so this path has
+   never actually run). Their upcoming shifts should become **open shifts**;
+   past shifts keep their real name and colour.
+
+---
+
 ## If something's wrong
 
 Tell me **what you did, what you expected, what happened** — and if it's an
