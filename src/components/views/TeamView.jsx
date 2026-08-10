@@ -87,8 +87,18 @@ export default function TeamView({
         .flatMap(role=>[...gridEmployees].filter(e=>primaryRoleFor.get(e.id)===role).sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role})))
     :[...gridEmployees].sort((a,b)=>a.name.localeCompare(b.name)).map(emp=>({emp,role:null}));
   const rowH=gridTight?60:80;
-  const nameW=isMobile?(gridTight?110:140):(gridTight?140:180);
-  const gridMinW=isMobile?nameW+7*104:700;
+  // Compact now means "the whole week fits on screen". Comfortable keeps a
+  // minimum width per day and scrolls sideways when that doesn't fit; compact
+  // drops the minimum entirely so the seven columns divide whatever width there
+  // is. Combined with minmax(0,1fr) below, that makes every day exactly
+  // viewport/7 and removes horizontal scrolling altogether.
+  //
+  // The trade is real and worth knowing: on a phone that is roughly 39px per
+  // day, so a block name ellipsizes ("Din…") and you're reading the start time
+  // and the colour. Tap for the detail. That's the point of compact — the shape
+  // of the week at a glance rather than the particulars.
+  const nameW=isMobile?(gridTight?84:140):(gridTight?140:180);
+  const gridMinW=gridTight?0:(isMobile?nameW+7*104:700);
   return(
   <div>
     {/* Header — sticky so it stays visible while scrolling the employee
@@ -200,7 +210,7 @@ export default function TeamView({
               // came first, so clicking their Waiter card opened their Manager
               // shift. Each card now carries its own real index.
               const myEntries=blocks.flatMap(b=>(schedule[day]?.[b.id]||[]).map((a,i)=>({b,a,i})).filter(x=>x.a.empId===emp.id));
-              return(<div key={day} style={{padding:gridTight?'6px 5px':'8px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
+              return(<div key={day} style={{padding:gridTight?(isMobile?'5px 3px':'6px 5px'):'8px 7px',minWidth:0,overflow:'hidden',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:4,justifyContent:'center',minHeight:rowH}}>
                 {/* Leave and shifts are shown TOGETHER, not either/or. The leave
                     card used to replace the cell entirely, which hid the fact
                     that someone was still rostered on a day they'd booked off —
@@ -219,7 +229,7 @@ export default function TeamView({
                   const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
                   const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
                   return(
-                    <div key={b.id+"-"+realIdx} onClick={()=>openEditSlot(day,b.id,realIdx)} title={onTO?t('staff.leaveClash'):clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${onTO?T.warning:clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
+                    <div key={b.id+"-"+realIdx} onClick={()=>openEditSlot(day,b.id,realIdx)} title={onTO?t('staff.leaveClash'):clockedInfo?(shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`):t('week.editShift')} style={{padding:gridTight?'5px 8px':'9px 11px',borderRadius:8,background:isDark()?p.dot+'28':p.bg,border:`2px solid ${onTO?T.warning:clockedInfo?clockStatusColor+'88':p.dot+'55'}`,position:'relative',flexShrink:0,minWidth:0,overflow:'hidden',cursor:'pointer',transition:'box-shadow 0.15s,transform 0.15s'}} onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 0 0 2px ${p.dot}55`;e.currentTarget.style.transform='translateY(-1px)';}} onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                       <div style={{position:'absolute',top:gridTight?5:7,right:gridTight?5:7,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:p.dot}}/>
                       <div style={{fontSize:gridTight?11:14,fontWeight:700,color:isDark()?p.dot:p.text,lineHeight:1.1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{b.name}</div>
                       {!gridTight&&<div style={{fontSize:11,color:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2,whiteSpace:'nowrap'}}>{dispStart}–{dispEnd}</div>}
