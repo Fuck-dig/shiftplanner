@@ -309,11 +309,19 @@ const swapToRow = (orgId, x) => ({
   claimed_by_emp_id: x.claimedByEmpId || null,
   status:            x.status || 'open',
   note:              x.note || null,
+  // null means "use the block's hours" — see 20260811100000. Both or neither,
+  // enforced by a CHECK constraint, so a half-set pair can't reach the table.
+  start_time:        x.start || null,
+  end_time:          x.end   || null,
 });
 const swapFromRow = (r) => ({
   id: r.id, weekKey: r.week_key, day: r.day, blockId: r.block_id, role: r.role,
   fromEmpId: r.from_emp_id, toEmpId: r.to_emp_id, claimedByEmpId: r.claimed_by_emp_id,
   status: r.status, note: r.note || '', createdAt: r.created_at, updatedAt: r.updated_at,
+  // Left UNDEFINED rather than defaulted to the block's times: callers decide
+  // what "no custom hours" means, and every one of them already falls back to
+  // the block. Defaulting here would hide whether a row was customised.
+  start: r.start_time || undefined, end: r.end_time || undefined,
 });
 
 export async function fetchShiftSwaps(orgId){

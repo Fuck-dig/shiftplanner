@@ -1335,7 +1335,15 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     const ns=JSON.parse(JSON.stringify(schedules));
     if(isOpenShift){
       const dayMap=ns[sw.weekKey].schedule[sw.day];
-      dayMap[sw.blockId]=[...(dayMap[sw.blockId]||[]),{empId:claimant.id,name:claimant.name,role:sw.role}];
+      // Carry the open shift's own hours onto the assignment when it had any.
+      // Without this the times a manager chose when posting would be silently
+      // discarded the moment somebody took it, and the person would turn up for
+      // the whole block instead. Omitted entirely when unset, because an
+      // assignment with no start/end already means "the block's hours" — see
+      // assignmentHours.
+      const entry={empId:claimant.id,name:claimant.name,role:sw.role};
+      if(sw.start&&sw.end){ entry.start=sw.start; entry.end=sw.end; }
+      dayMap[sw.blockId]=[...(dayMap[sw.blockId]||[]),entry];
     }else{
       const entry=ns[sw.weekKey].schedule[sw.day][sw.blockId][idx];
       ns[sw.weekKey].schedule[sw.day][sw.blockId][idx]={...entry,empId:claimant.id,name:claimant.name};
@@ -1354,15 +1362,28 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // parallel one: claiming, the manager approval queue, and the notification
   // flow are all identical, the only difference being that approving adds the
   // claimant instead of replacing someone (see approveSwap above).
-  const postOpenShift=(day,blockId,role)=>{
-    createShiftSwap(orgId,{weekKey:wKey,day,blockId,role,fromEmpId:null,toEmpId:null,status:'open'})
+  // weekKey and times are optional so the existing call sites (which post into
+  // the week on screen, at the block's hours) keep working untouched. The Team
+  // tab's dialog spans a whole month, so it passes its own week key rather than
+  // letting this assume the week being viewed — that assumption is exactly what
+  // would have posted a shift into the wrong week.
+  const postOpenShift=(day,blockId,role,opts={})=>{
+    const targetWeek=opts.weekKey||wKey;
+    const custom=(opts.start&&opts.end)?{start:opts.start,end:opts.end}:{};
+    createShiftSwap(orgId,{weekKey:targetWeek,day,blockId,role,fromEmpId:null,toEmpId:null,status:'open',...custom})
       .then(()=>{
         reloadSwaps();
         // Everyone who could actually take it — same eligibility test the
         // employee's own "open to anyone" list applies, so nobody gets
         // pinged about a shift their app won't offer them.
-        const date=weekDates[DAYS.indexOf(day)];
-        const eligible=activeEmployees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(schedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
+        // Both of these were reading the week ON SCREEN. Now that a shift can be
+        // posted into any week, they have to follow the target week or the
+        // notification would name the wrong date and the "already working that
+        // shift" check would consult the wrong rota.
+        const targetDates=opts.weekOffset!=null?getWeekDates(opts.weekOffset):weekDates;
+        const targetSchedule=schedules[targetWeek]?.schedule||null;
+        const date=targetDates[DAYS.indexOf(day)];
+        const eligible=activeEmployees.filter(e=>(e.roles||[]).includes(role)&&!isOnTimeOff(e.id,date,timeOff)&&!(targetSchedule?.[day]?.[blockId]||[]).some(a=>a.empId===e.id));
         const blockName=blocks.find(b=>b.id===blockId)?.name||'';
         // The date goes INSIDE the existing {day} var rather than as a new
         // {date} placeholder — a notification's vars are frozen at send time,
