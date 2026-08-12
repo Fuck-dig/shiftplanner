@@ -27,6 +27,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   // period (16th–15th at Almus); the rest are plain calendar spans.
   const [payView, setPayView] = useState(()=>load('sa2_pay_view','period'));
   const [payOffset, setPayOffset] = useState(0);   // 0 = current, -1 = previous
+  const [payDetail, setPayDetail] = useState(false); // the per-shift breakdown popup
   const [timeOff, setTimeOff]     = useState([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [myId, setMyId]           = useState(null); // current user's employee record id
@@ -1009,75 +1010,106 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           ) : null}
         </>
       ) : (<>
+
+      {payDetail&&earnings&&createPortal(
+        <div onClick={()=>setPayDetail(false)} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(560px,100%)',maxHeight:'min(80vh,680px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+            <div style={{padding:'16px 18px 10px',flexShrink:0}}>
+              <SectionLabel mb={4}>{t('pay.breakdown')}</SectionLabel>
+              <div style={{fontSize:12,color:T.text2}}>{fmtLong(payRange.startISO)} – {fmtLong(payRange.endISO)}</div>
+            </div>
+            <div style={{overflowY:'auto',padding:'0 18px',flex:1,minHeight:0}}>
+              {earnings.shifts.length===0
+                ? <div style={{fontSize:13,color:T.text3,padding:'16px 0',fontStyle:'italic'}}>{t('pay.noShifts')}</div>
+                : earnings.shifts.map((sh,i)=>(
+                  <div key={i} style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0,1fr) 78px':'96px minmax(0,1fr) 62px 88px',alignItems:'center',gap:10,padding:'9px 0',borderBottom:`1px solid ${T.border}`,fontSize:12}}>
+                    {!isMobile&&<span style={{color:T.text2}}>{fmt(new Date(sh.iso))}</span>}
+                    <span style={{color:T.text,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {isMobile&&<span style={{color:T.text3}}>{fmt(new Date(sh.iso))} · </span>}
+                      {sh.blockName} {sh.start}–{sh.end}
+                      {sh.sick&&<span style={{color:T.warning}}> · {t('pay.sickTag')}</span>}
+                      {sh.noShow&&<span style={{color:T.danger}}> · {t('emp.noShow')}</span>}
+                    </span>
+                    {/* Hours and money, not hours twice — the earlier version
+                        printed the same figure in both columns. */}
+                    {!isMobile&&<span style={{color:T.text3,textAlign:'right'}}>{sh.sick?sh.sickHours:sh.hours}h</span>}
+                    <span style={{textAlign:'right',fontWeight:600,color:sh.pay?T.text:T.text3}}>
+                      {isMobile&&<span style={{fontWeight:400,color:T.text3}}>{sh.sick?sh.sickHours:sh.hours}h · </span>}
+                      {sh.pay?money(sh.pay):'—'}
+                    </span>
+                  </div>
+                ))}
+            </div>
+            {/* The rows above sum to exactly this, by construction — the per
+                shift figures come from the same function as the total. */}
+            <div style={{borderTop:`1px solid ${T.border}`,padding:'12px 18px',flexShrink:0,display:'flex',alignItems:'center',gap:12}}>
+              <span style={{flex:1,fontSize:12,color:T.text2}}>{t('pay.total')}</span>
+              <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:18,fontWeight:500,color:T.success}}>{money(earnings.total)}</span>
+              <Btn small variant="ghost" onClick={()=>setPayDetail(false)}>{t('common.close')}</Btn>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
         {/* Sits with the rota, because it is a restatement of the rota in
-            money: every figure in it comes from the shifts listed below. It was
-            briefly rendered in the Requests tab, which was simply a mistake on
-            my part — nothing about pay belongs beside swap approvals. Uses the
-            same arithmetic as the manager's Costs tab, so the two cannot
-            disagree about somebody's money. */}
+            money: every figure in it comes from the shifts listed below. Uses
+            the same arithmetic as the manager's Costs tab, so the two cannot
+            disagree about somebody's money.
+            The per-shift breakdown lives behind a click rather than inline —
+            a 19-row table pushed the actual rota off the screen, and the
+            breakdown is something you check occasionally, not read daily. */}
         {earnings&&earnings.hasRate&&(
-        <div style={{...s.card,marginBottom:12}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12}}>
-        <SectionLabel mb={0} style={{flex:1,minWidth:120}}>{t('pay.title')}</SectionLabel>
-        <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
-        {[['period',t('pay.period')],['month',t('pay.month')],['week',t('pay.week')]].map(([k,l])=>(
-        <button key={k} onClick={()=>{setPayView(k);save('sa2_pay_view',k);setPayOffset(0);}} style={{padding:'4px 10px',borderRadius:6,background:payView===k?T.bg:'transparent',border:payView===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:payView===k?500:400,color:payView===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>
-        ))}
-        </div>
-        {/* Week follows the week you're already looking at, so
-        stepping it here as well would be two controls for one
-        thing. The other two get their own. */}
-        {payView!=='week'&&(
-        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-        <button onClick={()=>setPayOffset(o=>o-1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-        <button onClick={()=>setPayOffset(0)} style={{padding:'2px 8px',borderRadius:6,background:'none',border:'none',cursor:payOffset?'pointer':'default',color:payOffset?T.accent:T.text3,fontFamily:'inherit',fontSize:11}}>{t('common.today')}</button>
-        <button onClick={()=>setPayOffset(o=>o+1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
-        </div>
+          <div style={{...s.card,marginBottom:12}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12}}>
+              <SectionLabel mb={0} style={{flex:1,minWidth:120}}>{t('pay.title')}</SectionLabel>
+              <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+                {[['period',t('pay.period')],['month',t('pay.month')],['week',t('pay.week')]].map(([k,l])=>(
+                  <button key={k} onClick={()=>{setPayView(k);save('sa2_pay_view',k);setPayOffset(0);}} style={{padding:'4px 10px',borderRadius:6,background:payView===k?T.bg:'transparent',border:payView===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:payView===k?500:400,color:payView===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>
+                ))}
+              </div>
+              {payView!=='week'&&(
+                <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+                  <button onClick={()=>setPayOffset(o=>o-1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+                  <button onClick={()=>setPayOffset(0)} style={{padding:'2px 8px',borderRadius:6,background:'none',border:'none',cursor:payOffset?'pointer':'default',color:payOffset?T.accent:T.text3,fontFamily:'inherit',fontSize:11}}>{t('common.today')}</button>
+                  <button onClick={()=>setPayOffset(o=>o+1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+                </div>
+              )}
+            </div>
+            <div style={{fontSize:12,color:T.text2,marginBottom:14}}>
+              {fmtLong(payRange.startISO)} – {fmtLong(payRange.endISO)}
+              {payView==='period'&&<> · {t('pay.paidOn',{date:fmt(payDateFor(payRange))})}</>}
+            </div>
+            {/* Buttons, not divs: this is the only way to reach the breakdown,
+                so it has to be reachable by keyboard and announce itself. */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12}}>
+              <button onClick={()=>setPayDetail(true)} title={t('pay.viewShifts')} style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`,cursor:'pointer',textAlign:'left',fontFamily:'inherit',width:'100%',transition:'border-color 0.15s'}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=T.accent}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.expected')}</div>
+                <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.success,marginBottom:2}}>{money(earnings.total)}</div>
+                <div style={{fontSize:11,color:T.text3}}>{earnings.upcomingHours>0?t('pay.includesUpcoming',{h:earnings.upcomingHours}):t('pay.allWorked')}</div>
+              </button>
+              <button onClick={()=>setPayDetail(true)} title={t('pay.viewShifts')} style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`,cursor:'pointer',textAlign:'left',fontFamily:'inherit',width:'100%',transition:'border-color 0.15s'}}
+                onMouseEnter={e=>e.currentTarget.style.borderColor=T.accent}
+                onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.hours')}</div>
+                <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.text,marginBottom:2}}>{earnings.hours}h</div>
+                <div style={{fontSize:11,color:T.text3}}>{t('pay.shiftsN',{n:earnings.shifts.filter(x=>!x.sick).length})}</div>
+              </button>
+              {earnings.sickHours>0&&(
+                <button onClick={()=>setPayDetail(true)} title={t('pay.viewShifts')} style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`,cursor:'pointer',textAlign:'left',fontFamily:'inherit',width:'100%',transition:'border-color 0.15s'}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=T.accent}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                  <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.sick')}</div>
+                  <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.warning,marginBottom:2}}>{money(earnings.sickPay)}</div>
+                  <div style={{fontSize:11,color:T.text3}}>{earnings.sickHours}h</div>
+                </button>
+              )}
+            </div>
+            <div style={{fontSize:11,color:T.text3,marginTop:12,lineHeight:1.5}}>{t('pay.disclaimer')}</div>
+          </div>
         )}
-        </div>
-        <div style={{fontSize:12,color:T.text2,marginBottom:14}}>
-        {fmtLong(payRange.startISO)} – {fmtLong(payRange.endISO)}
-        {payView==='period'&&<> · {t('pay.paidOn',{date:fmt(payDateFor(payRange))})}</>}
-        </div>
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:12}}>
-        <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.expected')}</div>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.success,marginBottom:2}}>{money(earnings.total)}</div>
-        <div style={{fontSize:11,color:T.text3}}>{earnings.upcomingHours>0?t('pay.includesUpcoming',{h:earnings.upcomingHours}):t('pay.allWorked')}</div>
-        </div>
-        <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.hours')}</div>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.text,marginBottom:2}}>{earnings.hours}h</div>
-        <div style={{fontSize:11,color:T.text3}}>{t('pay.shiftsN',{n:earnings.shifts.filter(x=>!x.sick).length})}</div>
-        </div>
-        {earnings.sickHours>0&&(
-        <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
-        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.sick')}</div>
-        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.warning,marginBottom:2}}>{money(earnings.sickPay)}</div>
-        <div style={{fontSize:11,color:T.text3}}>{earnings.sickHours}h</div>
-        </div>
-        )}
-        </div>
-        {earnings.shifts.length>0&&(
-        <div style={{marginTop:14,display:'flex',flexDirection:'column',gap:4}}>
-        {earnings.shifts.map((sh,i)=>(
-        <div key={i} style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0,1fr) 68px':'110px minmax(0,1fr) 60px 80px',alignItems:'center',gap:8,padding:'6px 0',borderBottom:`1px solid ${T.border}`,fontSize:12}}>
-        {!isMobile&&<span style={{color:T.text2}}>{fmt(new Date(sh.iso))}</span>}
-        <span style={{color:T.text,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-        {isMobile&&<span style={{color:T.text3}}>{fmt(new Date(sh.iso))} · </span>}
-        {sh.blockName} {sh.start}–{sh.end}
-        {sh.sick&&<span style={{color:T.warning}}> · {t('pay.sickTag')}</span>}
-        {sh.noShow&&<span style={{color:T.danger}}> · {t('emp.noShow')}</span>}
-        </span>
-        {!isMobile&&<span style={{color:T.text3,textAlign:'right'}}>{sh.sick?sh.sickHours:sh.hours}h</span>}
-        <span style={{color:T.text,textAlign:'right',fontWeight:600}}>{sh.sick?'':`${sh.hours}h`}</span>
-        </div>
-        ))}
-        </div>
-        )}
-        <div style={{fontSize:11,color:T.text3,marginTop:12,lineHeight:1.5}}>{t('pay.disclaimer')}</div>
-        </div>
-        )}
+
         {/* Week/Month nav — sticky under the app header, same as the
             manager's schedule bar. Its measured height feeds the "Your
             Shifts" strip's own sticky offset below, so the two dock
