@@ -124,7 +124,10 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const [newTO,setNewTO]             = useState({empId:'',startDate:todayISO(),endDate:todayISO(),type:'Holiday',note:'',status:'Pending'});
   const [toFilter,setToFilter]       = useState('all');
   const [gridGroupBy,setGridGroupBy] = useState('name');  // 'name' | 'role'
-  const [gridTight,setGridTight]     = useState(false);
+  // Persisted, same as the staff side. Was plain useState(false), so a manager
+  // who preferred compact re-set it on every single reload.
+  const [gridTight,setGridTightRaw]  = useState(()=>load('sa2_grid_tight',false));
+  const setGridTight=(v)=>setGridTightRaw(prev=>{const next=typeof v==='function'?v(prev):v; save('sa2_grid_tight',next); return next;});
   const [gridSearch,setGridSearch]   = useState('');
   const [dayFilter,setDayFilter]     = useState(null);     // null = all days, else one of DAYS — isolates a single day in Week view
   const [dayGroupBy,setDayGroupBy]   = useState('role');   // 'role' | 'name' — sort order for the day-isolation timeline

@@ -64,6 +64,21 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [displayMonth, setDisplayMonth] = useState(()=>{const n=new Date();return {y:n.getFullYear(),m:n.getMonth()};});
   const [dayFilter, setDayFilter] = useState(()=>{const jsDay=new Date().getDay();return DAYS[jsDay===0?6:jsDay-1];}); // which day the read-only 'week' tab isolates
   const [gridGroupBy, setGridGroupBy] = useState('name'); // 'name' | 'role' — shared sort/group toggle for the Team and Week tabs
+  // Compact/comfortable, the toggle the manager side has had for a while and
+  // staff never got. Persisted, unlike the manager's — staff are the ones on
+  // phones, and having to re-compact the grid on every visit is precisely the
+  // friction the toggle exists to remove.
+  const [gridTight, setGridTightRaw] = useState(()=>load('sa2_staff_tight', false));
+  const setGridTight = (v)=>setGridTightRaw(prev=>{const next=typeof v==='function'?v(prev):v; save('sa2_staff_tight',next); return next;});
+  // One definition for all four grids below. They previously repeated
+  // `${isMobile?130:180}px repeat(7,1fr)` inline, and a plain 1fr carries an
+  // implicit auto-minimum — a track can't be narrower than its content — so the
+  // header and the body computed DIFFERENT column widths from the same string.
+  // That's the bug that put shift cards under the wrong day in the manager's
+  // Team grid; the same latent fault was sitting here. minmax(0,1fr) removes it.
+  const teamNameW = isMobile?(gridTight?96:130):(gridTight?140:180);
+  const teamCols  = `${teamNameW}px repeat(7,minmax(0,1fr))`;
+  const teamMinW  = gridTight?0:(isMobile?550:700);
   // Personal, per-browser role display/group order — each person arranges
   // their own Team tab; not shared with the manager or other employees.
   const [roleOrder, setRoleOrder] = useState(()=>load('sa2_roleOrder_'+orgId, []));
@@ -692,11 +707,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     // greying it out while searching for a colleague would be confusing.
     const dim=!ignoreSearch&&!!staffSearch.trim()&&!emp.name.toLowerCase().includes(staffSearch.trim().toLowerCase());
     return (
-      <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,opacity:dim?0.25:1,filter:dim?'grayscale(1)':'none',transition:'background 0.2s,opacity 0.15s,filter 0.15s'}}>
+      <div style={{display:'grid',gridTemplateColumns:teamCols,minWidth:teamMinW,borderBottom:`1px solid ${T.border}`,background:isMe?(isDark()?T.accent+'18':T.accentLight):ri%2===1?T.surfaceWarm:T.surface,opacity:dim?0.25:1,filter:dim?'grayscale(1)':'none',transition:'background 0.2s,opacity 0.15s,filter 0.15s'}}>
         {/* Name */}
-        <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72,position:'relative'}}>
+        <div style={{padding:gridTight?(isMobile?'6px 8px':'8px 12px'):(isMobile?'10px 10px':'12px 16px'),borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:gridTight?6:(isMobile?6:10),minHeight:gridTight?44:72,position:'relative',minWidth:0}}>
           {isMe&&<div style={{position:'absolute',left:0,top:0,bottom:0,width:3,background:T.accent,borderRadius:'0 2px 2px 0'}}/>}
-          <div style={{width:36,height:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
+          <div style={{width:gridTight?26:36,height:gridTight?26:36,borderRadius:'50%',background:isMe?T.accent:(isDark()?p.dot+'25':p.bg),color:isMe?'#fff':(isDark()?p.dot:p.text),display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0,border:isMe?'none':`2px solid ${p.dot}33`}}>{initials(emp.name)}</div>
           <div>
             <div style={{fontSize:13,fontWeight:isMe?700:500,color:isMe?T.accent:T.text}}>{emp.name}</div>
             {isMe&&<div style={{fontSize:10,color:T.text3,marginTop:1}}>{t('emp.hoursThisWeek',{h})}</div>}
@@ -727,11 +742,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               const clockedInfo=shiftEntry&&(shiftEntry.noShow||shiftEntry.actualStart||shiftEntry.actualEnd);
               const clockStatusColor=shiftEntry?.noShow?T.danger:T.success;
               return(
-              <div key={b.id} style={{padding:'8px 10px',borderRadius:8,background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'99':(isMe?T.accent:p.dot)+'55'}`,position:'relative'}}>
+              <div key={b.id} style={{padding:gridTight?'5px 7px':'8px 10px',borderRadius:8,minWidth:0,overflow:'hidden',background:isMe?(isDark()?T.accent+'33':T.accentLight):isDark()?p.dot+'25':p.bg,border:`2px solid ${clockedInfo?clockStatusColor+'99':(isMe?T.accent:p.dot)+'55'}`,position:'relative'}}>
                 <div style={{position:'absolute',top:6,right:6,width:6,height:6,borderRadius:'50%',background:clockedInfo?clockStatusColor:(isMe?T.accent:p.dot)}}/>
-                <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text}}>{b.name}</div>
-                <div style={{fontSize:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:2}}>{dispStart}–{dispEnd}</div>
-                <div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1}}>{actualAssignmentHours(shiftEntry||{},b).toFixed(1)}h</div>
+                <div style={{fontSize:gridTight?11:13,fontWeight:700,color:isMe?T.accent:isDark()?p.dot:p.text,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{b.name}</div>
+                <div style={{fontSize:gridTight?9:11,color:isMe?T.accentText:isDark()?p.dot+'CC':p.text,opacity:0.85,marginTop:gridTight?0:2,whiteSpace:'nowrap'}}>{gridTight?dispStart:`${dispStart}–${dispEnd}`}</div>
+                {!gridTight&&<div style={{fontSize:10,color:isMe?T.accentText:isDark()?p.dot+'88':p.text,opacity:0.65,marginTop:1,whiteSpace:'nowrap'}}>{actualAssignmentHours(shiftEntry||{},b).toFixed(1)}h</div>}
                 {clockedInfo&&(
                   <div style={{fontSize:10,fontWeight:600,color:clockStatusColor,marginTop:2}}>
                     {shiftEntry.noShow?t('emp.noShow'):`${t('week.clockedLabel')} ${shiftEntry.actualStart||'—'}–${shiftEntry.actualEnd||t('week.clockedOngoing')}`}
@@ -779,7 +794,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const openShiftsThisWeek = swaps.filter(sw=>sw.weekKey===wKey && !sw.toEmpId && (sw.status==='open'||sw.status==='claimed'));
   const claimableIds = new Set(openToAnyone.map(sw=>sw.id));
   const renderOpenShiftsRow = () => (
-    <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,background:T.surface}}>
+    <div style={{display:'grid',gridTemplateColumns:teamCols,minWidth:teamMinW,background:T.surface}}>
       <div style={{padding:isMobile?'10px 10px':'12px 16px',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?6:10,minHeight:72}}>
         <div style={{width:36,height:36,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:700,flexShrink:0,border:`2px dashed ${T.accent}55`}}>?</div>
         <div style={{fontSize:13,fontWeight:700,color:T.accentText}}>{t('open.rowLabel')}</div>
@@ -1000,6 +1015,14 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           {myId && <Btn small variant="ghost" onClick={exportMyScheduleICS}>{t('emp.exportSchedule')}</Btn>}
+          {/* Compact/comfortable, matching the manager's toggle in position,
+              wording and behaviour — Month has no grid to compact, so it's
+              hidden there, same as the search beside it. */}
+          {calMode!=='month'&&(
+            <button onClick={()=>setGridTight(p=>!p)} style={{padding:'4px 12px',borderRadius:8,background:gridTight?T.bg:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:gridTight?T.text:T.text2,fontFamily:'inherit',fontWeight:gridTight?500:400}}>
+              {gridTight?t('grid.compact'):t('grid.comfortable')}
+            </button>
+          )}
           {/* Same staff search the manager has, behaving the same way (dim,
               don't hide) — an employee looking for who else is on Friday has
               exactly the same question as a manager does. */}
@@ -1070,7 +1093,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           )}
           <div style={{...s.cardFlush,overflowX:'auto',overflowY:'visible',WebkitOverflowScrolling:'touch'}}>
             {/* Header */}
-            <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
+            <div style={{display:'grid',gridTemplateColumns:teamCols,minWidth:teamMinW,borderBottom:`2px solid ${T.border}`,background:T.surfaceWarm}}>
               <div style={{padding:isMobile?'12px 12px':'14px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.08em',borderRight:`1px solid ${T.border}`}}>{t('sched.team')}</div>
               {DAYS.map((day,i)=>{
                 const date=weekDates[i],isToday=dateToISO(date)===dateToISO(new Date());
@@ -1106,7 +1129,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
               );
             })}
             {/* Footer */}
-            <div style={{display:'grid',gridTemplateColumns:`${isMobile?130:180}px repeat(7,1fr)`,minWidth:isMobile?550:700,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
+            <div style={{display:'grid',gridTemplateColumns:teamCols,minWidth:teamMinW,background:T.surfaceWarm,borderTop:`2px solid ${T.border}`}}>
               <div style={{padding:isMobile?'10px 12px':'10px 20px',fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.06em',borderRight:`1px solid ${T.border}`,display:'flex',alignItems:'center'}}>{t('grid.totalLabel')}</div>
               {DAYS.map((day,di)=>{
                 const count=workingCount(schedule,blocks,day,activeEmployees);
@@ -1416,7 +1439,7 @@ function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayF
     const rangeEnd=Math.ceil(Math.max(...allEnds)/60)*60;
     const totalMin=Math.max(60,rangeEnd-rangeStart);
     const ticks=[]; for(let m=rangeStart;m<=rangeEnd;m+=60) ticks.push(m);
-    const sideW=isMobile?76:112, rowH=isMobile?20:24;
+    const sideW=gridTight?(isMobile?64:96):(isMobile?76:112), rowH=gridTight?(isMobile?16:20):(isMobile?20:24);
     const fmtTick=m=>String(Math.floor((m%1440)/60)).padStart(2,'0')+':00';
     timeline=(
       <div style={{...s.cardFlush,padding:isMobile?'14px 10px 12px':'16px 18px 14px',overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
