@@ -121,6 +121,30 @@ describe('earningsInRange', () => {
     expect(r.hasRate).toBe(false);
   });
 
+  it('gives each shift its own pay, and they add up to the total', () => {
+    // The property that matters for a breakdown people will check against a
+    // payslip: if the rows don't sum to the headline, one of them is wrong.
+    const r = earningsInRange({
+      schedules: week({
+        Mon: { lunch: [shift()] },
+        Tue: { lunch: [shift({ actualStart: '10:00', actualEnd: '14:00' })] },
+        Wed: { lunch: [shift({ sick: true })] },
+      }),
+      blocks: [LUNCH], emp: { ...ME, sickPayPct: 50 }, range: AUG,
+    });
+    expect(r.shifts.map(x => x.pay)).toEqual([1600, 800, 800]);
+    expect(r.shifts.reduce((n, x) => n + x.pay, 0)).toBe(r.total);
+  });
+
+  it('a no-show shift is listed but earns nothing', () => {
+    const r = earningsInRange({
+      schedules: week({ Mon: { lunch: [shift({ noShow: true })] } }),
+      blocks: [LUNCH], emp: ME, range: AUG,
+    });
+    expect(r.shifts).toHaveLength(1);
+    expect(r.shifts[0].pay).toBe(0);
+  });
+
   it('survives missing or malformed inputs rather than throwing', () => {
     expect(earningsInRange({}).total).toBe(undefined);          // empty shape, no crash
     expect(earningsInRange({ schedules: {}, blocks: [], emp: ME, range: AUG }).hours).toBe(0);

@@ -62,12 +62,21 @@ export function earningsInRange({ schedules, blocks, emp, range, orgSickPct, tod
           // recorded — a shift today that someone is midway through is neither
           // finished nor an estimate of a future one.
           if (todayISO && iso > todayISO) upcomingHours += worked;
+          // Per-shift money, computed here rather than in the view so the
+          // rows always add up to the total above them — a breakdown that
+          // doesn't reconcile is worse than no breakdown.
+          const shiftPay = rate == null
+            ? 0
+            : (sick
+                ? calcSickCost(emp, sick, sickPct)
+                : parseFloat((worked * rate).toFixed(2)));
           shifts.push({
             iso, day, blockId, blockName: block.name,
             start: a.start || block.start,
             end: a.end || block.end,
             hours: worked, sickHours: sick, role: a.role,
             noShow: !!a.noShow, sick: !!a.sick,
+            pay: shiftPay,
           });
         }
       }
