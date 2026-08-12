@@ -126,9 +126,6 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 Things the manager has that staff do not, and vice versa.
 
-- [ ] **Staff view has no compact/comfortable density toggle** — 4/10 — `gridTight` exists in Dashboard and WeekView only. This is the feature you
-  specifically asked for a while back; it landed on the manager side and never
-  crossed over, so staff are stuck on one density.
 - [ ] **Mobile layout — PARKED 7 Aug, pending a real native app** — 3/10 —
   William's call, and a reasonable one: the remaining problems are all the same
   problem, which is a desktop grid being forced into 390px. A native app solves

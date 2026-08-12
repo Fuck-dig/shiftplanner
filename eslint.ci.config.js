@@ -31,6 +31,15 @@ export default defineConfig([
     },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
+      // Added 11 Aug after this gate let an undefined `LOCALE` through in
+      // KioskView — a guaranteed ReferenceError the moment the kiosk header
+      // rendered. README already described this config as the "undefined
+      // identifier gate"; it wasn't one. `vite build` does NOT catch this
+      // (it resolves imports, not free variables), so nothing did.
+      //
+      // Squarely in this file's stated remit: an undefined identifier is not a
+      // style problem, it's a screen that doesn't render.
+      'no-undef': 'error',
     },
   },
 ]);
