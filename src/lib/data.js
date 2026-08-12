@@ -690,6 +690,21 @@ export async function fetchOrgSickPct(orgId){
   return data?.sick_pay_pct ?? 100;
 }
 
+// Everything the setup form collects, written in one round trip rather than
+// three. Kept separate from the individual savers because those are debounced
+// per-field edits from Costs, whereas this is a one-shot at creation.
+export async function saveOrgSetup(orgId, { currency, sickPayPct, payPeriodStartDay } = {}){
+  const patch = {};
+  if (currency != null && currency !== '') patch.currency = currency;
+  // != null, not a truthy check: 0% sick pay and a start day of 0 are different
+  // from "not provided", and only one of those is even valid.
+  if (sickPayPct != null && sickPayPct !== '') patch.sick_pay_pct = Number(sickPayPct);
+  if (payPeriodStartDay != null && payPeriodStartDay !== '') patch.pay_period_start_day = Number(payPeriodStartDay);
+  if (!Object.keys(patch).length) return;
+  const { error } = await supabase.from('organizations').update(patch).eq('id', orgId);
+  if (error) throw error;
+}
+
 // Everything the staff income card needs about the restaurant, in one read:
 // currency to format with, the sick default to fall back on, and where the pay
 // period starts. All three are org-level policy numbers, readable by any
