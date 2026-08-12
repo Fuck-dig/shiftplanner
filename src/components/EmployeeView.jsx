@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
 import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, rosterForWeek, workingCount } from '../lib/schedule';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
+import { fetchOrgPaySettings, fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
+import { earningsInRange } from '../lib/earnings';
+import { payPeriodFor, shiftPayPeriod, payDateFor, calendarMonthRange, rangeFromWeekDates } from '../lib/payPeriod';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
@@ -20,6 +22,11 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   const [employees, setEmployees] = useState([]);
   const [blocks, setBlocks]       = useState([]);
   const [schedules, setSchedules] = useState({});
+  const [paySettings, setPaySettings] = useState(null);
+  // Which span the income card is showing. 'period' is the restaurant's pay
+  // period (16th–15th at Almus); the rest are plain calendar spans.
+  const [payView, setPayView] = useState(()=>load('sa2_pay_view','period'));
+  const [payOffset, setPayOffset] = useState(0);   // 0 = current, -1 = previous
   const [timeOff, setTimeOff]     = useState([]);
   const [weekOffset, setWeekOffset] = useState(0);
   const [myId, setMyId]           = useState(null); // current user's employee record id
@@ -145,7 +152,10 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         fetchTimeOff(orgId),
         fetchSchedules(orgId),
         fetchRoleStyles(orgId).catch(err => { console.error('Load role colours failed:', err); return {}; }),
-      ]).then(([emps, blks, to, scheds, rStyles]) => {
+        // Non-fatal: without it the income card just can't format money, which
+        // is a much smaller problem than the whole staff view failing to load.
+        fetchOrgPaySettings(orgId).catch(err => { console.error('Load pay settings failed:', err); return null; }),
+      ]).then(([emps, blks, to, scheds, rStyles, paySettings]) => {
         if (!alive) return;
         // Same defaulting App.jsx applies to its own fetch — without it, an
         // employee record missing newer fields (targetHours, contractType,
@@ -156,6 +166,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
         setTimeOff(to);
         setSchedules(scheds);
         setRoleStyles(rStyles || {});
+        if (paySettings) setPaySettings(paySettings);
         // Try to find the current user's employee record by email
         const me = emps.find(e => e.email && e.email.toLowerCase() === (email||'').toLowerCase());
         if (me) setMyId(me.id);
@@ -364,6 +375,26 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
   })() : 0;
 
   const me = employees.find(e=>e.id===myId);
+
+  // ── Income ────────────────────────────────────────────────────────────────
+  // Only shown when a wage is actually set. `employee_wages` is manager-only
+  // except for one narrowly-scoped policy letting a person read their OWN row
+  // (20260811140000), so for anyone without a wage this is simply absent rather
+  // than a card full of zeroes.
+  const payStartDay = paySettings?.payPeriodStartDay ?? 16;
+  const payRange = (()=>{
+    const now=new Date();
+    if(payView==='week')  return rangeFromWeekDates(weekDates);
+    if(payView==='month'){ const d=new Date(now.getFullYear(),now.getMonth()+payOffset,1); return calendarMonthRange(d.getFullYear(),d.getMonth()); }
+    return shiftPayPeriod(payPeriodFor(now,payStartDay),payOffset,payStartDay);
+  })();
+  const earnings = me ? earningsInRange({
+    schedules, blocks, emp:me, range:payRange,
+    orgSickPct: paySettings?.sickPayPct,
+    todayISO: todayISO(),
+  }) : null;
+  const payCurrency = paySettings?.currency || '';
+  const money = n => `${payCurrency} ${Math.round(n).toLocaleString(LOCALE)}`;
 
   // Six near-identical copies of the same four lines collapsed into one: they
   // differed only by which field they wrote. Optimistic in the same way they
@@ -919,6 +950,74 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
                     );})}
                   </div>
                 </div>)}
+                {/* What you're due. Deliberately above the rota rather than
+                    buried in Profile: it's the question people open the app to
+                    answer on payday week, and it uses the same arithmetic the
+                    manager's Costs tab runs, so the two can't disagree about
+                    someone's money. */}
+                {earnings&&earnings.hasRate&&(
+                  <div style={{...s.card,marginBottom:12}}>
+                    <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:12}}>
+                      <SectionLabel mb={0} style={{flex:1,minWidth:120}}>{t('pay.title')}</SectionLabel>
+                      <div style={{display:'flex',background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
+                        {[['period',t('pay.period')],['month',t('pay.month')],['week',t('pay.week')]].map(([k,l])=>(
+                          <button key={k} onClick={()=>{setPayView(k);save('sa2_pay_view',k);setPayOffset(0);}} style={{padding:'4px 10px',borderRadius:6,background:payView===k?T.bg:'transparent',border:payView===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:payView===k?500:400,color:payView===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>
+                        ))}
+                      </div>
+                      {/* Week follows the week you're already looking at, so
+                          stepping it here as well would be two controls for one
+                          thing. The other two get their own. */}
+                      {payView!=='week'&&(
+                        <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
+                          <button onClick={()=>setPayOffset(o=>o-1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
+                          <button onClick={()=>setPayOffset(0)} style={{padding:'2px 8px',borderRadius:6,background:'none',border:'none',cursor:payOffset?'pointer':'default',color:payOffset?T.accent:T.text3,fontFamily:'inherit',fontSize:11}}>{t('common.today')}</button>
+                          <button onClick={()=>setPayOffset(o=>o+1)} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{fontSize:12,color:T.text2,marginBottom:14}}>
+                      {fmtLong(payRange.startISO)} – {fmtLong(payRange.endISO)}
+                      {payView==='period'&&<> · {t('pay.paidOn',{date:fmt(payDateFor(payRange))})}</>}
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:12}}>
+                      <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.expected')}</div>
+                        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.success,marginBottom:2}}>{money(earnings.total)}</div>
+                        <div style={{fontSize:11,color:T.text3}}>{earnings.upcomingHours>0?t('pay.includesUpcoming',{h:earnings.upcomingHours}):t('pay.allWorked')}</div>
+                      </div>
+                      <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                        <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.hours')}</div>
+                        <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.text,marginBottom:2}}>{earnings.hours}h</div>
+                        <div style={{fontSize:11,color:T.text3}}>{t('pay.shiftsN',{n:earnings.shifts.filter(x=>!x.sick).length})}</div>
+                      </div>
+                      {earnings.sickHours>0&&(
+                        <div style={{...s.cardFlush,padding:'14px 16px',background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                          <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('pay.sick')}</div>
+                          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:24,fontWeight:500,color:T.warning,marginBottom:2}}>{money(earnings.sickPay)}</div>
+                          <div style={{fontSize:11,color:T.text3}}>{earnings.sickHours}h</div>
+                        </div>
+                      )}
+                    </div>
+                    {earnings.shifts.length>0&&(
+                      <div style={{marginTop:14,display:'flex',flexDirection:'column',gap:4}}>
+                        {earnings.shifts.map((sh,i)=>(
+                          <div key={i} style={{display:'grid',gridTemplateColumns:isMobile?'minmax(0,1fr) 68px':'110px minmax(0,1fr) 60px 80px',alignItems:'center',gap:8,padding:'6px 0',borderBottom:`1px solid ${T.border}`,fontSize:12}}>
+                            {!isMobile&&<span style={{color:T.text2}}>{fmt(new Date(sh.iso))}</span>}
+                            <span style={{color:T.text,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              {isMobile&&<span style={{color:T.text3}}>{fmt(new Date(sh.iso))} · </span>}
+                              {sh.blockName} {sh.start}–{sh.end}
+                              {sh.sick&&<span style={{color:T.warning}}> · {t('pay.sickTag')}</span>}
+                              {sh.noShow&&<span style={{color:T.danger}}> · {t('emp.noShow')}</span>}
+                            </span>
+                            {!isMobile&&<span style={{color:T.text3,textAlign:'right'}}>{sh.sick?sh.sickHours:sh.hours}h</span>}
+                            <span style={{color:T.text,textAlign:'right',fontWeight:600}}>{sh.sick?'':`${sh.hours}h`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{fontSize:11,color:T.text3,marginTop:12,lineHeight:1.5}}>{t('pay.disclaimer')}</div>
+                  </div>
+                )}
                 {openShiftsSection}
               </div>
             )}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { T, isDark, MEMBERSHIP_ROLE_COLORS } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 import { createOrg } from '../lib/org';
-import { saveOrgCurrency } from '../lib/data';
+import { saveOrgSetup } from '../lib/data';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
 
@@ -15,6 +15,13 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleThem
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName]             = useState('');
   const [currency, setCurrency]     = useState('');
+  // Defaults chosen to be the common case rather than blank: 16th-to-15th is
+  // what Almus runs, and a restaurant turning sick pay on almost always pays
+  // full. Someone who doesn't care can press Create and get sane values; the
+  // point of showing them is that they're now a deliberate choice rather than
+  // something discovered months later in Costs.
+  const [sickPay, setSickPay]       = useState('100');
+  const [payStart, setPayStart]     = useState('16');
   const [busy, setBusy]             = useState(false);
   const [error, setError]           = useState('');
   const [lang, setLangRaw]          = useState(()=>load('sa2_lang', detectLang()));
@@ -26,11 +33,16 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleThem
     setBusy(true); setError('');
     try {
       const id = await createOrg(name.trim());
-      // Best-effort — a failure here shouldn't block getting into the new
-      // restaurant at all, it just means the currency defaults to 'kr'
-      // (same as every existing org) until changed later from Costs.
-      saveOrgCurrency(id, (currency.trim() || DEFAULT_CURRENCY_FOR_LANG[lang] || 'kr')).catch(err=>console.error('Could not save org currency:',err));
-      setName(''); setCurrency(''); setShowCreate(false);
+      // Best-effort, deliberately: a failure here must not strand someone
+      // outside a restaurant that HAS been created. Every one of these has a
+      // sane column default and is editable later from Costs, so the worst case
+      // is defaults rather than a broken restaurant.
+      saveOrgSetup(id, {
+        currency: currency.trim() || DEFAULT_CURRENCY_FOR_LANG[lang] || 'kr',
+        sickPayPct: sickPay,
+        payPeriodStartDay: payStart,
+      }).catch(err=>console.error('Could not save restaurant setup:',err));
+      setName(''); setCurrency(''); setSickPay('100'); setPayStart('16'); setShowCreate(false);
       await onCreated(id);
     } catch(e) {
       setError(e.message || t('picker.createFailed'));
@@ -96,16 +108,49 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleThem
             </button>
           ) : (
             <div style={{padding:'16px 20px',borderRadius:14,background:T.surface,border:`1px solid ${T.border}`}}>
-              <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:12}}>{t('picker.newRestaurant')}</div>
-              <div style={{display:'flex',gap:8}}>
-                <input autoFocus placeholder={t('picker.namePlaceholder')} value={name} onChange={e=>setName(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&create()}
-                  style={{flex:1,padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}}
-                  disabled={busy}/>
-                <input placeholder={t('picker.currencyLabel')} title={t('picker.currencyLabel')} maxLength={5} value={currency} onChange={e=>setCurrency(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&create()}
-                  style={{width:72,padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}}
-                  disabled={busy}/>
+              <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:4}}>{t('picker.newRestaurant')}</div>
+              {/* These were settings you discovered later, buried in Costs, and
+                  a couple of them silently shape money — sick pay decides what a
+                  sick day costs, the pay period decides which month a shift is
+                  paid in. Asking once, at the point the restaurant is created,
+                  makes them a decision instead of a default someone inherits.
+                  All four keep working defaults, so pressing Create without
+                  touching them is still a valid path. */}
+              <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('picker.setupHint')}</div>
+
+              <div style={{display:'flex',flexDirection:'column',gap:12}}>
+                <div>
+                  <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.nameLabel')}</div>
+                  <input autoFocus placeholder={t('picker.namePlaceholder')} value={name} onChange={e=>setName(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&create()} style={{width:'100%',boxSizing:'border-box',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}} disabled={busy}/>
+                </div>
+
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <div style={{flex:'1 1 90px',minWidth:90}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.currencyLabel')}</div>
+                    <input placeholder={DEFAULT_CURRENCY_FOR_LANG[lang]||'kr'} maxLength={5} value={currency} onChange={e=>setCurrency(e.target.value)}
+                      onKeyDown={e=>e.key==='Enter'&&create()} style={{width:'100%',boxSizing:'border-box',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}} disabled={busy}/>
+                  </div>
+                  <div style={{flex:'1 1 120px',minWidth:120}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.sickPayLabel')}</div>
+                    <input type="number" min="0" max="100" step="1" value={sickPay}
+                      onChange={e=>setSickPay(e.target.value===''?'':String(Math.max(0,Math.min(100,Number(e.target.value)))))}
+                      onKeyDown={e=>e.key==='Enter'&&create()} style={{width:'100%',boxSizing:'border-box',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}} disabled={busy}/>
+                  </div>
+                  <div style={{flex:'1 1 120px',minWidth:120}}>
+                    <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.payPeriodLabel')}</div>
+                    {/* 1–28 only: the 29th, 30th and 31st don't exist in every
+                        month, so a period anchored there would fail to open in
+                        February. Same constraint the column carries. */}
+                    <input type="number" min="1" max="28" step="1" value={payStart}
+                      onChange={e=>setPayStart(e.target.value===''?'':String(Math.max(1,Math.min(28,Number(e.target.value)))))}
+                      onKeyDown={e=>e.key==='Enter'&&create()} style={{width:'100%',boxSizing:'border-box',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}} disabled={busy}/>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:T.text3,marginTop:-4}}>{t('picker.payPeriodHint',{day:payStart||'16'})}</div>
+              </div>
+
+              <div style={{display:'flex',gap:8,marginTop:16}}>
                 <button onClick={create} disabled={busy||!name.trim()}
                   style={{padding:'8px 16px',borderRadius:8,background:T.accent,color:'#fff',border:'none',cursor:'pointer',fontSize:13,fontFamily:'inherit',fontWeight:500,opacity:busy||!name.trim()?0.6:1}}>
                   {busy ? t('common.creating') : t('common.create')}

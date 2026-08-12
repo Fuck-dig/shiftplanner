@@ -186,6 +186,18 @@ None of this is user-visible. Do it when it stops a bug repeating, not for tidin
   single edit.
 - [ ] **`i18n.js` is 2634 lines with all five languages inline** — 2/10 — works fine, and the parity test protects it. Splitting per language would
   make diffs readable, but it's churn with no user-visible payoff.
+## UX and parity
+
+- [ ] **Org settings live in three places** — 3/10 — surfaced by building the
+  setup form on 11 Aug. Currency, sick pay and the pay period start are now
+  asked at creation, but afterwards they are edited from **Costs** (currency and
+  sick pay) with no home at all for the pay period start — you'd have to change
+  it in SQL. There is no "restaurant settings" screen; org-level things live
+  wherever they happen to be used, which was fine with one setting and isn't
+  with four. A small Settings panel (reachable from the Admin menu) that holds
+  the same four fields as the setup form would close it, and the setup form
+  could then literally be the same component.
+
 ## Someday
 
 - [ ] **Onboarding walkthrough / tutorial** — 3/10 — your idea,
