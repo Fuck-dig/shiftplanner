@@ -212,8 +212,7 @@ export default function CostsView({
           single number would be a worse answer than following the pattern. */}
       <div style={{display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
         <span style={{fontSize:11,color:T.text3}}>{t('cost.sickPayDefault')}</span>
-        <input type="number" min="0" max="100" step="1" value={orgSickPct??''} onChange={e=>{const v=e.target.value;setOrgSickPct(v===''?'':Math.max(0,Math.min(100,Number(v))));}} onBlur={e=>{if(e.target.value==='')setOrgSickPct(0);}} style={{width:52,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
-        <span style={{fontSize:11,color:T.text3}}>%</span>
+        <span style={{fontSize:12,color:T.text,fontWeight:500}}>{orgSickPct??'—'}%</span>
       </div>
     </div>
     {((costsMode!=='month'&&!schedule)||(costsMode==='month'&&!getMonthOffsets(displayMonth).some(off=>schedules[weekKey(off)])))?(<div style={{...s.card,textAlign:'center',padding:'52px 32px',position:'relative',overflow:'hidden'}}>
