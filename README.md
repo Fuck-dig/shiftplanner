@@ -46,6 +46,12 @@ identifiers, and it does not catch rules-of-hooks violations — a hook placed
 below an early `return` builds cleanly and white-screens in production. That
 has happened. `lint:ci` is the gate that catches it; run all three.
 
+For a long time this claim was half false: `lint:ci` gated on rules-of-hooks
+only, so undefined identifiers passed every check the project had. Two real
+ones shipped through it on 11 Aug before `no-undef` was added. If you narrow
+that config, keep both rules — they cover the two ways this codebase breaks at
+runtime rather than at build time.
+
 ## Layout
 
 ```

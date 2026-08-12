@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { activeOnly } from '../lib/schedule';
 import { T, DAYS, ROLE_COLOR_PALETTE, isDark } from '../lib/constants';
-import { weekKey, fmtLong, todayISO } from '../lib/dates';
+import { weekKey, fmtLong, todayISO, LOCALE } from '../lib/dates';
 import { fetchEmployees, fetchBlocks, fetchSchedules, fetchRoleStyles, updateShiftAssignment } from '../lib/data';
 import {LANGUAGES, makeT, detectLang} from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
@@ -53,6 +53,14 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     }).catch(err=>{ console.error('Kiosk load failed:', err); if(alive) setLoading(false); });
     return ()=>{ alive=false; };
   }, [orgId]);
+
+  // The kiosk is a wall-mounted device people clock in and out on, so the time
+  // it is showing IS the time being recorded. Ticking every 10s rather than
+  // every second: the display is HH:MM, so a per-second timer would re-render
+  // sixty times to change nothing, and 10s bounds the wrongness to under the
+  // minute it displays.
+  const [now,setNow]=useState(()=>new Date());
+  useEffect(()=>{ const iv=setInterval(()=>setNow(new Date()),10000); return ()=>clearInterval(iv); },[]);
 
   // Light polling — a shared device can sit open all day, and the schedule
   // (or who's in the roster) can change under it in the meantime.
@@ -144,6 +152,16 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
         <div style={{display:'flex',alignItems:'baseline',gap:9,flex:1,minWidth:0}}>
           <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:21,fontWeight:600,color:T.text,letterSpacing:'-0.02em'}}>Rorota</span>
           <span style={{fontSize:11,color:T.text3,fontWeight:500,letterSpacing:'0.03em',textTransform:'uppercase'}}>{orgName} · {t('kiosk.title')}</span>
+        </div>
+        {/* Big, and deliberately the most prominent thing in the bar. Someone
+            clocking in wants to see the time being recorded without walking up
+            to the screen. Tabular figures so the digits don't jitter as they
+            change width each minute. */}
+        <div style={{display:'flex',alignItems:'baseline',gap:10,marginRight:16}}>
+          <span style={{fontFamily:'Fraunces, Georgia, serif',fontSize:30,fontWeight:600,color:T.text,letterSpacing:'-0.01em',lineHeight:1,fontVariantNumeric:'tabular-nums'}}>
+            {String(now.getHours()).padStart(2,'0')}:{String(now.getMinutes()).padStart(2,'0')}
+          </span>
+          <span style={{fontSize:12,color:T.text3,whiteSpace:'nowrap'}}>{now.toLocaleDateString(LOCALE,{weekday:'short',day:'numeric',month:'short'})}</span>
         </div>
         <select value={lang} onChange={e=>setLang(e.target.value)} style={{fontFamily:'inherit',fontSize:12,color:T.text2,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'6px 8px',marginRight:10,cursor:'pointer',outline:'none'}}>{LANGUAGES.map(L=><option key={L.code} value={L.code}>{L.label}</option>)}</select>
         <button onClick={toggleTheme} style={{width:34,height:34,marginRight:10,borderRadius:8,border:`1px solid ${T.border}`,background:T.surface,color:T.text2,cursor:'pointer',fontSize:15,display:'flex',alignItems:'center',justifyContent:'center'}}>{isDark()?'☀':'☾'}</button>

@@ -1043,7 +1043,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
           {/* Pinned above the week itself — a shift anyone can claim is worth
               seeing before you start reading your own rota, and it's gone
               once someone else takes it. */}
-          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
+          <DayTimeline schedule={schedule} blocks={blocks} employees={employees} allRoles={allRoles} dayFilter={dayFilter} setDayFilter={setDayFilter} weekDates={weekDates} myId={myId} isMobile={isMobile} gridTight={gridTight} gridGroupBy={gridGroupBy} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
         </>) : (<>
 
 
@@ -1395,7 +1395,7 @@ function StaffInfoModal({ emp, isMe, roleStyles, roleColorFor, onClose, t }){
 // add/remove picker, no click-to-edit) and no staffing-coverage signal (no
 // "short by N" gaps or requirement counts — only ever shows who's actually
 // assigned, per the earlier decision to keep that manager-only information).
-function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridGroupBy, roleStyles, roleColorFor, s, t }){
+function DayTimeline({ schedule, blocks, employees, allRoles, dayFilter, setDayFilter, weekDates, myId, isMobile, gridTight, gridGroupBy, roleStyles, roleColorFor, s, t }){
   const [collapsedBlocks, setCollapsedBlocks] = useState({});
   const colorFor = (role) => roleStyles[role] || roleColorFor(role);
 
