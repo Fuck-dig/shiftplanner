@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly, scheduledCount, sickHoursFor, coversSlot, effectiveSickPct, calcSickCost } from '../lib/schedule';
-import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, saveOrgSickPct } from '../lib/data';
+import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, saveOrgSickPct, fetchOrgPaySettings, saveOrgSetup } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
@@ -14,6 +14,7 @@ import EmployeesView from './views/EmployeesView';
 import TimeOffView from './views/TimeOffView';
 import CoverageView from './views/CoverageView';
 import CostsView from './views/CostsView';
+import SettingsView from './views/SettingsView';
 import MonthView from './views/MonthView';
 import TeamView from './views/TeamView';
 import WeekView from './views/WeekView';
@@ -221,6 +222,28 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // currency. Starts null rather than 100 so the first render can't briefly
   // cost sick shifts at a rate this org never chose; the load effect fills it.
   const [orgSickPct,setOrgSickPct]=useState(null);
+  // Restaurant settings screen. Loaded lazily the first time it's opened rather
+  // than on every dashboard boot — nobody visits this daily.
+  const [orgSettings,setOrgSettings]=useState(null);
+  const [settingsSaving,setSettingsSaving]=useState(false);
+  const [settingsError,setSettingsError]=useState('');
+  useEffect(()=>{
+    if(view!=='settings'||orgSettings||!orgId) return;
+    fetchOrgPaySettings(orgId).then(setOrgSettings).catch(err=>{console.error(err);setSettingsError(err.message||'');});
+  },[view,orgId,orgSettings]);
+  const saveSettings=async(draft)=>{
+    setSettingsSaving(true); setSettingsError('');
+    try{
+      await saveOrgSetup(orgId,draft);
+      setOrgSettings(prev=>({...prev,...draft,sickPayPct:Number(draft.sickPayPct),payPeriodStartDay:Number(draft.payPeriodStartDay)}));
+      // Keep the rest of the dashboard in step — Costs reads both of these.
+      setHourlyRateRaw(p=>({...p,currency:draft.currency||p.currency}));
+      setOrgSickPct(Number(draft.sickPayPct));
+    }catch(e){
+      // The owner-only trigger surfaces here for a manager who tried anyway.
+      setSettingsError(e.message||t('save.failedGeneric'));
+    }finally{ setSettingsSaving(false); }
+  };
   const dSickPct=useMemo(()=>mkDebounce(v=>saveOrgSickPct(orgId,v),'sickpct'),[orgId]);
   const setOrgSickPctAndSave=v=>{ setOrgSickPct(v); if(orgId&&v!==''&&v!=null) dSickPct(Number(v)); };
 
@@ -1539,7 +1562,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // small section label) since everything there is already behind the
   // hamburger, so a second layer of nesting would just add taps.
   const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'profile',l:t('nav.profile')}];
-  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')}];
+  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'settings',l:t('nav.settings')}];
   const mobileNavItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},...adminNavItems,{k:'profile',l:t('nav.profile')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
@@ -2142,6 +2165,14 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 )}
 
 {/* COSTS */}
+{view==='settings'&&(
+  <SettingsView
+    orgName={orgName} isOwner={isOwner} settings={orgSettings}
+    onSave={saveSettings} saving={settingsSaving} error={settingsError}
+    s={s} t={t}
+  />
+)}
+
 {view==='costs'&&(
   <CostsView
     costsMode={costsMode} setCostsMode={setCostsMode} costsWeekOffset={costsWeekOffset} setCostsWeekOffset={setCostsWeekOffset} displayMonth={displayMonth} schedules={schedules} schedule={costsSchedule} weekDates={costsWeekDates}
