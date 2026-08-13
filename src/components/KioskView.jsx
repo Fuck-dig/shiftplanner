@@ -39,6 +39,8 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const verifySeq   = useRef(0);
   // Deferred "wrong PIN". See runVerify.
   const wrongTimer  = useRef(null);
+  // Fires the check once typing PAUSES, rather than on every keystroke.
+  const checkTimer  = useRef(null);
   const [busy, setBusy]                   = useState(false);
   const idleTimer = useRef(null);
 
@@ -93,7 +95,7 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const roleColorFor = (role) => ROLE_COLOR_PALETTE[hashRole(role)%ROLE_COLOR_PALETTE.length];
 
   const selectEmployee = (emp) => {
-    clearTimeout(wrongTimer.current); verifySeq.current++;
+    clearTimeout(wrongTimer.current); clearTimeout(checkTimer.current); verifySeq.current++;
     setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false); setPinLocked(0);
   };
 
@@ -129,15 +131,31 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     }
   };
 
+  // WHY THE DELAY, having just removed the OK button.
+  //
+  // The first version checked on every keystroke from the fourth digit. That
+  // signs you in the instant the last digit lands, and it was wrong: a SIX
+  // digit PIN fires three checks, and when the PIN is wrong all three COUNT.
+  // The five-attempt lockout was then spent in under two entries, and could
+  // trip while somebody was still typing. The original reasoning only followed
+  // the happy path — a correct PIN resets the counter, so the extra checks
+  // were free there and only there.
+  //
+  // Waiting for a pause makes it one check per entry, which is what the
+  // lockout was designed around. 450ms is long enough to sit between two
+  // digits typed by somebody who knows their PIN, and short enough that
+  // finishing still feels immediate.
   const pressDigit = (d) => {
     if (pinLocked > 0) return;
     const next = (pinDigits + d).slice(0, 8);
     setPinDigits(next);
     setPinError(false);
     clearTimeout(wrongTimer.current);
-    if (next.length >= 4) runVerify(next);
+    clearTimeout(checkTimer.current);
+    if (next.length >= 8) runVerify(next);                    // nothing longer can come
+    else if (next.length >= 4) checkTimer.current = setTimeout(()=>runVerify(next), 450);
   };
-  const backspace = () => { clearTimeout(wrongTimer.current); verifySeq.current++; setPinDigits(p=>p.slice(0,-1)); };
+  const backspace = () => { clearTimeout(wrongTimer.current); clearTimeout(checkTimer.current); verifySeq.current++; setPinDigits(p=>p.slice(0,-1)); };
 
   // Physical keyboard support for the PIN pad — most "shared kiosk device"
   // setups are a plain laptop/PC rather than a touchscreen, so typing the
