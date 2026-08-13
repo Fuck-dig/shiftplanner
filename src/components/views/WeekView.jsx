@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
-import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange, swapTimes } from '../../lib/schedule';
+import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange, swapTimes, shouldShowRoleRow } from '../../lib/schedule';
 import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots, TimePicker } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
@@ -448,7 +448,15 @@ export default function WeekView({
           </tr></thead>
           <tbody>
             {allRoles.map(role=>{
-              const anyDay=filterDays.some(day=>{const r=getBlockRoles(block,day)[role]||0,g=(schedule[day]?.[block.id]||[]).filter(a=>a.role===role).length;return r>0||g>0;});
+              // An open shift is a third reason this row must exist — see
+              // shouldShowRoleRow. It lives in shift_swaps, so it is neither
+              // required nor assigned, and the row that would have drawn it
+              // was skipped.
+              const anyDay=filterDays.some(day=>shouldShowRoleRow({
+                required: getBlockRoles(block,day)[role]||0,
+                assigned: (schedule[day]?.[block.id]||[]).filter(a=>a.role===role).length,
+                openShifts: openShiftsFor?openShiftsFor(day,block.id,role).length:0,
+              }));
               if(!anyDay)return null;
               const rs=roleStyles[role]||DEFAULT_ROLE_STYLES.Other;
               return(<tr key={role} style={{borderBottom:`1px solid ${T.border}`}}>
