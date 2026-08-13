@@ -20,7 +20,6 @@ export default function MessageThreadModal({ message, viewerIsManager, myLabel, 
     if (viewerIsManager) markMessageSeenByManager(message.id).catch(()=>{});
     else if (!message.read) markMessageRead(message.id).catch(()=>{});
     return () => { alive = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [message.id]);
 
   // While this thread is open, a reply from the other side appears without

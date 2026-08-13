@@ -20,6 +20,18 @@ been left alone.
 
   Four attempts, and the first three are the lesson. Hardcoded to blocks[0]; then a free picker, which let you create the same contradiction deliberately; then derived from the start time, which was self-consistent but moved the service under you as you typed and left the block un-choosable. Each fix addressed the symptom William had just described rather than the shape of the thing - the state was reachable, so it kept being reached. Constraining the input is what finally removed it. `blockForTime()` and its nine tests were deleted in the same commit: an exported helper implying a rule the app no longer follows is worse than no helper.
 
+### Cleanup pass 1 — dead code and drift (13 Aug)
+
+- **The whole week/month nav bar existed twice** - Dashboard and EmployeeView each carried ~25 lines of identical branching for the same `‹ date › [Today]` control, differing only in font size and padding: two visual treatments nobody chose. The branching is the part that mattered - the arrows mean three different things depending on `calMode`, with "isolated day" a fourth state on top - so a change had to be made in both files or the manager's schedule and the staff schedule would disagree about what "previous" means for the same restaurant in the same week. Now `PeriodNav`, with the three-way branch extracted further into `lib/period.js` (`periodUnit`, `stepMonth`) so it is finally testable: 6 new tests, all three mutations caught.
+
+- **Seven eslint-disable directives suppressing rules that no longer fire** - removed. The reasoning in the comments was kept where it explains the code rather than the suppression; one comment read "the two eslint-disables below" above three of them, which is how stale it was. `lint:ci` now reports zero errors AND zero warnings for the first time.
+
+- **Two constants exported for no reason** (`MIN_REST_MINUTES`, `pushSupported`) - both only ever used inside their own module. Downgraded to module-private rather than left as public surface nobody consumes.
+
+- **Two lib functions passed to TeamView as props** - Dashboard imported `assignmentHours` and `actualAssignmentHours` and handed them down, while TeamView already imported six other helpers from the same module. TeamView now imports its own; `assignmentHours` turned out to be passed but never used at all.
+
+- **`swapTimes` tests living in `sickPay.test.js`** - moved to `openShift.test.js`. A test file named after one feature and containing another is how you end up deleting the wrong thing.
+
 - **The open-shift dialog was taller than the screen (severity 2/10)** - it rendered one row per block, each with its own Add button, so the custom-hours option sat below the fold and you were asked to commit before you had seen it. Now four short choices - day, role, service, hours - and ONE action, in the footer beside Cancel where the other actions already were. "Whole service" and "Custom" are a two-way toggle over the same state (no stored times IS "whole service"), so they cannot disagree; a shift left on the whole service still follows the block if its hours are edited later.
 
 - **"Add" and "Done" on a dialog that was updating an existing shift (severity 2/10)** - the open-shift dialog does double duty for posting and editing, and only the title changed. Now the action reads Update and the escape hatch reads Cancel when editing.

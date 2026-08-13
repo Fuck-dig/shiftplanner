@@ -15,7 +15,7 @@ function urlBase64ToUint8Array(base64String){
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-export const pushSupported = () =>
+const pushSupported = () =>
   typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof window !== 'undefined' && 'PushManager' in window;
 
 // One of 'unsupported' | 'denied' | 'subscribed' | 'not-subscribed' — the

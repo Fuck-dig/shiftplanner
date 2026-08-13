@@ -179,6 +179,7 @@ Things the manager has that staff do not, and vice versa.
   At 3 users that trade probably isn't worth it; worth revisiting when a broken
   preview would actually cost something. Documented in `DEPLOYING.md` so it's a
   known trade rather than a surprise.
+- [x] **DONE 13 Aug — seven stale eslint-disable directives** — the rules stopped firing; `lint:ci` is now clean of both errors and warnings.
 - [ ] **Two `react-hooks/set-state-in-effect` errors** — 3/10 — `App.jsx:73` and `Dashboard.jsx:216`. Real React warnings about cascading
   renders, not lint noise. Left deliberately because both are load-bearing
   bootstrap effects; `lint:ci` still passes because its config gates on the
