@@ -23,6 +23,7 @@ import { isInRange } from './payPeriod';
 // hours — that's what makes this answer "what will I earn this period" rather
 // than only "what have I earned so far". `upcoming` is returned separately so
 // the UI can say how much of the total is still an estimate.
+
 // The shared walk: every shift one person has inside a date range, summed.
 //
 // Extracted on 13 Aug because the manager's Costs tab and the staff pay card
@@ -54,7 +55,6 @@ export function collectShiftsInRange({ schedules, blocks, empId, range, todayISO
       const date = new Date(monday); date.setDate(monday.getDate() + di);
       const iso = dateToISO(date);
       if (!isInRange(iso, range)) return;
-
 
       for (const [blockId, list] of Object.entries(sched[day] || {})) {
         const block = blockById.get(blockId);

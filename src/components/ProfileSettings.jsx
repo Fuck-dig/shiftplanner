@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES, isDark } from '../lib/constants';
 import { supabase } from '../lib/supabase';
-import { Btn, TimePicker, Toggle } from './ui';
+import { effectiveHourlyRate, effectiveSickPct } from '../lib/schedule';
+import { LOCALE } from '../lib/dates';
+import { Btn, TimePicker, Toggle, RoleBadge } from './ui';
 import {getPushStatus, subscribeToPush, unsubscribeFromPush} from '../lib/push';
 
 const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true };
@@ -11,7 +13,7 @@ const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:tru
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, onSavePushPrefs, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
+export default function ProfileSettings({ role, myEmp, myEmail, orgId, currency, orgSickPct, roleStyles, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, onSavePushPrefs, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
@@ -112,10 +114,28 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
       <div style={s.card}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.title')}</div>
 
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
-          <span style={{fontSize:12,color:T.text3}}>{t('profile.role')}</span>
+        {/* Two different things that were both called "role", which is why this
+            was confusing — and "Manager" is BOTH, which is the sharp edge.
+            Everywhere else in Rorota a role is a JOB role: shift roles, role
+            colours, Cost by role, the badges on every grid. Profile was the one
+            screen where it meant access level, so Profile is what changes.
+
+            Access is still shown, because it explains why someone sees what
+            they see — just no longer under a name that means something else. */}
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,color:T.text3,minWidth:56}}>{t('profile.access')}</span>
           <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,background:isDark()?rc.text+'22':rc.bg,color:rc.text,border:`1px solid ${isDark()?rc.text+'44':rc.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
+          <span style={{fontSize:11,color:T.text3}}>{t('profile.accessHint')}</span>
         </div>
+        {myEmp && (
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+            <span style={{fontSize:12,color:T.text3,minWidth:56}}>{t('emp.roles')}</span>
+            {(myEmp.roles||[]).length
+              ? (myEmp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles?.[r]}/>)
+              : <span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('profile.noRoles')}</span>}
+            <span style={{fontSize:11,color:T.text3}}>{t('profile.rolesHint')}</span>
+          </div>
+        )}
 
         {myEmp ? (<>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:18,marginBottom:18}}>
@@ -210,6 +230,61 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, onGoToEmp
           email. Employees get a read-only view of their own week (mirrors
           the nameLocked/emailLocked pattern above); managers/owners still
           get the full editable card, same as before. */}
+      {/* Your own pay terms, read-only.
+          Readable at all because of one narrowly-scoped policy letting a person
+          SELECT their own `employee_wages` row (20260811140000) — they can see
+          their rate, not set it, and cannot see a colleague's. Absent entirely
+          when no wage has been entered, rather than showing a row of zeroes
+          that looks like a claim about what someone earns.
+          The rate is the terms; the pay CARD on the schedule is what those
+          terms come to this period. Kept apart deliberately. */}
+      {myEmp && effectiveHourlyRate(myEmp) != null && (
+        <div style={s.card}>
+          <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:4}}>{t('profile.payTitle')}</div>
+          <div style={{fontSize:12,color:T.text2,marginBottom:14}}>{t('profile.paySubtitle')}</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(150px, 1fr))',gap:12}}>
+            <div style={{padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>
+                {(myEmp.contractType||'hourly')==='hourly'?t('emp.hourlyRate'):t('emp.monthlySalary')}
+              </div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,fontWeight:500,color:T.text}}>
+                {currency||''} {Number(myEmp.wage||0).toLocaleString(LOCALE)}
+              </div>
+              <div style={{fontSize:11,color:T.text3,marginTop:2}}>
+                {(myEmp.contractType||'hourly')==='hourly'?t('profile.perHour'):t('profile.perMonth')}
+              </div>
+            </div>
+            {/* A salaried person's shifts are costed at an hourly equivalent, so
+                showing the derived figure explains why the pay card's arithmetic
+                looks the way it does. Hourly staff would just see their own
+                number twice, so it's hidden for them. */}
+            {(myEmp.contractType||'hourly')!=='hourly' && (
+              <div style={{padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+                <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('profile.hourlyEquiv')}</div>
+                <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,fontWeight:500,color:T.text}}>
+                  {currency||''} {Math.round(effectiveHourlyRate(myEmp)).toLocaleString(LOCALE)}
+                </div>
+                <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.hourlyEquivSub',{h:myEmp.maxHours??40})}</div>
+              </div>
+            )}
+            <div style={{padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('cost.sickPayDefault')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,fontWeight:500,color:T.text}}>
+                {effectiveSickPct(myEmp, orgSickPct)}%
+              </div>
+              <div style={{fontSize:11,color:T.text3,marginTop:2}}>
+                {myEmp.sickPayPct==null?t('profile.sickInherited'):t('profile.sickOwn')}
+              </div>
+            </div>
+            <div style={{padding:'12px 14px',borderRadius:10,background:T.surfaceWarm,border:`1px solid ${T.border}`}}>
+              <div style={{fontSize:10,fontWeight:600,color:T.text3,textTransform:'uppercase',letterSpacing:'0.07em',marginBottom:6}}>{t('emp.maxHours')}</div>
+              <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:20,fontWeight:500,color:T.text}}>{myEmp.maxHours??40}h</div>
+              <div style={{fontSize:11,color:T.text3,marginTop:2}}>{t('profile.perWeek')}</div>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:T.text3,fontStyle:'italic',marginTop:12}}>{t('profile.payLocked')}</div>
+        </div>
+      )}
       {myEmp && isEmployee && (
         <div style={s.card}>
           <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('emp.weeklyAvail')}</div>

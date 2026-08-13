@@ -2212,7 +2212,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 
 {/* PROFILE */}
 {view==='profile'&&(
-  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} orgId={orgId} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
+  <ProfileSettings role={role} myEmp={me} myEmail={myEmail} orgId={orgId} currency={hourlyRate.currency} orgSickPct={orgSickPct} roleStyles={roleStyles} onGoToEmployees={()=>setView('employees')} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
 )}
 
       </div>
