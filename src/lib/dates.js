@@ -87,6 +87,26 @@ export function toMin(t){
   const [h,m] = t.split(':').map(Number); return h*60+m;
 }
 
+// Is 'HH:MM' inside the window min..max, both ends inclusive?
+//
+// A window whose end reads as earlier than its start (Dinner, 16:30–00:00) is
+// taken to cross midnight, and a time earlier than the start is tried again a
+// day later — so 23:00 is inside 18:00–02:00 and so is 01:00.
+//
+// Both ends are inclusive because a block's own closing time has to be
+// selectable, or "the whole of Dinner" would be unsayable.
+//
+// Used to fence a shift's custom hours to the service it belongs to, so
+// "Lunch, 18:00" is not a state the interface can produce.
+export function withinWindow(t, min, max){
+  if(!min||!max) return true;
+  if(typeof t!=='string') return false;
+  const s0=toMin(min); let e0=toMin(max); if(e0<=s0) e0+=1440;
+  let v=toMin(t); if(!Number.isFinite(v)) return false;
+  if(v<s0) v+=1440;
+  return v>=s0 && v<=e0;
+}
+
 export function getMonthOffsets(ym){
   // ym can be {y,m} object or a weekOffset number (legacy)
   const ref = typeof ym==='object' ? new Date(ym.y, ym.m, 15) : getMondayDate(ym);

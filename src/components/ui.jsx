@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 import { T, pal, initials, isDark, DEFAULT_ROLE_STYLES } from "../lib/constants";
-import { dateToISO, LOCALE } from "../lib/dates";
+import { dateToISO, LOCALE, withinWindow } from "../lib/dates";
 
 
 // Full-screen "loading" splash. Was copy-pasted identically into App.jsx,
@@ -172,7 +172,11 @@ export function AddRoleInline({onAdd,t}){
 // modal (the same pattern used elsewhere in the app for pickers, since
 // anchored popovers kept getting stranded on scroll) with two scrollable
 // hour/minute columns instead.
-export function TimePicker({value,onChange,small}){
+// `min`/`max` (optional, 'HH:MM') fence the picker to a window — used to keep
+// a shift's custom hours inside the block it belongs to, so "Lunch, 18:00" is
+// not a state the UI can produce in the first place. A window whose end reads
+// as earlier than its start (Dinner, 16:30–00:00) is taken to cross midnight.
+export function TimePicker({value,onChange,small,min,max}){
   const [open,setOpen]=useState(false);
   const hourRef=useRef(null),minRef=useRef(null);
   const [hh,mm]=(value||'00:00').split(':');
@@ -188,6 +192,8 @@ export function TimePicker({value,onChange,small}){
   if(lastValue!==incoming){ setLastValue(incoming); setText(incoming); }
   const hours=Array.from({length:24},(_,i)=>String(i).padStart(2,'0'));
   const minutes=['00','05','10','15','20','25','30','35','40','45','50','55'];
+  const inWindow=(hhmm)=>withinWindow(hhmm,min,max);
+  const hourOk=(h)=>minutes.some(mi=>inWindow(`${h}:${mi}`));
   useEffect(()=>{
     if(!open)return;
     document.body.style.overflow='hidden';
@@ -197,8 +203,8 @@ export function TimePicker({value,onChange,small}){
     },0);
     return ()=>{ clearTimeout(t); document.body.style.overflow=''; };
   },[open]);
-  const col=(items,current,pick,ref)=><div ref={ref} style={{flex:1,overflowY:'auto',padding:'6px 4px'}}>
-    {items.map(v=>(<div key={v} data-sel={v===current?'true':undefined} onClick={()=>pick(v)} style={{padding:'7px 0',textAlign:'center',fontSize:15,fontWeight:v===current?700:400,color:v===current?'#fff':T.text,background:v===current?T.accent:'transparent',cursor:'pointer',borderRadius:8,margin:'0 4px'}}>{v}</div>))}
+  const col=(items,current,pick,ref,ok=()=>true)=><div ref={ref} style={{flex:1,overflowY:'auto',padding:'6px 4px'}}>
+    {items.map(v=>{const usable=ok(v);return(<div key={v} data-sel={v===current?'true':undefined} onClick={()=>{if(usable)pick(v);}} style={{padding:'7px 0',textAlign:'center',fontSize:15,fontWeight:v===current?700:400,color:v===current?'#fff':T.text,background:v===current?T.accent:'transparent',cursor:usable?'pointer':'default',opacity:usable?1:0.25,borderRadius:8,margin:'0 4px'}}>{v}</div>);})}
   </div>;
   const commitText=raw=>{
     const m=raw.trim().match(/^(\d{1,2}):?(\d{0,2})$/);
@@ -206,6 +212,8 @@ export function TimePicker({value,onChange,small}){
     let h=parseInt(m[1],10), mi=m[2]===''?0:parseInt(m[2],10);
     if(isNaN(h)||h<0||h>23||isNaN(mi)||mi<0||mi>59){ setText(`${hh}:${mm}`); return; }
     const nv=`${String(h).padStart(2,'0')}:${String(mi).padStart(2,'0')}`;
+    // Typing is the back door round the greyed-out columns, so it is fenced too.
+    if(!inWindow(nv)){ setText(`${hh}:${mm}`); return; }
     setText(nv);
     if(nv!==`${hh}:${mm}`)onChange(nv);
   };
@@ -222,9 +230,9 @@ export function TimePicker({value,onChange,small}){
             <button onClick={()=>setOpen(false)} style={{border:'none',background:'none',cursor:'pointer',color:T.accent,fontSize:13,fontWeight:500,fontFamily:'inherit'}}>Done</button>
           </div>
           <div style={{display:'flex',flex:1,minHeight:0,borderTop:`1px solid ${T.border}`}}>
-            {col(hours,hh,v=>onChange(`${v}:${mm}`),hourRef)}
+            {col(hours,hh,v=>onChange(`${v}:${mm}`),hourRef,hourOk)}
             <div style={{width:1,background:T.border}}/>
-            {col(minutes,mm,v=>onChange(`${hh}:${v}`),minRef)}
+            {col(minutes,mm,v=>onChange(`${hh}:${v}`),minRef,v=>inWindow(`${hh}:${v}`))}
           </div>
         </div>
       </div>

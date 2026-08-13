@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE, getMonthOffsets, getWeekDates, weekKey } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes, blockForTime } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots, SectionLabel, TimePicker } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -22,14 +22,20 @@ export default function TeamView({
   const [dragRole,setDragRole]=useState(null);
   const [dragOverRole,setDragOverRole]=useState(null);
   // Which day's "post an open shift" picker is open. Team rows are per-PERSON,
-  // so unlike the Week grid the cell implies no ROLE — that one has to be asked
-  // for. The block does not: it is read from the hours (blockForTime).
+  // so unlike the Week grid the cell implies neither a ROLE nor a BLOCK —
+  // both are asked for.
   // {day, date, weekOffset, weekKey} — not just a day name, because the dialog
   // spans a whole month and the target week has to travel with the selection.
   const [openShiftDay,setOpenShiftDay]=useState(null);
   const [openShiftMonth,setOpenShiftMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [openShiftRole,setOpenShiftRole]=useState(null);
   const [openShiftTimes,setOpenShiftTimes]=useState(null);
+  const [openShiftBlock,setOpenShiftBlock]=useState(null);   // which service a custom-hours shift trims
+  // The role last chosen while POSTING. Editing a shift sets openShiftRole to
+  // that shift's role, and with nowhere separate to keep this, the next post
+  // inherited it — which is why posting defaulted to "Other" after an "Other"
+  // shift had been edited. Stickiness is wanted; inheriting from an edit is not.
+  const lastPostRole=useRef(null);
   // Every date in the shown month, tagged with the week it belongs to.
   const openShiftDays=getMonthOffsets(openShiftMonth)
     .flatMap(off=>getWeekDates(off).map((date,di)=>({date,day:DAYS[di],weekOffset:off,weekKey:weekKey(off)})))
@@ -44,6 +50,7 @@ export default function TeamView({
     const date=weekDates[di];
     setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
     setOpenShiftRole(sw.role);
+    setOpenShiftBlock(sw.blockId);
     setOpenShiftTimes(sw.start&&sw.end?{start:sw.start,end:sw.end}:null);
     setEditingOpenShift(sw);
     setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
@@ -51,7 +58,8 @@ export default function TeamView({
   const openPostDialog=(dayName,di)=>{
     const date=weekDates[di];
     setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
-    setOpenShiftRole(r=>r||allRoles[0]||null);
+    setOpenShiftRole(lastPostRole.current||allRoles[0]||null);
+    setOpenShiftBlock(null);
     setOpenShiftTimes(null);
     setEditingOpenShift(null);
     setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
@@ -204,7 +212,7 @@ export default function TeamView({
         // The block follows the start time unless the manager has overridden
         // it. Typing 18:00 puts the shift in Dinner without anyone being asked
         // — the hours already say which service it is part of.
-        const customBlock=blockForTime(times.start,blocks)||home;
+        const customBlock=blocks.find(x=>x.id===openShiftBlock)||home;
         const customBlockId=customBlock?.id;
         const editing=editingOpenShift;
         const post=(blockId,start,end)=>{
@@ -246,7 +254,7 @@ export default function TeamView({
             <div style={{padding:'0 18px 10px',flexShrink:0}}>
               <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
                 {allRoles.map(r=>{const rs=roleStyles[r]||DEFAULT_ROLE_STYLES.Other,active=openShiftRole===r;return(
-                  <button key={r} onClick={()=>setOpenShiftRole(r)} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
+                  <button key={r} onClick={()=>{setOpenShiftRole(r);if(!editing)lastPostRole.current=r;}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
               </div>
             </div>
             <div style={{overflowY:'auto',padding:'0 10px 6px',flex:1,minHeight:0}}>
@@ -258,41 +266,43 @@ export default function TeamView({
                   </div>
                   {/* No times passed: the shift means "the block's hours", and
                       stays correct if the block is edited later. */}
-                  <Btn small variant="secondary" onClick={()=>post(b.id)}>{t('emp.addShiftBtn')}</Btn>
+                  <Btn small variant="secondary" onClick={()=>post(b.id)}>{editing?t('common.update'):t('emp.addShiftBtn')}</Btn>
                 </div>
               ))}
               {home&&(
                 <div style={{padding:'10px',borderRadius:8,borderTop:`1px solid ${T.border}`,marginTop:4}}>
                   <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:8}}>{t('emp.customTime')}</div>
-                  {/* The block is READ from the hours, and cannot be set
-                      against them.
+                  {/* Fourth version of this row, and the first that cannot
+                      express a contradiction.
 
-                      Three versions of this. It was hardcoded to blocks[0], so
-                      "Waiter, 18:00–22:00" silently filed itself under Lunch.
-                      Then it was a picker, on the reasoning that an open shift
-                      has to belong to a block (coverage and claiming are keyed
-                      on one) so the app should ask rather than guess. But the
-                      hours are not a guess — they say which service it is —
-                      and a picker that can disagree with them exists only to
-                      let someone file 18:00–22:00 under Lunch by hand. That is
-                      the bug, offered as a feature.
+                      It was hardcoded to blocks[0], so "Waiter, 18:00–22:00"
+                      filed itself under Lunch. Then a free picker, which let
+                      you do the same thing deliberately. Then the block was
+                      derived from the start time, which was consistent but
+                      meant the service moved under you as you typed.
 
-                      So it is stated, not chosen. Change the times and the
-                      service follows. */}
+                      Now the block is chosen FIRST and the hours are fenced to
+                      it: pick Lunch (10:00–16:00) and 18:00 is not selectable.
+                      Custom hours are for trimming a service — a short shift
+                      inside dinner — not for inventing one that spans two. */}
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
+                    {blocks.map(b=>{const on=customBlock?.id===b.id;return(
+                      <button key={b.id} onClick={()=>{setOpenShiftBlock(b.id);setOpenShiftTimes({start:b.start,end:b.end});}} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:on?600:400,background:on?T.accentLight:'transparent',color:on?T.accent:T.text2,border:`1px solid ${on?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>);})}
+                  </div>
                   <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    <TimePicker small value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
+                    <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
                     <span style={{fontSize:11,color:T.text3}}>–</span>
-                    <TimePicker small value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
-                    <Btn small variant="secondary" onClick={()=>post(customBlockId,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
+                    <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
+                    <Btn small variant="secondary" onClick={()=>post(customBlockId,times.start,times.end)}>{editing?t('common.update'):t('emp.addShiftBtn')}</Btn>
                   </div>
                   {customBlock&&(
-                    <div style={{fontSize:11,color:T.text3,marginTop:8}}>{t('open.landsIn',{block:customBlock.name})}</div>
+                    <div style={{fontSize:11,color:T.text3,marginTop:8}}>{t('open.within',{from:customBlock.start,to:customBlock.end})}</div>
                   )}
                 </div>
               )}
             </div>
             <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0,display:'flex',gap:8,alignItems:'center'}}>
-              <Btn variant="ghost" onClick={()=>{setOpenShiftDay(null);setEditingOpenShift(null);}}>{t('common.done')}</Btn>
+              <Btn variant="ghost" onClick={()=>{setOpenShiftDay(null);setEditingOpenShift(null);}}>{editing?t('common.cancel'):t('common.done')}</Btn>
               {editing&&cancelOpenShift&&(
                 <Btn variant="danger" small onClick={()=>{cancelOpenShift(editing);setOpenShiftDay(null);setEditingOpenShift(null);}}>{t('open.cancel')}</Btn>
               )}

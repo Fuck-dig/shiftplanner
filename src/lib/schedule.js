@@ -86,49 +86,6 @@ export function swapTimes(sw, block){
   };
 }
 
-// Which block a shift starting at `time` belongs to.
-//
-// An open shift has to live in a block — coverage, claiming and the row it
-// draws in are all keyed on one. When a manager types custom hours the block
-// used to be whatever the picker happened to be showing, so an 18:00–22:00
-// waiter shift filed itself under Lunch (10:00–16:00): the right hours in a
-// visibly wrong row, sitting under a heading that contradicted it. The start
-// time already says where the shift belongs, so read it from there instead of
-// making someone answer a question the data has already answered.
-//
-// Blocks that run past midnight (Dinner 16:30–00:00) are normalised by pushing
-// the end into the next day, and an early-morning time is also tried against
-// the previous day's span, so 01:00 lands in Dinner rather than nowhere.
-//
-// If several blocks contain the time the latest-starting one wins — it is the
-// tightest fit. If none do, because the time sits in a gap between blocks, the
-// most recent block to have started is used: 16:10 stays in Lunch rather than
-// being thrown to whichever block happens to be first in the list.
-export function blockForTime(time, blocks){
-  // toMin does not defend itself against a non-string, so nothing reaches it
-  // that isn't one.
-  const mins=(v)=>typeof v==='string'?toMin(v):NaN;
-  const spans=(blocks||[]).filter(b=>b&&b.start&&b.end).map(b=>{
-    const s=mins(b.start); let e=mins(b.end); if(e<=s) e+=1440;
-    return { b, s, e };
-  }).filter(x=>Number.isFinite(x.s)&&Number.isFinite(x.e));
-  if(!spans.length) return null;
-
-  const latest=(list)=>list.reduce((best,x)=>x.s>best.s?x:best).b;
-  const t=mins(time);
-  if(!Number.isFinite(t)) return spans[0].b;
-
-  const inside=spans.filter(({s,e})=>(t>=s&&t<e)||(t+1440>=s&&t+1440<e));
-  if(inside.length) return latest(inside);
-
-  const started=spans.filter(({s})=>s<=t);
-  if(started.length) return latest(started);
-
-  // Before the day's first block starts — the earliest one is the only
-  // sensible home.
-  return spans.reduce((best,x)=>x.s<best.s?x:best).b;
-}
-
 // A sick shift is still an unfilled slot. Coverage counts what will actually
 // be staffed, so a shift nobody is turning up for must read as a gap — that's
 // the operationally useful half of marking someone sick, and it is separate
