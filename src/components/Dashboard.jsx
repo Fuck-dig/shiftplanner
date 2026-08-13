@@ -2146,7 +2146,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     addToSlot={addToSlot} closePicker={closePicker} empHours={empHours} allRoles={allRoles} reorderRoles={reorderRoles} handleEmptySlotClick={handleEmptySlotClick} openPickerFor={openPickerFor}
     removeFromSlot={removeFromSlot} gridGroupBy={gridGroupBy} setGridGroupBy={setGridGroupBy} gridTight={gridTight} setGridTight={setGridTight} search={gridSearch}
     currency={hourlyRate.currency}
-    openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
+    openShiftsFor={openShiftsFor} postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift} editOpenShift={editOpenShift}
     dropAssignment={dropAssignment}
     s={s} t={t}
   />
