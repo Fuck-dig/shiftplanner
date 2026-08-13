@@ -86,6 +86,34 @@ But "it's a small change" is what everyone says right before the small change
 white-screens the app — and the small change *is* what white-screened the app
 on 3 August (a hook below an early return).
 
+## Turning on error monitoring
+
+Rorota reports crashes to Sentry, but only if a DSN is present **at build time**.
+
+1. Create a Sentry project **in the EU region** — the region is baked into the
+   DSN (it will contain `ingest.de.sentry.io`), and there is no setting to
+   change it afterwards. This matters: the reports concern a Danish
+   restaurant's employees, and keeping them in the EU is part of the same
+   obligation as the DPA.
+2. In Vercel → Settings → Environment Variables, add `VITE_SENTRY_DSN` for
+   Production (and Preview, if you want preview crashes too).
+3. **Redeploy.** Vite inlines `import.meta.env` when it builds, so the variable
+   has no effect on the bundle already deployed. Adding it and not redeploying
+   reports nothing and looks exactly like everything working.
+
+To confirm it is live: the built `index-*.js` should contain the string
+`sentry`. With no DSN it is not in the bundle at all — that is deliberate, and
+worth 29 kB gzip.
+
+### What is deliberately not sent
+
+`scrubEvent` in `src/lib/monitoring.js` runs on every event and every
+breadcrumb, and is unit tested. Wages, names, phone numbers, sick-pay
+percentages and email addresses are redacted; performance tracing and session
+replay are switched off entirely, because both would carry a screen full of
+exactly that. A crash report may say what broke and where, never who it
+happened to or what they earn.
+
 ## After any migration that adds a table
 
 Run this in the SQL editor:

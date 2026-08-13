@@ -60,10 +60,39 @@ belonging to somebody who is not you.
   data processing agreement with each restaurant. **Not something to take from
   me** — this one needs an actual lawyer.
 
-- [ ] **Error monitoring** — 7/10 — there is none. Today that is survivable
-  because you are the only user and you notice. With a customer, a white screen
-  at 18:00 on a Friday is something you learn about on Monday, from them, with
-  no stack trace. The 6 Aug outage was found because you happened to look.
+- [x] **DONE 13 Aug — error monitoring (needs your DSN to switch on)** — was
+  7/10. Sentry wired in: `initMonitoring()` before render in `main.jsx`, and the
+  ErrorBoundary now REPORTS rather than only writing to a console nobody reads
+  on a customer's laptop. `src/lib/monitoring.js`.
+  Privacy is enforced in code, not by policy: `scrubEvent` redacts wages, names,
+  phones, sick-pay percentages and emails from every event and breadcrumb, and
+  tracing plus session replay are off because both carry a screenful of exactly
+  that. 10 unit tests, including the one that matters — that `filename` and
+  `function` are NOT redacted, since matching keys as substrings would gut the
+  stack trace and leave a report saying something broke somewhere.
+  **Your part:** create the Sentry project in the EU REGION (the region is baked
+  into the DSN and cannot be changed later), set `VITE_SENTRY_DSN` in Vercel,
+  and REDEPLOY — Vite inlines env vars at build time, so adding the variable
+  without rebuilding reports nothing and looks exactly like it working.
+  Cost measured, not guessed: +29 kB gzip with a DSN, and literally zero without
+  one (581 bytes, which is this file) because the import tree-shakes away.
+
+- [ ] **`.env` is committed to the repo** — 5/10 — found 13 Aug. It has been
+  tracked since `ed43be0`. **Nothing is leaked today**: all three values are
+  `VITE_`-prefixed, so Vite inlines them into the browser bundle regardless —
+  the Supabase anon key is public by design and RLS is what protects the data,
+  which is now proven. Committing them exposes nothing a visitor cannot already
+  read.
+  It is a loaded gun rather than a current wound. The moment billing adds a
+  Stripe secret, or anything needs a service-role key, the habit puts it
+  straight into git history — and a secret in history is not removed by deleting
+  the file.
+  **Do not just `git rm --cached .env`.** If Vercel has been relying on the
+  committed file rather than its own environment variables, untracking it breaks
+  the production build: `VITE_SUPABASE_URL` becomes undefined and the app cannot
+  reach the database at all. Check Vercel → Settings → Environment Variables for
+  all three names FIRST. Then untrack, add `.env` to `.gitignore`, and commit a
+  `.env.example` carrying the names and no values.
 
 - [ ] **Backups, and a restore you have actually performed** — 7/10 — Supabase
   takes backups; you have never restored one. An untested restore is a belief,

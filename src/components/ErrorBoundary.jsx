@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import { T } from '../lib/constants';
 import { makeT, detectLang } from '../i18n';
+import { reportError } from '../lib/monitoring';
 
 // Last-resort safety net. Must be a class component — componentDidCatch/
 // getDerivedStateFromError have no hook equivalent. Wraps the whole app from
@@ -22,7 +23,10 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info){
-    console.error('Uncaught render error:', error, info?.componentStack);
+    // This is the app's last catch, so it is the last chance to report. Until
+    // 13 Aug it only reached the console, which nobody reads on a customer's
+    // laptop — the screen you are looking at right now was the entire signal.
+    reportError(error, { componentStack: info?.componentStack });
   }
 
   render(){
