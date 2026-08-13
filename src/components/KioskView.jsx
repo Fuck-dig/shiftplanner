@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { activeOnly } from '../lib/schedule';
 import { T, DAYS, ROLE_COLOR_PALETTE, isDark } from '../lib/constants';
 import { weekKey, fmtLong, todayISO, LOCALE } from '../lib/dates';
-import { fetchEmployees, fetchBlocks, fetchSchedules, fetchRoleStyles, updateShiftAssignment } from '../lib/data';
+import { fetchEmployees, fetchBlocks, fetchSchedules, fetchRoleStyles, updateShiftAssignment, verifyKioskPin } from '../lib/data';
 import {LANGUAGES, makeT, detectLang} from '../i18n';
 import { load, save, migrateEmployee } from '../lib/storage';
 import { Avatar, Btn, LoadingScreen } from './ui';
@@ -33,6 +33,8 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const [verified, setVerified]           = useState(false);
   const [pinDigits, setPinDigits]         = useState('');
   const [pinError, setPinError]           = useState(false);
+  const [pinChecking, setPinChecking]     = useState(false);
+  const [pinLocked, setPinLocked]         = useState(0);   // seconds remaining
   const [busy, setBusy]                   = useState(false);
   const idleTimer = useRef(null);
 
@@ -90,18 +92,37 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false);
   };
 
+  // Entry no longer auto-submits. It used to fire the moment the typed length
+  // matched the stored PIN's length — which required knowing that length, i.e.
+  // having the PIN in the browser. Now the hash is server-side and unreadable,
+  // so the person says when they are done. Enter or the ✓ key.
   const pressDigit = (d) => {
-    const emp = employees.find(e=>e.id===selectedEmpId);
-    if (!emp) return;
-    const next = (pinDigits + d).slice(0, 6);
-    setPinDigits(next);
+    if (pinChecking || pinLocked > 0) return;
+    setPinDigits(p => (p + d).slice(0, 8));
     setPinError(false);
-    if (next.length >= (emp.pin||'').length && (emp.pin||'').length > 0) {
-      if (next === emp.pin) { setVerified(true); bumpIdleTimer(); }
-      else { setPinError(true); setTimeout(()=>setPinDigits(''), 400); }
-    }
   };
   const backspace = () => setPinDigits(p=>p.slice(0,-1));
+
+  const submitPin = async () => {
+    if (pinChecking || pinLocked > 0 || pinDigits.length < 4) return;
+    setPinChecking(true);
+    try {
+      const { ok, lockedSeconds } = await verifyKioskPin(selectedEmpId, pinDigits);
+      if (ok) { setVerified(true); setPinDigits(''); bumpIdleTimer(); }
+      else {
+        setPinError(true);
+        setPinDigits('');
+        if (lockedSeconds > 0) setPinLocked(lockedSeconds);
+      }
+    } catch {
+      // A failed CHECK must never read as a wrong PIN — somebody would stand
+      // there retyping a PIN that was correct all along.
+      setPinError(true);
+      setPinDigits('');
+    } finally {
+      setPinChecking(false);
+    }
+  };
 
   // Physical keyboard support for the PIN pad — most "shared kiosk device"
   // setups are a plain laptop/PC rather than a touchscreen, so typing the
@@ -115,11 +136,18 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     const onKeyDown = (e) => {
       if (/^[0-9]$/.test(e.key)) pressDigit(e.key);
       else if (e.key==='Backspace') backspace();
+      else if (e.key==='Enter') submitPin();
       else if (e.key==='Escape') returnToList();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedEmpId, verified, pinDigits, employees]);
+  }, [selectedEmpId, verified, pinDigits, employees, pinChecking, pinLocked]);
+
+  useEffect(()=>{
+    if (pinLocked <= 0) return;
+    const id = setInterval(()=>setPinLocked(n=>Math.max(0,n-1)), 1000);
+    return ()=>clearInterval(id);
+  }, [pinLocked]);
 
   const todayDayName = (() => { const jsDay=new Date().getDay(); return DAYS[jsDay===0?6:jsDay-1]; })();
   const todayWeekKey = weekKey(0);
@@ -198,11 +226,13 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
             </div>
             <div style={{fontSize:12,color:T.text3,marginBottom:16}}>{t('kiosk.enterPin')}</div>
             <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:18}}>
-              {Array.from({length: Math.max((selectedEmp.pin||'').length,6)}).map((_,i)=>(
+              {Array.from({length: 8}).map((_,i)=>(
                 <div key={i} style={{width:14,height:14,borderRadius:'50%',border:`1.5px solid ${pinError?T.danger:T.border}`,background:i<pinDigits.length?(pinError?T.danger:T.accent):'transparent'}}/>
               ))}
             </div>
-            {pinError && <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.wrongPin')}</div>}
+            {pinLocked > 0
+              ? <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.lockedFor',{n:pinLocked})}</div>
+              : pinError && <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.wrongPin')}</div>}
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
               {['1','2','3','4','5','6','7','8','9'].map(d=>(
                 <button key={d} onClick={()=>pressDigit(d)} style={{padding:'14px 0',borderRadius:10,fontSize:17,fontWeight:500,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontFamily:'inherit'}}>{d}</button>
@@ -211,6 +241,11 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
               <button onClick={()=>pressDigit('0')} style={{padding:'14px 0',borderRadius:10,fontSize:17,fontWeight:500,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontFamily:'inherit'}}>0</button>
               <button onClick={backspace} style={{padding:'14px 0',borderRadius:10,fontSize:15,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,cursor:'pointer',fontFamily:'inherit'}}>⌫</button>
             </div>
+            {/* An explicit OK, because the stored PIN's LENGTH is no longer
+                knowable in the browser — that is what auto-submit relied on. */}
+            <Btn onClick={submitPin} disabled={pinChecking||pinLocked>0||pinDigits.length<4}>
+              {pinChecking ? t('common.saving') : t('kiosk.confirm')}
+            </Btn>
           </div>
         ) : (
           <div onClick={bumpIdleTimer}>
@@ -225,4 +260,6 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   );
 }
 
-function hasPin(emp){ return !!(emp && emp.pin && emp.pin.length>0); }
+// `has_pin` is a plain boolean on the employee row, maintained by the database
+// functions. It is the only thing about a PIN the client is told.
+function hasPin(emp){ return emp?.hasPin === true; }

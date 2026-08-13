@@ -57,13 +57,13 @@ describe('fetchEmployees', () => {
     state.data.employees = [{
       id: 'e1', name: 'Ann', email: 'ANN@x.test', phone: '123', roles: ['Waiter'],
       priority: 90, max_hours: 32, target_hours: 30, availability: { Mon: null },
-      pal_idx: 3, email_notifications: false, pin: '1234',
+      pal_idx: 3, email_notifications: false, has_pin: true,
     }];
     state.data.employee_wages = [];
     const [e] = await fetchEmployees('org1');
     expect(e).toMatchObject({
       id: 'e1', name: 'Ann', roles: ['Waiter'], priority: 90,
-      maxHours: 32, targetHours: 30, palIdx: 3, emailNotifications: false, pin: '1234',
+      maxHours: 32, targetHours: 30, palIdx: 3, emailNotifications: false, hasPin: true,
     });
   });
 
@@ -265,6 +265,20 @@ describe('archived employees', () => {
     const rows = opsFor('employees', 'upsert')[0].rows;
     expect(rows.find(r => r.id === 'e1').archived).toBe(true);
     expect(rows.find(r => r.id === 'e2').archived).toBe(false);
+  });
+
+  it('never carries a PIN into the app, even if the database sends one', async () => {
+    // Kiosk PINs are bcrypt hashes in a table with RLS and no policies
+    // (20260813180000), so a `pin` coming back should be impossible. Asserted
+    // anyway, because the mapper is the last line of defence and the shape it
+    // replaced put a plaintext credential on every employee object in the
+    // browser — readable by any member of the restaurant.
+    state.data.employees = [{ id: 'e1', name: 'Ann', has_pin: true, pin: 'leaked-1234' }];
+    state.data.employee_wages = [];
+    const [e] = await fetchEmployees('org1');
+    expect(e.pin).toBeUndefined();
+    expect(e.hasPin).toBe(true);
+    expect(JSON.stringify(e)).not.toContain('leaked');
   });
 
   it('still upserts an archived employee rather than dropping them from the sync', async () => {

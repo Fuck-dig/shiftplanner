@@ -127,7 +127,7 @@ as $$
     -- Listed explicitly rather than silently skipped, because a check that
     -- reports a known-good table every run is a check you learn to ignore, and
     -- then it is worth nothing on the day it finds something real.
-    and c.relname not in ('shift_reminders_sent')
+    and c.relname not in ('shift_reminders_sent', 'employee_pins')
     and ( not c.relrowsecurity
           or not exists (select 1 from pg_policy p where p.polrelid = c.oid) )
   order by c.relname;

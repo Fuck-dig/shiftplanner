@@ -23,7 +23,6 @@ const empToRow = (orgId, e) => ({
   pal_idx:         e.palIdx ?? 0,
   email_notifications: e.emailNotifications !== false,
   archived:        e.archived === true,
-  pin:             (e.pin||'').trim() || null,
   push_prefs:      e.pushPrefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
@@ -40,7 +39,7 @@ const empFromRow = (r) => ({
   palIdx:         r.pal_idx ?? 0,
   emailNotifications: r.email_notifications ?? true,
   archived:       r.archived === true,
-  pin:            r.pin || '',
+  hasPin:         r.has_pin === true,
   pushPrefs:      r.push_prefs || { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true },
 });
 
@@ -702,6 +701,38 @@ export async function fetchOrgSickPct(orgId){
 // Everything the setup form collects, written in one round trip rather than
 // three. Kept separate from the individual savers because those are debounced
 // per-field edits from Costs, whereas this is a one-shot at creation.
+// ── Kiosk PINs ──────────────────────────────────────────────────────────────
+//
+// The client never handles a PIN hash, and cannot read one: hashes live in
+// `employee_pins`, which has RLS on and no policies, so these three SECURITY
+// DEFINER functions are the only way in (20260813180000).
+//
+// This is also why a PIN is no longer part of the debounced bulk employee save.
+// It was, and that was the shape that let it be a plain column on `employees`
+// in the first place — a credential riding along with somebody's job title.
+
+// Managers only; enforced in the database, not here.
+export async function setKioskPin(employeeId, pin){
+  const { error } = await supabase.rpc('set_kiosk_pin', { emp: employeeId, new_pin: pin });
+  if (error) throw error;
+}
+
+export async function clearKioskPin(employeeId){
+  const { error } = await supabase.rpc('clear_kiosk_pin', { emp: employeeId });
+  if (error) throw error;
+}
+
+// Returns { ok, lockedSeconds }. A wrong PIN and a locked-out employee are
+// different answers and the kiosk shows different messages for them — telling
+// somebody "wrong PIN" while they are locked out makes them jab at the keypad
+// convinced they mistyped.
+export async function verifyKioskPin(employeeId, attempt){
+  const { data, error } = await supabase.rpc('verify_kiosk_pin', { emp: employeeId, attempt });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { ok: row?.ok === true, lockedSeconds: row?.locked_seconds || 0 };
+}
+
 export async function saveOrgSetup(orgId, { currency, sickPayPct, payPeriodStartDay } = {}){
   const patch = {};
   if (currency != null && currency !== '') patch.currency = currency;
