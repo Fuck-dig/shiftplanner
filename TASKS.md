@@ -102,15 +102,6 @@ belonging to somebody who is not you.
   the best idea in this file. **Needs a decision from William before any code:**
   a phone layout for the web app, or a real native app.
 
-- [ ] **Decide the staff phone story** — 6/10 — UPGRADED from 3 and unparked.
-  Parking it was right for Almus, where you can tell people to use a laptop. It
-  is not right for a product: managers may sit at a desk, waiters will not, and
-  the staff app is the half every employee touches every week. The parked
-  reasoning still stands (a desktop grid forced into 390px), and the note that
-  Week view on a phone wants FEWER columns rather than thinner ones is still
-  the best idea in this file. **Needs a decision from William before any code:**
-  a phone layout for the web app, or a real native app.
-
 ## Tier 1 — before the tenth restaurant
 
 - [ ] **Tighten the remaining org-membership-only tables** — 6/10 — UPGRADED
