@@ -247,8 +247,6 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       setSettingsError(e.message||t('save.failedGeneric'));
     }finally{ setSettingsSaving(false); }
   };
-  const dSickPct=useMemo(()=>mkDebounce(v=>saveOrgSickPct(orgId,v),'sickpct'),[orgId]);
-  const setOrgSickPctAndSave=v=>{ setOrgSickPct(v); if(orgId&&v!==''&&v!=null) dSickPct(Number(v)); };
 
   useEffect(()=>{
     let alive=true; setLoading(true);
@@ -2185,7 +2183,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // (hours x that person's rate); without, it's a unitless index built from
     // priority %. The view needs to know which, or its labels lie.
     hasWages={hasWages} isMobile={isMobile}
-    orgSickPct={orgSickPct} setOrgSickPct={setOrgSickPctAndSave}
+    orgSickPct={orgSickPct}
     s={s} t={t}
   />
 )}
