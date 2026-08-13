@@ -357,10 +357,14 @@ export default function WeekView({
         const custom=editOpen.times ? true : !!(editOpen.sw.start&&editOpen.sw.end);
         return(<>
           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12,flexWrap:'wrap'}}>
-            <TimePicker small value={cur.start} onChange={v=>setT('start',v)}/>
+            <TimePicker small min={b?.start} max={b?.end} value={cur.start} onChange={v=>setT('start',v)}/>
             <span style={{fontSize:11,color:T.text3}}>–</span>
-            <TimePicker small value={cur.end} onChange={v=>setT('end',v)}/>
+            <TimePicker small min={b?.start} max={b?.end} value={cur.end} onChange={v=>setT('end',v)}/>
           </div>
+          {/* The cell already fixes the block, so the hours are fenced to it
+              rather than allowed to contradict it. A shift that needs to run
+              past this service is a shift in the next one. */}
+          {b&&<div style={{fontSize:11,color:T.text3,marginBottom:12}}>{t('open.within',{from:b.start,to:b.end})}</div>}
           {/* Clearing back to the block's hours has to be expressible, or a
               shift given custom times by mistake can never be un-given them
               without deleting and reposting. */}
