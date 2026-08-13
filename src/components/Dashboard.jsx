@@ -11,6 +11,7 @@ import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import { supabase } from '../lib/supabase';
 import { RoleBadge, EmpCard, Btn, TimePicker, WeekPicker, LoadingScreen, SectionLabel } from './ui';
+import PeriodNav from './PeriodNav';
 import NotificationBell from './NotificationBell';
 import EmployeesView from './views/EmployeesView';
 import TimeOffView from './views/TimeOffView';
@@ -453,7 +454,6 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       }
     }).catch(err=>console.error('Load role colours failed:',err));
     return ()=>{alive=false;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[orgId]);
 
   // A manager/owner might ALSO be on the schedule roster (e.g. a working
@@ -471,17 +471,15 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // Track the latest employees-save promise so the time-off sync can wait
   // for it to settle before writing, regardless of the independent debounce timers.
   const empSaveRef=useRef(Promise.resolve());
-  // The two eslint-disables below are for false positives, not silenced real
-  // problems: react-hooks/refs fires because the arrow functions are CREATED
-  // inside useMemo (render phase), but empSaveRef.current is only read/written
-  // when the debounced function actually runs — i.e. from a user action, well
-  // after render. There is no render-time ref access here.
-  // eslint-disable-next-line react-hooks/refs
+  // These arrow functions are CREATED inside useMemo (render phase), but
+  // empSaveRef.current is only read or written when the debounced function
+  // actually runs — from a user action, well after render. No render-time ref
+  // access, which is why the three suppressions this once carried were removed
+  // rather than kept: the rule no longer flags it, and a comment miscounting
+  // its own directives ("the two below", of three) is worse than none.
   const dEmp  =useMemo(()=>mkDebounce(v=>{const p=syncEmployees(orgId,v);empSaveRef.current=p.catch(()=>{});return p;},'employees'),[orgId]);
   const dBlk  =useMemo(()=>mkDebounce(v=>syncBlocks(orgId,v),'blocks'),[orgId]);
-  // eslint-disable-next-line react-hooks/refs
   const dTO   =useMemo(()=>mkDebounce(v=>empSaveRef.current.then(()=>syncTimeOff(orgId,v)),'timeoff'),[orgId]);
-  // eslint-disable-next-line react-hooks/refs
   const dSched=useMemo(()=>mkDebounce(v=>syncSchedules(orgId,v,serverSchedRef.current).then(()=>{serverSchedRef.current=v;}),'schedules'),[orgId]);
   const dRoleStyles=useMemo(()=>mkDebounce(v=>saveRoleStyles(orgId,v),'roleStyles'),[orgId]);
 
@@ -912,7 +910,6 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // how every scroll lock works. Note the identical assignment two lines above
   // (='hidden') is NOT flagged, which is a decent sign this is analyser noise
   // rather than a real finding.
-  // eslint-disable-next-line react-hooks/immutability
   const closeEditSlot=()=>{ document.body.style.overflow=''; setEditingSlot(null); };
   const saveEditSlot=()=>{
     if(!editingSlot||!schedule)return;
@@ -988,9 +985,8 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     setPickerSortBy('name');
     setPickerSearch('');
   };
-  // Same scroll-lock false positive as closeEditSlot — `document` isn't
-  // component state, and this runs from a click, not during render.
-  // eslint-disable-next-line react-hooks/immutability
+  // Same scroll-lock case as closeEditSlot — `document` isn't component state,
+  // and this runs from a click, not during render.
   const closePicker=()=>{ document.body.style.overflow=''; setOpenPicker(null); setPickerRoleFilter([]); setPickerSortBy('name'); setPickerSearch(''); };
 
   // assignmentHours (assignments can carry an optional per-person start/end
@@ -1990,36 +1986,12 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
 {/* SCHEDULE */}
 {view==='schedule'&&(<div>
   <div ref={scheduleBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,...backdrop(),paddingTop:8,marginTop:-8,paddingBottom:8}}>
-    <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
-      <WeekPicker
-        value={calMode==='month'?new Date(displayMonth.y,displayMonth.m,1):weekDates[0]}
-        highlightStart={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[0])}
-        highlightEnd={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[6])}
-        onPick={d=>{
-          if(calMode==='month'){ setDisplayMonth({y:d.getFullYear(),m:d.getMonth()}); return; }
-          setWeekOffset(weekOffsetFromDate(d));
-          if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
-        }}
-        trigger={<span style={{fontSize:13,fontWeight:500,minWidth:150,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
-      />
-      <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>›</button>
-    </div>
-    {/* "Today" now actually lands you on today, not just today's week — it
-        switches to the Week tab isolated to the current day. Month is the one
-        exception: there "today" sensibly means the current month, and yanking
-        someone out of a month overview into a single day would be a bigger
-        jump than they asked for. */}
-    <button onClick={()=>{
-      const n=new Date();
-      setWeekOffset(0);
-      setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});
-      if(calMode!=='month'){
-        const jsDay=n.getDay();
-        setCalMode('week');
-        setDayFilter(DAYS[jsDay===0?6:jsDay-1]);
-      }
-    }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+    <PeriodNav
+      calMode={calMode} dayFilter={dayFilter} weekDates={weekDates} displayMonth={displayMonth}
+      setDisplayMonth={setDisplayMonth} setWeekOffset={setWeekOffset}
+      setDayFilter={setDayFilter} setCalMode={setCalMode}
+      shiftDay={shiftDay} weekOffsetFromDate={weekOffsetFromDate} isMobile={isMobile} t={t}
+    />
     <div style={{display:'flex',background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3,gap:2}}>
       {[['week',t('sched.week')],['month',t('sched.month')],['grid',t('sched.team')]].map(([k,l])=><button key={k} onClick={()=>{setDayFilter(null);setCalMode(k);}} style={{padding:'4px 12px',borderRadius:6,background:calMode===k?T.bg:'transparent',border:calMode===k?`1px solid ${T.border}`:'1px solid transparent',cursor:'pointer',fontSize:12,fontWeight:calMode===k?500:400,color:calMode===k?T.text:T.text2,fontFamily:'inherit'}}>{l}</button>)}
     </div>
@@ -2125,7 +2097,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   <TeamView
     schedule={schedule} employees={employees} blocks={blocks} roleStyles={roleStyles} weekDates={weekDates} weekOffset={weekOffset} timeOff={timeOff} allRoles={allRoles}
     gridGroupBy={gridGroupBy} gridTight={gridTight} gridSearch={gridSearch}
-    empHours={empHours} assignmentHours={assignmentHours} actualAssignmentHours={actualAssignmentHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
+    empHours={empHours} openEditSlot={openEditSlot} openShiftModalFor={openShiftModalFor}
     generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
     openShiftsForDay={day=>swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&(sw.status==='open'||sw.status==='claimed'))}

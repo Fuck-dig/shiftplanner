@@ -15,6 +15,7 @@ import NotificationBell from './NotificationBell';
 import ProfileSettings from './ProfileSettings';
 import MonthView from './views/MonthView';
 import { Btn, RoleBadge, GripDots, WeekPicker, EmpCard, LoadingScreen, StatusBadge, SectionLabel, RequestRow } from './ui';
+import PeriodNav from './PeriodNav';
 
 
 export default function EmployeeView({ orgId, orgName, role='employee', theme, toggleTheme }){
@@ -1117,34 +1118,12 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             than hardcoded because this bar wraps to two lines on narrow
             screens and with longer translated labels. */}
         <div ref={navBarRef} style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap',position:'sticky',top:56,zIndex:20,...backdrop(),paddingTop:8,paddingBottom:8}}>
-          <div style={{display:'flex',alignItems:'center',gap:4,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
-            <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1});}else if(calMode==='week'&&dayFilter){shiftDay(-1);}else{setWeekOffset(w=>w-1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>‹</button>
-            <WeekPicker
-              value={calMode==='month'?new Date(displayMonth.y,displayMonth.m,1):weekDates[0]}
-              highlightStart={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[0])}
-              highlightEnd={calMode==='month'?null:(calMode==='week'&&dayFilter?weekDates[DAYS.indexOf(dayFilter)]:weekDates[6])}
-              onPick={d=>{
-                if(calMode==='month'){ setDisplayMonth({y:d.getFullYear(),m:d.getMonth()}); return; }
-                setWeekOffset(weekOffsetFromDate(d));
-                if(calMode==='week'&&dayFilter){ const dow=d.getDay(); setDayFilter(DAYS[dow===0?6:dow-1]); }
-              }}
-              trigger={<span style={{fontSize:14,fontWeight:500,minWidth:isMobile?130:160,textAlign:'center',color:T.text,padding:'0 4px',display:'inline-block'}}>{calMode==='month'?new Date(displayMonth.y,displayMonth.m,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}):calMode==='week'&&dayFilter?`${t('day.'+dayFilter)} ${fmt(weekDates[DAYS.indexOf(dayFilter)])}`:`${fmt(weekDates[0])} – ${fmt(weekDates[6])}`}</span>}
-            />
-            <button onClick={()=>{if(calMode==='month'){setDisplayMonth(p=>p.m===11?{y:p.y+1,m:0}:{y:p.y,m:p.m+1});}else if(calMode==='week'&&dayFilter){shiftDay(1);}else{setWeekOffset(w=>w+1);}}} style={{padding:'4px 12px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:14}}>›</button>
-          </div>
-          {/* Same behaviour as the manager's Today: land on today itself, not
-              merely today's week. Month stays on month — there "today" means
-              the current month, and jumping to a single day would overshoot. */}
-          <button onClick={()=>{
-            const n=new Date();
-            setWeekOffset(0);
-            setDisplayMonth({y:n.getFullYear(),m:n.getMonth()});
-            if(calMode!=='month'){
-              const jsDay=n.getDay();
-              setCalMode('week');
-              setDayFilter(DAYS[jsDay===0?6:jsDay-1]);
-            }
-          }} style={{padding:'5px 12px',borderRadius:8,background:T.surface,border:`1px solid ${T.border}`,cursor:'pointer',fontSize:12,color:T.text2,fontFamily:'inherit'}}>{t('common.today')}</button>
+          <PeriodNav
+            calMode={calMode} dayFilter={dayFilter} weekDates={weekDates} displayMonth={displayMonth}
+            setDisplayMonth={setDisplayMonth} setWeekOffset={setWeekOffset}
+            setDayFilter={setDayFilter} setCalMode={setCalMode}
+            shiftDay={shiftDay} weekOffsetFromDate={weekOffsetFromDate} isMobile={isMobile} t={t}
+          />
           {calMode!=='month'&&schedules[wKey]?.confirmed && <span style={{fontSize:12,color:T.success,fontWeight:500,background:T.successLight,padding:'2px 10px',borderRadius:999,border:`1px solid ${T.success}33`}}>✓ {t('emp.published')}</span>}
           {myId && <Btn small variant="ghost" onClick={exportMyScheduleICS}>{t('emp.exportSchedule')}</Btn>}
           {/* Compact/comfortable, matching the manager's toggle in position,

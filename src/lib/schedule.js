@@ -341,7 +341,7 @@ export function isOnTimeOff(empId,date,list){ const iso=dateToISO(date); return 
 // doubles as the guard against literally double-booking someone into two
 // overlapping shifts, which the previous version of this function didn't
 // check for at all.
-export const MIN_REST_MINUTES = 11*60;
+const MIN_REST_MINUTES = 11*60;
 
 // A single block's [start,end) as absolute minutes since the start of the
 // week (dayIndex*1440 + local minutes, overnight blocks rolling past

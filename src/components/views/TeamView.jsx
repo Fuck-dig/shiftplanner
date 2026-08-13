@@ -2,14 +2,14 @@ import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE, getMonthOffsets, getWeekDates, weekKey } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes, actualAssignmentHours } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots, SectionLabel, TimePicker } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
 export default function TeamView({
   schedule, employees, blocks, roleStyles, weekDates, weekOffset, timeOff, allRoles,
   gridGroupBy, gridTight, gridSearch,
-  empHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
+  empHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
   openShiftsForDay, postOpenShift, cancelOpenShift, editOpenShift,
   s, t,
