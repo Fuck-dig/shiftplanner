@@ -11,7 +11,7 @@ export default function TeamView({
   gridGroupBy, gridTight, gridSearch,
   empHours, actualAssignmentHours, openEditSlot, openShiftModalFor,
   generate, generateMonth, offThisWeek, isMobile, reorderRoles, onIsolateDay,
-  openShiftsForDay, postOpenShift, cancelOpenShift,
+  openShiftsForDay, postOpenShift, cancelOpenShift, editOpenShift,
   s, t,
 }){
   const [collapsedRoles,setCollapsedRoles]=useState(()=>new Set());
@@ -30,17 +30,33 @@ export default function TeamView({
   const [openShiftMonth,setOpenShiftMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [openShiftRole,setOpenShiftRole]=useState(null);
   const [openShiftTimes,setOpenShiftTimes]=useState(null);
+  const [openShiftBlock,setOpenShiftBlock]=useState(null);  // which block a custom-time open shift belongs to
   // Every date in the shown month, tagged with the week it belongs to.
   const openShiftDays=getMonthOffsets(openShiftMonth)
     .flatMap(off=>getWeekDates(off).map((date,di)=>({date,day:DAYS[di],weekOffset:off,weekKey:weekKey(off)})))
     .filter(x=>x.date.getMonth()===openShiftMonth.m&&x.date.getFullYear()===openShiftMonth.y);
   // Opening from a day column pre-selects that day and its week, so the common
   // path (post into the week you're looking at) is still one tap.
+  // Editing reuses the posting dialog rather than growing a second one: the
+  // fields are identical, and two dialogs that must stay in step is how they
+  // stop being in step.
+  const [editingOpenShift,setEditingOpenShift]=useState(null);
+  const openEditDialog=(sw,dayName,di)=>{
+    const date=weekDates[di];
+    setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
+    setOpenShiftRole(sw.role);
+    setOpenShiftBlock(sw.blockId);
+    setOpenShiftTimes(sw.start&&sw.end?{start:sw.start,end:sw.end}:null);
+    setEditingOpenShift(sw);
+    setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
+  };
   const openPostDialog=(dayName,di)=>{
     const date=weekDates[di];
     setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
     setOpenShiftRole(r=>r||allRoles[0]||null);
     setOpenShiftTimes(null);
+    setOpenShiftBlock(null);
+    setEditingOpenShift(null);
     setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
   };
 
@@ -152,7 +168,15 @@ export default function TeamView({
             return(<div key={day} style={{padding:'6px 7px',borderRight:di<6?`1px solid ${T.border}`:'none',display:'flex',flexDirection:'column',gap:3,justifyContent:'center',position:'relative'}}>
               {forDay.map(sw=>(
                 <div key={sw.id} style={{display:'flex',alignItems:'center',gap:4,padding:'3px 6px',borderRadius:7,background:T.accentLight,border:`1px dashed ${T.accent}66`}}>
-                  <span style={{flex:1,minWidth:0,fontSize:10,fontWeight:600,color:T.accentText,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{blocks.find(b=>b.id===sw.blockId)?.name||''}{sw.start&&sw.end?` ${sw.start}–${sw.end}`:''} · {sw.role}</span>
+                  {/* Clicking edits it. Previously the only thing you could do
+                      to a posted open shift was delete it and start again,
+                      which loses the claim history and is a poor answer to
+                      "I meant Dinner". Only while it's still `open` — once
+                      somebody has claimed it, changing the hours underneath
+                      them would be changing a deal they already accepted. */}
+                  <button onClick={()=>sw.status==='open'&&openEditDialog(sw,day,di)} disabled={sw.status!=='open'} title={sw.status==='open'?t('open.edit'):t('open.claimedLocked')} style={{flex:1,minWidth:0,textAlign:'left',background:'none',border:'none',padding:0,cursor:sw.status==='open'?'pointer':'default',fontFamily:'inherit'}}>
+                    <span style={{display:'block',minWidth:0,fontSize:10,fontWeight:600,color:T.accentText,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{blocks.find(b=>b.id===sw.blockId)?.name||''}{sw.start&&sw.end?` ${sw.start}–${sw.end}`:''} · {sw.role}</span>
+                  </button>
                   {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:11,padding:0,fontFamily:'inherit'}}>✕</button>}
                 </div>
               ))}
@@ -180,15 +204,22 @@ export default function TeamView({
         const sel=openShiftDay;                 // {day, date, weekOffset, weekKey}
         const home=blocks[0];
         const times=openShiftTimes||{start:home?.start||'10:00',end:home?.end||'16:00'};
+        const editing=editingOpenShift;
         const post=(blockId,start,end)=>{
-          postOpenShift(sel.day,blockId,openShiftRole,{weekKey:sel.weekKey,weekOffset:sel.weekOffset,start,end});
+          // Same button, two meanings, decided by how the dialog was opened.
+          // Editing UPDATES the existing row rather than posting a second one —
+          // getting that wrong would quietly double the open shifts every time
+          // somebody corrected a typo.
+          if(editing&&editOpenShift) editOpenShift(editing,{blockId,role:openShiftRole,day:sel.day,start:start||null,end:end||null});
+          else postOpenShift(sel.day,blockId,openShiftRole,{weekKey:sel.weekKey,weekOffset:sel.weekOffset,start,end});
           setOpenShiftDay(null);
+          setEditingOpenShift(null);
         };
         return (
         <div onClick={()=>setOpenShiftDay(null)} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
           <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
             <div style={{padding:'16px 18px 10px',flexShrink:0}}>
-              <SectionLabel mb={10}>{t('open.post')}</SectionLabel>
+              <SectionLabel mb={10}>{editing?t('open.edit'):t('open.post')}</SectionLabel>
               <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                 <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
                   <button onClick={()=>setOpenShiftMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
@@ -229,18 +260,35 @@ export default function TeamView({
                 </div>
               ))}
               {home&&(
-                <div style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8}}>
-                  <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                    <span style={{fontSize:13,fontWeight:500,color:T.text}}>{t('emp.customTime')}</span>
+                <div style={{padding:'10px',borderRadius:8,borderTop:`1px solid ${T.border}`,marginTop:4}}>
+                  <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:8}}>{t('emp.customTime')}</div>
+                  {/* The block is an EXPLICIT choice here.
+                      It used to be hardcoded to blocks[0], so posting
+                      "Waiter, 18:00–22:00" silently filed it under Lunch — a
+                      nonsense pairing, and filed under the block you weren't
+                      looking at. An open shift still belongs to a block (that
+                      is what coverage and claiming are keyed on), so the answer
+                      is to ask, not to guess. */}
+                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      {blocks.map(b=>(
+                        <button key={b.id} onClick={()=>setOpenShiftBlock(b.id)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:(openShiftBlock||home.id)===b.id?600:400,background:(openShiftBlock||home.id)===b.id?T.accentLight:'transparent',color:(openShiftBlock||home.id)===b.id?T.accent:T.text2,border:`1px solid ${(openShiftBlock||home.id)===b.id?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>
+                      ))}
+                    </div>
                     <TimePicker small value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
                     <span style={{fontSize:11,color:T.text3}}>–</span>
                     <TimePicker small value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
+                    <Btn small variant="secondary" onClick={()=>post(openShiftBlock||home.id,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
                   </div>
-                  <Btn small variant="secondary" onClick={()=>post(home.id,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
                 </div>
               )}
             </div>
-            <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0}}><Btn variant="ghost" onClick={()=>setOpenShiftDay(null)}>{t('common.done')}</Btn></div>
+            <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0,display:'flex',gap:8,alignItems:'center'}}>
+              <Btn variant="ghost" onClick={()=>{setOpenShiftDay(null);setEditingOpenShift(null);}}>{t('common.done')}</Btn>
+              {editing&&cancelOpenShift&&(
+                <Btn variant="danger" small onClick={()=>{cancelOpenShift(editing);setOpenShiftDay(null);setEditingOpenShift(null);}}>{t('open.cancel')}</Btn>
+              )}
+            </div>
           </div>
         </div>);
       })(),document.body)}
