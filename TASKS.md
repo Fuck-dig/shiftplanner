@@ -27,22 +27,31 @@ belonging to somebody who is not you.
   `supabase/schema/00_baseline_reference.sql:179` does `grant select, insert,
   update, delete on all tables in schema public to authenticated`, and the
   `alter default privileges` line below it extends that to every table created
-  from now on. Today this is harmless: all 11 RLS tables have policies, and 68
-  of 68 policies scope by org or by user (checked 13 Aug — the one that looked
-  unscoped, `managers update orgs`, goes through `is_manager(id)`). That is a
-  genuinely strong position and it is exactly why this is worth protecting.
+  from now on. Today this is harmless: all 18 tables have RLS on, 17 of them
+  have policies, and 68 of 68 policies scope by org or by user (checked against
+  the LIVE database 13 Aug — the one that looked unscoped, `managers update
+  orgs`, goes through `is_manager(id)`; the one with no policies,
+  `shift_reminders_sent`, is service-role only and correct). That is a genuinely
+  strong position and it is exactly why this is worth protecting.
   The problem is the mechanism, not the state. The next table added without RLS
   is world-writable by any logged-in user from the moment it exists — and the
   person adding it will be you, late, building something a customer asked for.
   Fix: explicit per-table grants, drop the default-privileges line, and add a
   check that fails loudly if any table in `public` has RLS off.
 
-- [ ] **Prove tenant isolation instead of assuming it** — 8/10 — the policies
-  look right. Nothing has ever demonstrated that org A cannot read org B's
-  rota, wages, messages or documents. Two orgs, two users, one script, every
-  table, read AND write. This is the single test that most deserves to exist,
-  because it is the one whose failure ends the company rather than annoying
-  somebody.
+- [x] **DONE 13 Aug — tenant isolation is PROVEN, not assumed** — was 8/10.
+  `select * from public.rorota_isolation_test();` — **PASSED, 20 checks, both
+  directions, reads and writes**, run against the live database.
+  Demonstrated: one restaurant cannot read another's wages, revenue, private
+  messages, rota, staff, blocks, time off or ownership, and cannot rename their
+  staff, change their pay, delete their rota or insert into their org.
+  The result is trustworthy because of how it fails: each table is checked
+  TWICE, "A sees its own row" as well as "A cannot see B's". Had the
+  impersonation silently failed, every query would have returned zero, every
+  isolation check would have "passed", and the summary would have said
+  INCONCLUSIVE rather than PASSED. It said PASSED.
+  **Re-run it after any policy change.** It is a permanent function now, and it
+  leaves nothing behind.
 
 - [ ] **Get legal advice on employee data** — 7/10 — selling means processing
   names, phone numbers, wages and sickness records for people who never agreed
@@ -103,6 +112,15 @@ belonging to somebody who is not you.
   against every call in `lib/data.js`. Matters more with multiple tenants, but
   within a single restaurant it is "can a waiter read a manager's messages",
   which is bad without being existential.
+
+- [ ] **Revoke `authenticated` from `shift_reminders_sent`** — 3/10 — found
+  13 Aug from the live policy dump. It is service-role only (the
+  `send-shift-reminders` edge function), has RLS on with zero policies, and so
+  denies every ordinary user already. But the historical blanket grant still
+  gives `authenticated` DML on it — surface with no purpose. Deliberately NOT
+  revoked in 20260813160000: the cost of being wrong about who calls it is push
+  reminders failing silently. Confirm the function uses the service key, then
+  revoke in one line.
 
 - [ ] **A separate Supabase project for previews** — 6/10 — UPGRADED from 3.
   Preview deployments talk to the real database, so a preview is safe for

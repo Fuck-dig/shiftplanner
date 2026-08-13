@@ -12,7 +12,7 @@
 -- who never agreed to anything with us.
 --
 -- The current position is strong and this exists to keep it that way:
---   * all 17 tables in `public` have RLS enabled
+--   * all 18 tables in `public` have RLS enabled
 --   * 68 of 68 policies scope by org or by user
 --     (`managers update orgs` goes through is_manager(id), which is scoping —
 --      it just doesn't say org_id out loud)
@@ -37,7 +37,8 @@
 --   1. Cancels that standing instruction, so a new table arrives with NO access
 --      for `authenticated` and the app fails loudly and immediately instead of
 --      the table being quietly world-writable.
---   2. Re-grants the 17 tables that exist today, explicitly and by name. This
+--   2. Re-grants the 17 client-facing tables that exist today, explicitly and
+--      by name (18 tables exist; the 18th is service-role only). This
 --      changes nothing — they already hold exactly these grants — but it makes
 --      the access list something you can read rather than infer.
 --   3. Adds `public.tables_missing_rls()` so "is anything unprotected?" is one
@@ -67,12 +68,13 @@ alter default privileges for role postgres in schema public
   revoke select, insert, update, delete on tables from authenticated;
 
 
--- ── 2. The 17 tables that exist today, by name ──────────────────────────────
+-- ── 2. The client-facing tables, by name ───────────────────────────────────
 -- Idempotent and a no-op in practice; the point is the list.
 grant usage on schema public to authenticated;
 
 grant select, insert, update, delete on public.organizations       to authenticated;
 grant select, insert, update, delete on public.memberships         to authenticated;
+grant select, insert, update, delete on public.invitations         to authenticated;
 grant select, insert, update, delete on public.employees           to authenticated;
 grant select, insert, update, delete on public.blocks              to authenticated;
 grant select, insert, update, delete on public.time_off            to authenticated;
@@ -87,7 +89,14 @@ grant select, insert, update, delete on public.daily_revenue       to authentica
 grant select, insert, update, delete on public.employee_documents  to authenticated;
 grant select, insert, update, delete on public.employee_wages      to authenticated;
 grant select, insert, update, delete on public.schedule_audit      to authenticated;
-grant select, insert, update, delete on public.shift_reminders_sent to authenticated;
+
+-- Deliberately absent: public.shift_reminders_sent. Only the
+-- `send-shift-reminders` edge function touches it, using the service role,
+-- which bypasses RLS entirely. It has RLS on and ZERO policies, which denies
+-- every ordinary user — correct, not unfinished. The historical blanket grant
+-- did give `authenticated` DML on it; that is not revoked here, because the
+-- cost of being wrong about who calls it is push reminders failing silently.
+-- Revoking it is a small, separate change worth making once that is confirmed.
 
 
 -- ── 3. A one-query answer to "is anything unprotected?" ─────────────────────
@@ -112,6 +121,13 @@ as $$
   join pg_namespace n on n.oid = c.relnamespace
   where n.nspname = 'public'
     and c.relkind = 'r'
+    -- Tables that are service-role ONLY, by design: written exclusively by an
+    -- edge function using the service key, which bypasses RLS. RLS on with no
+    -- policies is the CORRECT state for these — it denies every ordinary user.
+    -- Listed explicitly rather than silently skipped, because a check that
+    -- reports a known-good table every run is a check you learn to ignore, and
+    -- then it is worth nothing on the day it finds something real.
+    and c.relname not in ('shift_reminders_sent')
     and ( not c.relrowsecurity
           or not exists (select 1 from pg_policy p where p.polrelid = c.oid) )
   order by c.relname;
@@ -138,8 +154,9 @@ where n.nspname = 'public'
   and defaclobjtype = 'r'
   and array_to_string(defaclacl, ', ') like '%authenticated%';
 
--- 3. Every table still reachable — the 17 above should each appear.
---    This is the "did I break the app" check. Expect 17 rows.
+-- 3. Every table still reachable. This is the "did I break the app" check.
+--    Expect a row per table; `shift_reminders_sent` may appear from the old
+--    blanket grant, which is fine — RLS with no policies is what stops it.
 select table_name, string_agg(privilege_type, ', ' order by privilege_type) as privs
 from information_schema.role_table_grants
 where table_schema = 'public' and grantee = 'authenticated'
