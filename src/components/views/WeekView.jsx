@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
 import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
-import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots } from '../ui';
+import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots, TimePicker } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
 // Gantt timeline (drag edges to resize, click a bar to edit), and the weekly
@@ -21,10 +21,12 @@ export default function WeekView({
   pickerSortBy, setPickerSortBy, pickerSearch, setPickerSearch, candidatesForSlot,
   addToSlot, closePicker, empHours, allRoles, handleEmptySlotClick, openPickerFor,
   removeFromSlot, gridGroupBy, setGridGroupBy, gridTight, setGridTight,
-  currency, openShiftsFor, postOpenShift, cancelOpenShift, dropAssignment, search,
+  currency, openShiftsFor, postOpenShift, cancelOpenShift, editOpenShift, dropAssignment, search,
   reorderRoles,
   s, t,
 }){
+  // {sw, block} while editing a posted open shift's hours.
+  const [editOpen,setEditOpen]=useState(null);
   const [foldedRoles,setFoldedRoles]=useState(()=>new Set());
   const [dragRole,setDragRole]=useState(null);
   // Position of a role in the user's saved order. A role can legitimately be
@@ -89,7 +91,7 @@ export default function WeekView({
   // to be, cosmetically, when touching) since that would make a dragged bar
   // ambiguous about which underlying assignment it represents.
   const dayShiftsRaw=effectiveDay?blocks.flatMap(b=>{
-    return (schedule[effectiveDay]?.[b.id]||[]).map(a=>{
+  return (schedule[effectiveDay]?.[b.id]||[]).map(a=>{
       const st=a.start||b.start,en=a.end||b.end;
       const bs=toMin(st);let be=toMin(en);if(be<=bs)be+=1440;
       // Assignments carry their own embedded name (a.name), frozen at the
@@ -338,7 +340,49 @@ export default function WeekView({
       </div>
     );
   }
+  // Block and role are fixed by which cell the shift sits in, so the only thing
+  // to edit here is its hours — that's the whole difference from the Team tab's
+  // dialog, where the cell doesn't imply either.
+  const openShiftEditor = editOpen && createPortal(
+  <div onClick={()=>setEditOpen(null)} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(400px,100%)',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)',padding:'16px 18px'}}>
+      <SectionLabel mb={4}>{t('open.edit')}</SectionLabel>
+      <div style={{fontSize:12,color:T.text2,marginBottom:14}}>
+        {t('day.'+editOpen.sw.day)} · {editOpen.block?.name} · {editOpen.sw.role}
+      </div>
+      {(()=>{
+        const b=editOpen.block;
+        const cur=editOpen.times||{start:editOpen.sw.start||b?.start||'10:00',end:editOpen.sw.end||b?.end||'16:00'};
+        const setT=(k,v)=>setEditOpen(p=>({...p,times:{...cur,[k]:v}}));
+        const custom=editOpen.times ? true : !!(editOpen.sw.start&&editOpen.sw.end);
+        return(<>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12,flexWrap:'wrap'}}>
+            <TimePicker small value={cur.start} onChange={v=>setT('start',v)}/>
+            <span style={{fontSize:11,color:T.text3}}>–</span>
+            <TimePicker small value={cur.end} onChange={v=>setT('end',v)}/>
+          </div>
+          {/* Clearing back to the block's hours has to be expressible, or a
+              shift given custom times by mistake can never be un-given them
+              without deleting and reposting. */}
+          {custom&&(
+            <button onClick={()=>{editOpenShift(editOpen.sw,{start:null,end:null});setEditOpen(null);}} style={{fontSize:11,color:T.accent,background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',textDecoration:'underline',marginBottom:14,display:'block'}}>
+              {t('open.useBlockHours',{from:b?.start||'',to:b?.end||''})}
+            </button>
+          )}
+          <div style={{display:'flex',gap:8,alignItems:'center',marginTop:4}}>
+            <Btn small onClick={()=>{editOpenShift(editOpen.sw,{start:cur.start,end:cur.end});setEditOpen(null);}}>{t('common.save')}</Btn>
+            <Btn small variant="ghost" onClick={()=>setEditOpen(null)}>{t('common.cancel')}</Btn>
+            {cancelOpenShift&&<span style={{marginLeft:'auto'}}><Btn small variant="danger" onClick={()=>{cancelOpenShift(editOpen.sw);setEditOpen(null);}}>{t('open.cancel')}</Btn></span>}
+          </div>
+        </>);
+      })()}
+    </div>
+  </div>,
+  document.body
+  );
+
   return(<div style={{display:'flex',flexDirection:'column',gap:16}}>
+    {openShiftEditor}
   {selected&&(
     <div style={{position:'fixed',bottom:20,left:isMobile?14:20,right:isMobile?14:'auto',maxWidth:isMobile?'calc(100% - 28px)':340,zIndex:210,background:T.surface,border:`1px solid ${T.accent}55`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'flex-start',gap:10,boxShadow:'0 12px 30px -10px rgba(33,27,21,0.35)'}}>
       <span style={{fontSize:14}}>✥</span>
@@ -502,13 +546,21 @@ export default function WeekView({
                         // person cards next to it — a table cell otherwise
                         // sizes to its widest child, which made adding one
                         // open shift visibly widen that entire day.
-                        return(<div key={sw.id} title={t('open.claimable')} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7,minWidth:0,boxSizing:'border-box'}}>
+                        // Custom hours were invisible here: every open shift
+                        // read "Open shift posted" regardless, so one posted for
+                        // 18:00–22:00 looked identical to one covering the whole
+                        // block. Clicking opens the editor, matching the Team
+                        // tab — but only while it's still open, since changing
+                        // the hours under someone who already claimed it would
+                        // move the goalposts after they'd agreed.
+                        const editable=sw.status==='open'&&!!editOpenShift;
+                        return(<div key={sw.id} onClick={()=>editable&&setEditOpen({sw,block})} title={editable?t('open.edit'):t('open.claimable')} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7,minWidth:0,boxSizing:'border-box',cursor:editable?'pointer':'default'}}>
                           <span style={{width:22,height:22,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>?</span>
                           <div style={{minWidth:0,flex:1}}>
-                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('open.posted')}</div>
+                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sw.start&&sw.end?`${sw.start}–${sw.end}`:t('open.posted')}</div>
                             {claimant&&<div style={{fontSize:9,color:T.accentText,opacity:0.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('swap.statusClaimed',{name:claimant.name})}</div>}
                           </div>
-                          {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:12,padding:2,fontFamily:'inherit',flexShrink:0}}>✕</button>}
+                          {cancelOpenShift&&sw.status==='open'&&<button onClick={e=>{e.stopPropagation();cancelOpenShift(sw);}} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:12,padding:2,fontFamily:'inherit',flexShrink:0}}>✕</button>}
                         </div>);
                       })}
                       {(()=>{
