@@ -33,8 +33,12 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const [verified, setVerified]           = useState(false);
   const [pinDigits, setPinDigits]         = useState('');
   const [pinError, setPinError]           = useState(false);
-  const [pinChecking, setPinChecking]     = useState(false);
   const [pinLocked, setPinLocked]         = useState(0);   // seconds remaining
+  // Which check is the newest. Typing "1234" then "12345" fires two, and they
+  // can come back out of order; only the latest may act.
+  const verifySeq   = useRef(0);
+  // Deferred "wrong PIN". See runVerify.
+  const wrongTimer  = useRef(null);
   const [busy, setBusy]                   = useState(false);
   const idleTimer = useRef(null);
 
@@ -89,40 +93,51 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const roleColorFor = (role) => ROLE_COLOR_PALETTE[hashRole(role)%ROLE_COLOR_PALETTE.length];
 
   const selectEmployee = (emp) => {
-    setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false);
+    clearTimeout(wrongTimer.current); verifySeq.current++;
+    setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false); setPinLocked(0);
   };
 
-  // Entry no longer auto-submits. It used to fire the moment the typed length
-  // matched the stored PIN's length — which required knowing that length, i.e.
-  // having the PIN in the browser. Now the hash is server-side and unreadable,
-  // so the person says when they are done. Enter or the ✓ key.
-  const pressDigit = (d) => {
-    if (pinChecking || pinLocked > 0) return;
-    setPinDigits(p => (p + d).slice(0, 8));
-    setPinError(false);
-  };
-  const backspace = () => setPinDigits(p=>p.slice(0,-1));
-
-  const submitPin = async () => {
-    if (pinChecking || pinLocked > 0 || pinDigits.length < 4) return;
-    setPinChecking(true);
+  // Signs in the moment the right digits are typed — no OK to press.
+  //
+  // The browser cannot know how long the stored PIN is (that was the whole
+  // point of hashing it), so instead of guessing when the entry is finished it
+  // just asks after every digit from the fourth onwards. The lockout survives
+  // this because a SUCCESS RESETS the counter: entering a 6-digit PIN checks
+  // 4, 5 and 6, two of which are wrong, and the third wipes them. Legitimate
+  // entry therefore never accumulates towards a lockout, while five genuinely
+  // wrong entries still do.
+  const runVerify = async (code) => {
+    const seq = ++verifySeq.current;
     try {
-      const { ok, lockedSeconds } = await verifyKioskPin(selectedEmpId, pinDigits);
-      if (ok) { setVerified(true); setPinDigits(''); bumpIdleTimer(); }
-      else {
-        setPinError(true);
-        setPinDigits('');
-        if (lockedSeconds > 0) setPinLocked(lockedSeconds);
-      }
+      const { ok, lockedSeconds } = await verifyKioskPin(selectedEmpId, code);
+      if (seq !== verifySeq.current) return;   // a later keystroke supersedes this
+      clearTimeout(wrongTimer.current);
+      if (ok) { setPinError(false); setPinDigits(''); setVerified(true); bumpIdleTimer(); return; }
+      if (lockedSeconds > 0) { setPinError(true); setPinDigits(''); setPinLocked(lockedSeconds); return; }
+      // Wrong SO FAR — but this may simply be the first four digits of a longer
+      // PIN. Saying "wrong PIN" here would flash red twice at somebody typing
+      // their own correct six-digit code, so the message waits until they have
+      // actually stopped typing.
+      wrongTimer.current = setTimeout(()=>{ setPinError(true); setPinDigits(''); }, 1200);
     } catch {
-      // A failed CHECK must never read as a wrong PIN — somebody would stand
-      // there retyping a PIN that was correct all along.
+      if (seq !== verifySeq.current) return;
+      // A failed REQUEST must not read as a wrong PIN — somebody would stand
+      // there retyping a code that was correct all along.
+      clearTimeout(wrongTimer.current);
       setPinError(true);
       setPinDigits('');
-    } finally {
-      setPinChecking(false);
     }
   };
+
+  const pressDigit = (d) => {
+    if (pinLocked > 0) return;
+    const next = (pinDigits + d).slice(0, 8);
+    setPinDigits(next);
+    setPinError(false);
+    clearTimeout(wrongTimer.current);
+    if (next.length >= 4) runVerify(next);
+  };
+  const backspace = () => { clearTimeout(wrongTimer.current); verifySeq.current++; setPinDigits(p=>p.slice(0,-1)); };
 
   // Physical keyboard support for the PIN pad — most "shared kiosk device"
   // setups are a plain laptop/PC rather than a touchscreen, so typing the
@@ -136,12 +151,11 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     const onKeyDown = (e) => {
       if (/^[0-9]$/.test(e.key)) pressDigit(e.key);
       else if (e.key==='Backspace') backspace();
-      else if (e.key==='Enter') submitPin();
       else if (e.key==='Escape') returnToList();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [selectedEmpId, verified, pinDigits, employees, pinChecking, pinLocked]);
+  }, [selectedEmpId, verified, pinDigits, employees, pinLocked]);
 
   useEffect(()=>{
     if (pinLocked <= 0) return;
@@ -241,11 +255,7 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
               <button onClick={()=>pressDigit('0')} style={{padding:'14px 0',borderRadius:10,fontSize:17,fontWeight:500,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontFamily:'inherit'}}>0</button>
               <button onClick={backspace} style={{padding:'14px 0',borderRadius:10,fontSize:15,background:'transparent',border:`1px solid ${T.border}`,color:T.text3,cursor:'pointer',fontFamily:'inherit'}}>⌫</button>
             </div>
-            {/* An explicit OK, because the stored PIN's LENGTH is no longer
-                knowable in the browser — that is what auto-submit relied on. */}
-            <Btn onClick={submitPin} disabled={pinChecking||pinLocked>0||pinDigits.length<4}>
-              {pinChecking ? t('common.saving') : t('kiosk.confirm')}
-            </Btn>
+
           </div>
         ) : (
           <div onClick={bumpIdleTimer}>
