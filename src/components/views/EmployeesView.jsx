@@ -4,7 +4,7 @@ import { T, DAYS, AVAIL_TEMPLATES, DEFAULT_ROLE_STYLES, pal, isDark } from '../.
 import { toMin, LOCALE } from '../../lib/dates';
 import { Avatar, RoleBadge, Btn, SectionLabel, TimePicker } from '../ui';
 import TeamAccess from '../TeamAccess';
-import { fetchEmployeeDocuments, uploadEmployeeDocument, getEmployeeDocumentUrl, deleteEmployeeDocument } from '../../lib/data';
+import { fetchEmployeeDocuments, uploadEmployeeDocument, getEmployeeDocumentUrl, deleteEmployeeDocument, setKioskPin, clearKioskPin } from '../../lib/data';
 
 const fmtSize=(bytes)=>{
   if(!bytes) return '0 KB';
@@ -21,6 +21,11 @@ export default function EmployeesView({
   onAddShift, onOpenCompose, onOpenKiosk, myId,
   orgId, orgName, isOwner, uploaderLabel, currency, s, t,
 }){
+  // PIN entry is local and transient: it is typed, sent, and forgotten. It is
+  // deliberately NOT part of the employee draft that the debounced bulk save
+  // writes — a credential should not ride along with a job title.
+  const [pinDraft,setPinDraft]=useState({});
+  const [pinBusy,setPinBusy]=useState(null);
   const [showArchived,setShowArchived]=useState(false);
   // Documents are manager-only (see 20260725120000_employee_documents.sql)
   // and only ever needed for whichever single employee panel is expanded —
@@ -102,7 +107,34 @@ export default function EmployeesView({
           <div style={{flex:'2 1 120px'}}><SectionLabel>{t('emp.name')}</SectionLabel><input value={emp.name} onChange={e=>updateEmp(emp.id,'name',e.target.value)} style={s.input}/></div>
         <div style={{flex:'2 1 160px'}}><SectionLabel>{t('emp.email')}</SectionLabel><input type="email" value={emp.email||''} onChange={e=>updateEmp(emp.id,'email',e.target.value)} placeholder={t('team.emailPlaceholder')} style={s.input}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.emailHint')}</div></div>
         <div style={{flex:'1 1 140px'}}><SectionLabel>{t('emp.phone')}</SectionLabel><input type="tel" value={emp.phone||''} onChange={e=>updateEmp(emp.id,'phone',e.target.value)} placeholder={t('emp.phonePlaceholder')} style={s.input}/></div>
-        <div style={{flex:'1 1 110px'}}><SectionLabel>{t('emp.kioskPin')}</SectionLabel><input type="text" inputMode="numeric" maxLength={6} value={emp.pin||''} onChange={e=>updateEmp(emp.id,'pin',e.target.value.replace(/\D/g,'').slice(0,6))} placeholder={t('emp.kioskPinPlaceholder')} style={{...s.input,letterSpacing:'0.15em'}}/><div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.kioskPinHint')}</div></div>
+        <div style={{flex:'1 1 150px'}}><SectionLabel>{t('emp.kioskPin')}</SectionLabel>
+          {/* WRITE-ONLY. The PIN is a bcrypt hash in a table nothing can read
+              (20260813180000), so there is nothing to display and no way to
+              show the current one — only to replace it. Managers included. */}
+          <div style={{display:'flex',gap:4,alignItems:'center'}}>
+            <input type="password" inputMode="numeric" maxLength={8} autoComplete="new-password"
+              value={pinDraft[emp.id]||''}
+              onChange={e=>setPinDraft(p=>({...p,[emp.id]:e.target.value.replace(/\D/g,'').slice(0,8)}))}
+              placeholder={emp.hasPin?t('emp.kioskPinSet'):t('emp.kioskPinPlaceholder')}
+              style={{...s.input,letterSpacing:'0.15em',minWidth:0}}/>
+            <Btn small disabled={!/^\d{4,8}$/.test(pinDraft[emp.id]||'')||pinBusy===emp.id}
+              onClick={async()=>{
+                setPinBusy(emp.id);
+                try{ await setKioskPin(emp.id, pinDraft[emp.id]); updateEmp(emp.id,'hasPin',true); setPinDraft(p=>({...p,[emp.id]:''})); }
+                catch(err){ alert(err?.message||t('save.failedGeneric')); }
+                finally{ setPinBusy(null); }
+              }}>{t('common.save')}</Btn>
+            {emp.hasPin&&(
+              <Btn small variant="ghost" disabled={pinBusy===emp.id}
+                onClick={async()=>{
+                  setPinBusy(emp.id);
+                  try{ await clearKioskPin(emp.id); updateEmp(emp.id,'hasPin',false); }
+                  catch(err){ alert(err?.message||t('save.failedGeneric')); }
+                  finally{ setPinBusy(null); }
+                }}>{t('common.remove')}</Btn>
+            )}
+          </div>
+          <div style={{fontSize:9,color:T.text3,marginTop:3}}>{t('emp.kioskPinHint')}</div></div>
         </div>
         <div style={{marginBottom:12}}>
           <SectionLabel>{t('emp.roles')}</SectionLabel>

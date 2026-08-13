@@ -53,6 +53,29 @@ belonging to somebody who is not you.
   **Re-run it after any policy change.** It is a permanent function now, and it
   leaves nothing behind.
 
+- [ ] **RUN + DEPLOY: kiosk PIN hashing (order matters)** — 6/10 — code is done
+  and green; the database half is in two migrations that must straddle the
+  deploy:
+  1. `20260813180000_hash_kiosk_pins.sql` — hashes existing PINs, keeps the
+     `pin` column so the CURRENTLY DEPLOYED app keeps saving employees.
+  2. deploy this branch.
+  3. `20260813180001_drop_plaintext_pin.sql` — drops the column. It refuses to
+     run if any PIN is still unhashed.
+  Between 1 and 3 the plaintext is still readable, so keep the gap to minutes.
+  **One-way**: after step 1 a forgotten PIN can only be reset, not recovered —
+  worth telling staff first.
+
+- [ ] **Extend the isolation test to storage.objects** — 5/10 — the documents
+  bucket is private and its policies scope on the org id in the object path
+  (20260725120000), and that has never been DEMONSTRATED. Same "looks right,
+  never proven" that `rorota_isolation_test` exists to kill; it currently covers
+  tables only. Upload as A, try to read as B.
+
+- [ ] **Check the Supabase auth settings** — 5/10 — dashboard-only, so I cannot
+  see them: leaked-password protection, MFA availability, session length, email
+  confirmation, and auth rate limits. All are toggles, and all of them are
+  things a customer's IT person asks about.
+
 - [ ] **Get legal advice on employee data** — 7/10 — selling means processing
   names, phone numbers, wages and sickness records for people who never agreed
   to anything with you; they are the customer's employees. Sickness in
