@@ -214,6 +214,9 @@ export default function TeamView({
         // — the hours already say which service it is part of.
         const customBlock=blocks.find(x=>x.id===openShiftBlock)||home;
         const customBlockId=customBlock?.id;
+        // No stored times IS the "whole service" answer, so the two states need
+        // no extra flag to disagree with each other.
+        const useCustom=openShiftTimes!==null;
         const editing=editingOpenShift;
         const post=(blockId,start,end)=>{
           // Same button, two meanings, decided by how the dialog was opened.
@@ -227,9 +230,9 @@ export default function TeamView({
         };
         return (
         <div onClick={()=>setOpenShiftDay(null)} style={{position:'fixed',inset:0,zIndex:300,background:'rgba(20,16,13,0.5)',display:'flex',alignItems:'center',justifyContent:'center',padding:20,fontFamily:"'Hanken Grotesk',sans-serif"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'min(80vh,640px)',display:'flex',flexDirection:'column',overflow:'hidden',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
-            <div style={{padding:'16px 18px 10px',flexShrink:0}}>
-              <SectionLabel mb={10}>{editing?t('open.edit'):t('open.post')}</SectionLabel>
+          <div onClick={e=>e.stopPropagation()} style={{background:T.surface,border:`1px solid ${T.border}`,borderRadius:14,width:'min(460px,100%)',maxHeight:'90vh',display:'flex',flexDirection:'column',overflowY:'auto',boxShadow:'0 24px 60px -16px rgba(0,0,0,0.5)'}}>
+            <div style={{padding:'14px 18px 8px',flexShrink:0}}>
+              <SectionLabel mb={8}>{editing?t('open.edit'):t('open.post')}</SectionLabel>
               <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                 <div style={{display:'flex',alignItems:'center',gap:2,background:T.surfaceWarm,border:`1px solid ${T.border}`,borderRadius:8,padding:3}}>
                   <button onClick={()=>setOpenShiftMonth(p=>p.m===0?{y:p.y-1,m:11}:{y:p.y,m:p.m-1})} style={{padding:'4px 10px',borderRadius:6,background:'none',border:'none',cursor:'pointer',color:T.text2,fontFamily:'inherit',fontSize:13}}>‹</button>
@@ -240,11 +243,11 @@ export default function TeamView({
               </div>
             </div>
             <div style={{padding:'0 18px 10px',flexShrink:0}}>
-              <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+              <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
                 {openShiftDays.map((d,i)=>{
                   const isSel=sel.weekKey===d.weekKey&&sel.day===d.day;
                   const isToday=dateToISO(d.date)===dateToISO(new Date());
-                  return(<button key={i} onClick={()=>setOpenShiftDay(d)} style={{padding:'5px 8px',borderRadius:8,fontSize:11,fontWeight:600,border:`1px solid ${isSel?T.accent:isToday?T.accent+'55':T.border}`,background:isSel?T.accentLight:'transparent',color:isSel?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit',minWidth:40,textAlign:'center'}}>
+                  return(<button key={i} onClick={()=>setOpenShiftDay(d)} style={{padding:'3px 6px',borderRadius:7,fontSize:10,lineHeight:1.25,fontWeight:600,border:`1px solid ${isSel?T.accent:isToday?T.accent+'55':T.border}`,background:isSel?T.accentLight:'transparent',color:isSel?T.accent:T.text2,cursor:'pointer',fontFamily:'inherit',minWidth:32,textAlign:'center'}}>
                     <div>{t('day.'+d.day).slice(0,2)}</div>
                     <div style={{fontWeight:400,opacity:0.8}}>{d.date.getDate()}</div>
                   </button>);
@@ -257,48 +260,38 @@ export default function TeamView({
                   <button key={r} onClick={()=>{setOpenShiftRole(r);if(!editing)lastPostRole.current=r;}} style={{display:'inline-flex',alignItems:'center',gap:4,padding:'4px 10px',borderRadius:999,fontSize:11,fontWeight:500,background:active?(isDark()?rs.dot+'22':rs.bg):'transparent',color:active?(isDark()?rs.dot:rs.text):T.text3,border:`1px solid ${active?(isDark()?rs.dot+'55':rs.border):T.border}`,cursor:'pointer',fontFamily:'inherit'}}><span style={{width:5,height:5,borderRadius:'50%',background:active?rs.dot:T.text3}}/>{r}</button>);})}
               </div>
             </div>
-            <div style={{overflowY:'auto',padding:'0 10px 6px',flex:1,minHeight:0}}>
-              {blocks.map(b=>(
-                <div key={b.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:8}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:500,color:T.text}}>{b.name} <span style={{fontSize:11,color:T.text3,fontWeight:400}}>{b.start}–{b.end}</span></div>
-                    <div style={{marginTop:3}}><RoleBadge role={openShiftRole} rs={roleStyles[openShiftRole]||DEFAULT_ROLE_STYLES.Other}/></div>
-                  </div>
-                  {/* No times passed: the shift means "the block's hours", and
-                      stays correct if the block is edited later. */}
-                  <Btn small variant="secondary" onClick={()=>post(b.id)}>{editing?t('common.update'):t('emp.addShiftBtn')}</Btn>
-                </div>
-              ))}
-              {home&&(
-                <div style={{padding:'10px',borderRadius:8,borderTop:`1px solid ${T.border}`,marginTop:4}}>
-                  <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:8}}>{t('emp.customTime')}</div>
-                  {/* Fourth version of this row, and the first that cannot
-                      express a contradiction.
-
-                      It was hardcoded to blocks[0], so "Waiter, 18:00–22:00"
-                      filed itself under Lunch. Then a free picker, which let
-                      you do the same thing deliberately. Then the block was
-                      derived from the start time, which was consistent but
-                      meant the service moved under you as you typed.
-
-                      Now the block is chosen FIRST and the hours are fenced to
-                      it: pick Lunch (10:00–16:00) and 18:00 is not selectable.
-                      Custom hours are for trimming a service — a short shift
-                      inside dinner — not for inventing one that spans two. */}
-                  <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
-                    {blocks.map(b=>{const on=customBlock?.id===b.id;return(
-                      <button key={b.id} onClick={()=>{setOpenShiftBlock(b.id);setOpenShiftTimes({start:b.start,end:b.end});}} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:on?600:400,background:on?T.accentLight:'transparent',color:on?T.accent:T.text2,border:`1px solid ${on?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>);})}
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
-                    <span style={{fontSize:11,color:T.text3}}>–</span>
-                    <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
-                    <Btn small variant="secondary" onClick={()=>post(customBlockId,times.start,times.end)}>{editing?t('common.update'):t('emp.addShiftBtn')}</Btn>
-                  </div>
-                  {customBlock&&(
-                    <div style={{fontSize:11,color:T.text3,marginTop:8}}>{t('open.within',{from:customBlock.start,to:customBlock.end})}</div>
-                  )}
-                </div>
+            {/* One row per block, each with its own Add button, made the dialog
+                taller than the screen and asked you to commit before you had
+                seen the custom option. It is now four short choices — day,
+                role, service, hours — and ONE action, in the footer where the
+                other actions already live. */}
+            <div style={{padding:'0 18px 12px',flexShrink:0}}>
+              <div style={{fontSize:10,fontWeight:600,letterSpacing:0.4,textTransform:'uppercase',color:T.text3,marginBottom:5}}>{t('open.service')}</div>
+              <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                {blocks.map(b=>{const on=customBlock?.id===b.id;return(
+                  <button key={b.id} onClick={()=>{setOpenShiftBlock(b.id);if(openShiftTimes)setOpenShiftTimes({start:b.start,end:b.end});}} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:on?600:400,background:on?T.accentLight:'transparent',color:on?T.accent:T.text2,border:`1px solid ${on?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name} <span style={{opacity:0.7,fontWeight:400}}>{b.start}–{b.end}</span></button>);})}
+              </div>
+            </div>
+            <div style={{padding:'0 18px 12px',flexShrink:0}}>
+              <div style={{fontSize:10,fontWeight:600,letterSpacing:0.4,textTransform:'uppercase',color:T.text3,marginBottom:5}}>{t('open.hours')}</div>
+              {/* No times stored means "the whole service", and the shift stays
+                  correct if the block's hours are edited later — a stored copy
+                  would not. Custom hours are fenced to the chosen service:
+                  pick Lunch and 18:00 is not selectable. They are for TRIMMING
+                  a service, not for inventing one that spans two. */}
+              <div style={{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center'}}>
+                {[[false,t('open.wholeService')],[true,t('emp.customTime')]].map(([custom,label])=>{
+                  const on=useCustom===custom;
+                  return(<button key={label} onClick={()=>setOpenShiftTimes(custom?{start:customBlock?.start||'10:00',end:customBlock?.end||'16:00'}:null)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:on?600:400,background:on?T.accentLight:'transparent',color:on?T.accent:T.text2,border:`1px solid ${on?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{label}</button>);
+                })}
+                {useCustom&&(<>
+                  <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
+                  <span style={{fontSize:11,color:T.text3}}>–</span>
+                  <TimePicker small min={customBlock?.start} max={customBlock?.end} value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
+                </>)}
+              </div>
+              {useCustom&&customBlock&&(
+                <div style={{fontSize:11,color:T.text3,marginTop:6}}>{t('open.within',{from:customBlock.start,to:customBlock.end})}</div>
               )}
             </div>
             <div style={{borderTop:`1px solid ${T.border}`,padding:12,flexShrink:0,display:'flex',gap:8,alignItems:'center'}}>
@@ -306,6 +299,9 @@ export default function TeamView({
               {editing&&cancelOpenShift&&(
                 <Btn variant="danger" small onClick={()=>{cancelOpenShift(editing);setOpenShiftDay(null);setEditingOpenShift(null);}}>{t('open.cancel')}</Btn>
               )}
+              <span style={{marginLeft:'auto'}}>
+                <Btn onClick={()=>post(customBlockId,useCustom?times.start:undefined,useCustom?times.end:undefined)}>{editing?t('common.update'):t('emp.addShiftBtn')}</Btn>
+              </span>
             </div>
           </div>
         </div>);
