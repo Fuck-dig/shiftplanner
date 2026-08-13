@@ -3,7 +3,7 @@ import { T, EMP_PALETTE, MEMBERSHIP_ROLE_COLORS, DAYS, AVAIL_TEMPLATES, isDark }
 import { supabase } from '../lib/supabase';
 import { effectiveHourlyRate, effectiveSickPct } from '../lib/schedule';
 import { LOCALE } from '../lib/dates';
-import { Btn, TimePicker, Toggle } from './ui';
+import { Btn, TimePicker, Toggle, RoleBadge } from './ui';
 import {getPushStatus, subscribeToPush, unsubscribeFromPush} from '../lib/push';
 
 const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:true, timeOffSwap:true, messages:true };
@@ -13,7 +13,7 @@ const DEFAULT_PUSH_PREFS = { enabled:false, shiftChanges:true, shiftReminder:tru
 // user's own email (or null if none exists yet) — name/avatar editing only
 // makes sense when that match exists, since otherwise there's no roster row
 // to update.
-export default function ProfileSettings({ role, myEmp, myEmail, orgId, currency, orgSickPct, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, onSavePushPrefs, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
+export default function ProfileSettings({ role, myEmp, myEmail, orgId, currency, orgSickPct, roleStyles, onGoToEmployees, onSaveName, onSaveColor, onSavePhone, onSaveAvailability, onSaveEmailNotifications, onSavePushPrefs, weekHours, weekCorrected, monthHours, monthCorrected, s, t }){
   const [name, setName] = useState(myEmp?.name || '');
   const [nameSaved, setNameSaved] = useState(false);
   const [phone, setPhone] = useState(myEmp?.phone || '');
@@ -114,10 +114,28 @@ export default function ProfileSettings({ role, myEmp, myEmail, orgId, currency,
       <div style={s.card}>
         <div style={{fontFamily:'Fraunces, Georgia, serif',fontSize:15,fontWeight:500,marginBottom:14}}>{t('profile.title')}</div>
 
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20}}>
-          <span style={{fontSize:12,color:T.text3}}>{t('profile.role')}</span>
+        {/* Two different things that were both called "role", which is why this
+            was confusing — and "Manager" is BOTH, which is the sharp edge.
+            Everywhere else in Rorota a role is a JOB role: shift roles, role
+            colours, Cost by role, the badges on every grid. Profile was the one
+            screen where it meant access level, so Profile is what changes.
+
+            Access is still shown, because it explains why someone sees what
+            they see — just no longer under a name that means something else. */}
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+          <span style={{fontSize:12,color:T.text3,minWidth:56}}>{t('profile.access')}</span>
           <span style={{fontSize:11,fontWeight:600,padding:'3px 10px',borderRadius:999,background:isDark()?rc.text+'22':rc.bg,color:rc.text,border:`1px solid ${isDark()?rc.text+'44':rc.border}`}}>{t('team.role'+(role.charAt(0).toUpperCase()+role.slice(1)))}</span>
+          <span style={{fontSize:11,color:T.text3}}>{t('profile.accessHint')}</span>
         </div>
+        {myEmp && (
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,flexWrap:'wrap'}}>
+            <span style={{fontSize:12,color:T.text3,minWidth:56}}>{t('emp.roles')}</span>
+            {(myEmp.roles||[]).length
+              ? (myEmp.roles||[]).map(r=><RoleBadge key={r} role={r} rs={roleStyles?.[r]}/>)
+              : <span style={{fontSize:11,color:T.text3,fontStyle:'italic'}}>{t('profile.noRoles')}</span>}
+            <span style={{fontSize:11,color:T.text3}}>{t('profile.rolesHint')}</span>
+          </div>
+        )}
 
         {myEmp ? (<>
           <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:18,marginBottom:18}}>
