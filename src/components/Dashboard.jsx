@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { T, styles, DEFAULT_ROLE_STYLES, DEFAULT_BLOCKS, DAYS, AVAIL_TEMPLATES, EMP_PALETTE, isDark, MEMBERSHIP_ROLE_COLORS, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMonthOffsets, todayISO, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly, scheduledCount, sickHoursFor, coversSlot, effectiveSickPct, calcSickCost } from '../lib/schedule';
-import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, saveOrgSickPct, fetchOrgPaySettings, saveOrgSetup } from '../lib/data';
+import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, fetchOrgPaySettings, saveOrgSetup } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
 import { collectShiftsInRange } from '../lib/earnings';
 import { calendarMonthRange } from '../lib/payPeriod';
@@ -247,8 +247,6 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       setSettingsError(e.message||t('save.failedGeneric'));
     }finally{ setSettingsSaving(false); }
   };
-  const dSickPct=useMemo(()=>mkDebounce(v=>saveOrgSickPct(orgId,v),'sickpct'),[orgId]);
-  const setOrgSickPctAndSave=v=>{ setOrgSickPct(v); if(orgId&&v!==''&&v!=null) dSickPct(Number(v)); };
 
   useEffect(()=>{
     let alive=true; setLoading(true);
@@ -2185,7 +2183,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     // (hours x that person's rate); without, it's a unitless index built from
     // priority %. The view needs to know which, or its labels lie.
     hasWages={hasWages} isMobile={isMobile}
-    orgSickPct={orgSickPct} setOrgSickPct={setOrgSickPctAndSave}
+    orgSickPct={orgSickPct}
     s={s} t={t}
   />
 )}

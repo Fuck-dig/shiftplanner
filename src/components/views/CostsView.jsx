@@ -149,7 +149,7 @@ export default function CostsView({
   monthCostData, costData, totalMonthCostUnits, totalCostUnits, maxMonthCostUnits, maxCostUnits, monthRoleCosts, weekRoleCosts,
   toMoney, toMoneyRaw, employees, timeOff, roleStyles, setView, orgName,
   revenue, onSaveRevenue, dailyLaborCostByDate, monthRevenueTotal,
-  hasWages, orgSickPct, setOrgSickPct, isMobile,
+  hasWages, orgSickPct, isMobile,
   s, t,
 }){
   // Local echo of whatever's being typed into a revenue box right now, so a
@@ -207,9 +207,12 @@ export default function CostsView({
         {!hasWages&&<span style={{fontSize:11,color:T.text3}}>/h</span>}
       </div>
       {/* The restaurant-wide sick pay default. Lives here beside currency
-          because that is already where org-level cost settings are set — there
-          is no general org-settings screen in Rorota, and inventing one for a
-          single number would be a worse answer than following the pattern. */}
+          because that is already where org-level cost settings are set.
+          READ-ONLY, deliberately: sick pay is owner-only and is EDITED in
+          Admin ▸ Settings, which did not exist when this was written. Showing
+          it here without a way to change it is the point — the number affects
+          every figure on this page, so it belongs in view, but a second editor
+          for one setting is how the two drift apart. */}
       <div style={{display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
         <span style={{fontSize:11,color:T.text3}}>{t('cost.sickPayDefault')}</span>
         <span style={{fontSize:12,color:T.text,fontWeight:500}}>{orgSickPct??'—'}%</span>

@@ -730,10 +730,9 @@ export async function fetchOrgPaySettings(orgId){
   };
 }
 
-export async function saveOrgSickPct(orgId, pct){
-  const { error } = await supabase.from('organizations').update({ sick_pay_pct: pct }).eq('id', orgId);
-  if (error) throw error;
-}
+// saveOrgSickPct was removed on 13 Aug. Sick pay is owner-only and is written
+// by saveOrgSetup from the Settings screen; a second, unrelated writer for the
+// same column is how a control ends up in a place the rule was never applied.
 
 export async function saveOrgCurrency(orgId, currency){
   const { error } = await supabase.from('organizations').update({ currency }).eq('id', orgId);
