@@ -70,27 +70,37 @@ belonging to somebody who is not you.
   not a capability. Losing your own rota is a bad evening. Losing a customer's
   published rota, with no way back, is the end of that relationship.
 
-- [ ] **Generate silently replaces a week, including a published one** — 6/10 —
-  UPGRADED from 5. Pressing Generate on a week that already has a schedule
-  discards every manual edit, with no confirmation, and does not check
-  `confirmed` — so it will rewrite a week staff are already planning around.
-  Out of step with the app's own conventions: applying a template confirms
-  first, so does archiving. The empty-state buttons are safe (they only render
-  with no schedule) and MonthView's per-week button is guarded by `!ws`; it is
-  the main toolbar button and its mobile twin. Now a support incident on
-  somebody else's rota, not just your own.
+- [x] **DONE (already was) — Generate replaces a week, including a published
+  one** — was 6/10. Checked on 13 Aug rather than fixed: `generate()` and
+  `generateMonth()` BOTH already confirm, with stronger wording when the week is
+  published, and `generateMonth` counts how many weeks would be lost. All call
+  paths go through them; the empty-state buttons only render when no schedule
+  exists, and MonthView's per-week button is guarded by `!ws`. All four confirm
+  strings exist in all five languages. The entry was stale — nearly re-fixed.
 
-- [ ] **A manager editing sick pay in Costs fails silently** — 6/10 — UPGRADED
-  from 5. `CostsView` still has its own sick-pay field and takes
-  `setOrgSickPct` with no `isOwner` check, so a manager types a percentage,
-  watches it change on screen, and has it rejected by the owner-only trigger
-  (20260813100000) on the way to the database. The rejection goes nowhere —
-  `dSickPct` is `mkDebounce(v=>saveOrgSickPct(orgId,v))` with no `.catch` — so
-  nothing is shown and the stale value stays on screen until a reload.
-  Two faults, fix together: the missing owner gate, and the swallowed error.
-  The second is the real one. **Audit every other write for the same pattern**;
-  a save that fails silently is the worst thing to support remotely, because
-  the customer says "it didn't save" and you have nothing to look at.
+- [x] **WITHDRAWN — "a manager editing sick pay in Costs fails silently"** —
+  I logged this on 13 Aug at 6/10 and it was WRONG in both halves. I saw
+  `setOrgSickPct={setOrgSickPctAndSave}` passed to CostsView and inferred an
+  editable, ungated field. It is not: Costs renders sick pay as READ-ONLY text,
+  and `setOrgSickPct` appeared exactly once in the file — in the destructuring.
+  A dead prop. Nor was the error swallowed: `mkDebounce` catches every failure
+  and shows a retry banner (Dashboard:1668). Neither fault existed.
+  What was real, and is now done: the dead prop, its dead setter, its dead
+  debounce, and `saveOrgSickPct` in `lib/data.js` — a second writer for a column
+  that is supposed to be owner-only, which is how a control ends up somewhere
+  the rule was never applied. All removed. Sick pay now has exactly one writer,
+  `saveOrgSetup`, from the screen where the trigger applies.
+  **Lesson, since this is the second time today**: a grep showing a prop being
+  PASSED says nothing about whether it is USED.
+
+- [ ] **Decide the staff phone story** — 6/10 — UPGRADED from 3 and unparked.
+  Parking it was right for Almus, where you can tell people to use a laptop. It
+  is not right for a product: managers may sit at a desk, waiters will not, and
+  the staff app is the half every employee touches every week. The parked
+  reasoning still stands (a desktop grid forced into 390px), and the note that
+  Week view on a phone wants FEWER columns rather than thinner ones is still
+  the best idea in this file. **Needs a decision from William before any code:**
+  a phone layout for the web app, or a real native app.
 
 - [ ] **Decide the staff phone story** — 6/10 — UPGRADED from 3 and unparked.
   Parking it was right for Almus, where you can tell people to use a laptop. It
