@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE, getMonthOffsets, getWeekDates, weekKey } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes, blockForTime } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots, SectionLabel, TimePicker } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -204,6 +204,10 @@ export default function TeamView({
         const sel=openShiftDay;                 // {day, date, weekOffset, weekKey}
         const home=blocks[0];
         const times=openShiftTimes||{start:home?.start||'10:00',end:home?.end||'16:00'};
+        // The block follows the start time unless the manager has overridden
+        // it. Typing 18:00 puts the shift in Dinner without anyone being asked
+        // — the hours already say which service it is part of.
+        const customBlockId=openShiftBlock||blockForTime(times.start,blocks)?.id||home?.id;
         const editing=editingOpenShift;
         const post=(blockId,start,end)=>{
           // Same button, two meanings, decided by how the dialog was opened.
@@ -272,13 +276,13 @@ export default function TeamView({
                   <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                     <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
                       {blocks.map(b=>(
-                        <button key={b.id} onClick={()=>setOpenShiftBlock(b.id)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:(openShiftBlock||home.id)===b.id?600:400,background:(openShiftBlock||home.id)===b.id?T.accentLight:'transparent',color:(openShiftBlock||home.id)===b.id?T.accent:T.text2,border:`1px solid ${(openShiftBlock||home.id)===b.id?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>
+                        <button key={b.id} onClick={()=>setOpenShiftBlock(b.id)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:customBlockId===b.id?600:400,background:customBlockId===b.id?T.accentLight:'transparent',color:customBlockId===b.id?T.accent:T.text2,border:`1px solid ${customBlockId===b.id?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>
                       ))}
                     </div>
-                    <TimePicker small value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
+                    <TimePicker small value={times.start} onChange={v=>{setOpenShiftTimes({...times,start:v});setOpenShiftBlock(null);}}/>
                     <span style={{fontSize:11,color:T.text3}}>–</span>
                     <TimePicker small value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
-                    <Btn small variant="secondary" onClick={()=>post(openShiftBlock||home.id,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
+                    <Btn small variant="secondary" onClick={()=>post(customBlockId,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
                   </div>
                 </div>
               )}

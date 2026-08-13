@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   actualAssignmentHours, sickHoursFor, coversSlot, effectiveSickPct, calcSickCost, swapTimes,
+  blockForTime,
 } from './schedule';
 
 const BLOCK = { start: '10:00', end: '18:00' };   // 8h
@@ -136,5 +137,79 @@ describe('swapTimes — what hours an open shift actually runs', () => {
     expect(swapTimes(null, BLOCK2)).toEqual({ start: '10:00', end: '16:00' });
     expect(swapTimes({ start: '18:00', end: '22:00' }, null)).toEqual({ start: '18:00', end: '22:00' });
     expect(swapTimes(null, null)).toEqual({ start: '', end: '' });
+  });
+});
+
+describe('blockForTime — which service a shift belongs to', () => {
+  // The real Almus setup, including a dinner service that runs past midnight.
+  const LUNCH = { id: 'lunch', name: 'Lunch', start: '10:00', end: '16:00' };
+  const DINNER = { id: 'dinner', name: 'Dinner', start: '16:30', end: '00:00' };
+  const BLOCKS = [LUNCH, DINNER];
+
+  it('puts an 18:00 shift in Dinner, not Lunch', () => {
+    // The reported bug: an 18:00–22:00 waiter shift drew in the Lunch row,
+    // under a "10:00–16:00" heading that its own times contradicted.
+    expect(blockForTime('18:00', BLOCKS).id).toBe('dinner');
+  });
+
+  it('puts a midday shift in Lunch', () => {
+    expect(blockForTime('12:00', BLOCKS).id).toBe('lunch');
+  });
+
+  it('handles a service that runs past midnight', () => {
+    // Dinner's end (00:00) reads as less than its start, so the span has to be
+    // pushed to 16:30 → 24:00 or a 23:30 shift matches nothing.
+    expect(blockForTime('23:30', BLOCKS).id).toBe('dinner');
+
+    // And a block that genuinely crosses into the next day has to catch the
+    // small hours, which means testing an early time against YESTERDAY's span
+    // as well as today's.
+    const LATE = { id: 'late', name: 'Late', start: '18:00', end: '02:00' };
+    expect(blockForTime('01:00', [LUNCH, LATE]).id).toBe('late');
+    expect(blockForTime('23:00', [LUNCH, LATE]).id).toBe('late');
+  });
+
+  it('leaves 01:00 out of a service that ended at midnight', () => {
+    // Deliberate, and the counterpart to the test above: 01:00 is genuinely
+    // after Dinner closes, so it is not a dinner shift. It falls back to the
+    // day's first service rather than being forced into the nearest one.
+    expect(blockForTime('01:00', BLOCKS).id).toBe('lunch');
+  });
+
+  it('keeps a time in the gap between services with the one that just ended', () => {
+    // 16:10 is after Lunch closes and before Dinner opens.
+    expect(blockForTime('16:10', BLOCKS).id).toBe('lunch');
+
+    // With a third service the answer has to be the MOST RECENT one to have
+    // started, not merely the first that had started — with only two blocks
+    // those are the same block, so this case is what actually pins it down.
+    const BREAKFAST = { id: 'breakfast', name: 'Breakfast', start: '06:00', end: '10:00' };
+    expect(blockForTime('16:10', [BREAKFAST, LUNCH, DINNER]).id).toBe('lunch');
+  });
+
+  it('sends an early-morning time to the first service of the day', () => {
+    expect(blockForTime('06:00', BLOCKS).id).toBe('lunch');
+  });
+
+  it('picks the tightest fit when services overlap', () => {
+    // A short block nested inside a long one is a real setup (a bar shift
+    // inside all-day service). The narrower one is the better answer.
+    const BRUNCH = { id: 'brunch', name: 'Brunch', start: '11:00', end: '13:00' };
+    expect(blockForTime('12:00', [LUNCH, BRUNCH]).id).toBe('brunch');
+    expect(blockForTime('12:00', [BRUNCH, LUNCH]).id).toBe('brunch');   // order-independent
+  });
+
+  it('returns null when there are no usable blocks, rather than throwing', () => {
+    expect(blockForTime('18:00', [])).toBe(null);
+    expect(blockForTime('18:00', null)).toBe(null);
+    expect(blockForTime('18:00', [{ id: 'x', name: 'Broken' }])).toBe(null);
+  });
+
+  it('falls back to the first block on a missing or malformed time', () => {
+    // toMin() would throw on undefined; a half-typed time in a picker must not
+    // take the dialog down with it.
+    expect(blockForTime(undefined, BLOCKS).id).toBe('lunch');
+    expect(blockForTime('', BLOCKS).id).toBe('lunch');
+    expect(blockForTime('nonsense', BLOCKS).id).toBe('lunch');
   });
 });

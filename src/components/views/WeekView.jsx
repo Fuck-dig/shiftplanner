@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
-import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange, swapTimes } from '../../lib/schedule';
+import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange, swapTimes, blockForTime } from '../../lib/schedule';
 import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots, TimePicker } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
@@ -355,6 +355,13 @@ export default function WeekView({
         const cur=editOpen.times||{start:editOpen.sw.start||b?.start||'10:00',end:editOpen.sw.end||b?.end||'16:00'};
         const setT=(k,v)=>setEditOpen(p=>({...p,times:{...cur,[k]:v}}));
         const custom=editOpen.times ? true : !!(editOpen.sw.start&&editOpen.sw.end);
+        // A shift belongs to the service its hours start in. Retiming a Lunch
+        // shift to 18:00 does not make it a lunch shift, so it moves to Dinner
+        // rather than sitting under a heading that contradicts it. Said out
+        // loud before saving, because the shift is about to change rows and a
+        // silent jump reads as a bug.
+        const moveTo=blockForTime(cur.start,blocks);
+        const moving=moveTo&&moveTo.id!==editOpen.sw.blockId?moveTo:null;
         return(<>
           <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:12,flexWrap:'wrap'}}>
             <TimePicker small value={cur.start} onChange={v=>setT('start',v)}/>
@@ -364,13 +371,16 @@ export default function WeekView({
           {/* Clearing back to the block's hours has to be expressible, or a
               shift given custom times by mistake can never be un-given them
               without deleting and reposting. */}
+          {moving&&(
+            <div style={{fontSize:11,color:T.text2,marginBottom:12}}>{t('open.movesTo',{block:moving.name})}</div>
+          )}
           {custom&&(
             <button onClick={()=>{editOpenShift(editOpen.sw,{start:null,end:null});setEditOpen(null);}} style={{fontSize:11,color:T.accent,background:'none',border:'none',padding:0,cursor:'pointer',fontFamily:'inherit',textDecoration:'underline',marginBottom:14,display:'block'}}>
               {t('open.useBlockHours',{from:b?.start||'',to:b?.end||''})}
             </button>
           )}
           <div style={{display:'flex',gap:8,alignItems:'center',marginTop:4}}>
-            <Btn small onClick={()=>{editOpenShift(editOpen.sw,{start:cur.start,end:cur.end});setEditOpen(null);}}>{t('common.save')}</Btn>
+            <Btn small onClick={()=>{editOpenShift(editOpen.sw,{start:cur.start,end:cur.end,...(moving?{blockId:moving.id}:{})});setEditOpen(null);}}>{t('common.save')}</Btn>
             <Btn small variant="ghost" onClick={()=>setEditOpen(null)}>{t('common.cancel')}</Btn>
             {cancelOpenShift&&<span style={{marginLeft:'auto'}}><Btn small variant="danger" onClick={()=>{cancelOpenShift(editOpen.sw);setEditOpen(null);}}>{t('open.cancel')}</Btn></span>}
           </div>
