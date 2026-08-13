@@ -19,9 +19,12 @@ import * as Sentry from '@sentry/react';
 // `beforeSend`, and it is the part that is unit tested. Sending a payslip to an
 // error tracker would be a worse breach than the bug that triggered it.
 //
-// Also: create the Sentry project in the EU region, so the DSN points at
-// ingest.de.sentry.io and the data does not leave the EU. The DSN carries the
-// region — there is no separate setting.
+// Also: the EU region is chosen when the ORGANISATION is created, not the
+// project, and Sentry cannot change it afterwards — the only remedy is a new
+// organisation. Error payloads (the part carrying anything about a restaurant's
+// staff) then live in Frankfurt. Account-level things — user accounts, DSN
+// keys, project metadata, org settings, audit logs — stay in the US whatever
+// you pick, so "EU region" means the events, not literally everything.
 //
 // THE DSN IS READ AT BUILD TIME, NOT AT RUNTIME
 //

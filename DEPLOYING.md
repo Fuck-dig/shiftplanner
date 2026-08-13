@@ -90,14 +90,19 @@ on 3 August (a hook below an early return).
 
 Rorota reports crashes to Sentry, but only if a DSN is present **at build time**.
 
-1. Create a Sentry project **in the EU region** — the region is baked into the
-   DSN (it will contain `ingest.de.sentry.io`), and there is no setting to
-   change it afterwards. This matters: the reports concern a Danish
-   restaurant's employees, and keeping them in the EU is part of the same
-   obligation as the DPA.
-2. In Vercel → Settings → Environment Variables, add `VITE_SENTRY_DSN` for
+1. Create the Sentry **ORGANISATION** with Data Storage Location set to
+   **European Union**. It is a dropdown in the "Create a New Organization" step,
+   it is **irreversible**, and it is on the ORGANISATION — not the project. Get
+   it wrong and the only fix is a new organisation; moving the project does not
+   help. Events then live in Frankfurt and the DSN contains `de.sentry.io`.
+   Note what this does NOT cover: user accounts, DSN keys, project metadata,
+   org settings and audit logs stay in the US regardless. The error payloads —
+   the part that could carry anything about a restaurant's staff — are what stay
+   in the EU. Worth knowing precisely when the DPA conversation happens.
+2. Create a project inside it, platform **React**.
+3. In Vercel → Settings → Environment Variables, add `VITE_SENTRY_DSN` for
    Production (and Preview, if you want preview crashes too).
-3. **Redeploy.** Vite inlines `import.meta.env` when it builds, so the variable
+4. **Redeploy.** Vite inlines `import.meta.env` when it builds, so the variable
    has no effect on the bundle already deployed. Adding it and not redeploying
    reports nothing and looks exactly like everything working.
 
