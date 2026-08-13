@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import { T, styles, DAYS, pal, initials, isDark, ROLE_COLOR_PALETTE, MEMBERSHIP_ROLE_COLORS, TIMEOFF_TYPES, backdrop } from '../lib/constants';
 import { getWeekDates, weekKey, weekKeyToMonday, fmt, fmtLong, dateToISO, todayISO, getMonthOffsets, toMin, weekOffsetFromDate, setLocale, LOCALE, stepDay } from '../lib/dates';
-import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, rosterForWeek, workingCount } from '../lib/schedule';
+import { assignmentHours, actualAssignmentHours, actualTimeRange, isOnTimeOff, effectiveRolesFor, hasRestConflict, activeOnly, rosterForWeek, workingCount, swapTimes } from '../lib/schedule';
 import { fetchOrgPaySettings, fetchEmployees, fetchBlocks, fetchSchedules, fetchTimeOff, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, createNotification, createTimeOffRequest, deleteTimeOffRequest, updateEmployeeSelfProfile, fetchRoleStyles, sendNotificationEmail, fetchMessages } from '../lib/data';
 import MessageThreadModal from './MessageThreadModal';
 import { supabase } from '../lib/supabase';
@@ -679,7 +679,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
     // otherwise the block's. Showing the block's for a custom-hours shift
     // would tell someone they are taking the whole evening when the shift
     // is actually four hours of it — and they'd find out on the day.
-    const from=sw.start||b?.start, to=sw.end||b?.end;
+    const {start:from,end:to}=swapTimes(sw,b);
     return `${t('day.'+sw.day)} ${fmt(dateForSwap(sw))}${b?` · ${b.name} ${from}–${to}`:''}`;
   };
 
@@ -845,7 +845,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
             return(
               <div key={sw.id} style={{padding:'8px 10px',borderRadius:8,background:T.accentLight,border:`2px dashed ${T.accent}66`,position:'relative'}}>
                 <div style={{fontSize:13,fontWeight:700,color:T.accentText}}>{b?.name||t('open.posted')}</div>
-                {b&&<div style={{fontSize:11,color:T.accentText,opacity:0.85,marginTop:2}}>{b.start}–{b.end}</div>}
+                {b&&(()=>{const tt=swapTimes(sw,b);return <div style={{fontSize:11,color:T.accentText,opacity:0.85,marginTop:2}}>{tt.start}–{tt.end}</div>;})()}
                 <div style={{fontSize:10,color:T.accentText,opacity:0.7,marginTop:1}}>{sw.role}</div>
                 {sw.status==='claimed'?(
                   // "Claimed by <my own name>" reads oddly when it's me —
