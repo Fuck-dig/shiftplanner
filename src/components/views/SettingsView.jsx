@@ -114,7 +114,7 @@ export default function SettingsView({
         {error&&<div style={{marginTop:14,fontSize:12,color:T.danger,background:T.dangerLight,border:`1px solid ${T.danger}33`,borderRadius:8,padding:'8px 12px'}}>{error}</div>}
 
         <div style={{marginTop:18,display:'flex',gap:8,alignItems:'center'}}>
-          <Btn onClick={()=>onSave(draft)} disabled={!dirty||saving}>{saving?t('common.saving'):t('common.save')}</Btn>
+          <Btn onClick={()=>onSave(draft)} disabled={!dirty||saving} busy={saving}>{saving?t('common.saving'):t('common.save')}</Btn>
           {dirty&&!saving&&<span style={{fontSize:11,color:T.text3}}>{t('settings.unsaved')}</span>}
         </div>
       </div>

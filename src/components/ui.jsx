@@ -116,13 +116,21 @@ export function RequestRow({emp,badge,title,subtitle,accent,children}){
   );
 }
 
-export function Btn({children,onClick,disabled,variant='primary',small}){
-  const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:disabled?'wait':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:disabled?0.6:1};
+// `busy` means "working on it"; `disabled` means "there is nothing to do".
+// They were the same state, drawn as a faded accent under a WAIT cursor — the
+// macOS spinner — so a Save button with no unsaved changes looked like a save
+// in progress. Now busy keeps the accent and gets a progress cursor, while
+// disabled goes visually inert: it should read as not-a-button, not as a
+// button that is thinking.
+export function Btn({children,onClick,disabled,busy,variant='primary',small}){
+  const off=disabled&&!busy;
+  const base={fontFamily:'inherit',fontWeight:500,borderRadius:8,cursor:busy?'progress':disabled?'not-allowed':'pointer',border:'none',transition:'all 0.15s',fontSize:small?12:13,padding:small?'5px 12px':'7px 16px',opacity:busy?0.7:1};
   // `warning` is for "proceed even though something's off" actions (e.g.
   // moving someone onto a shift they're not available for) — distinct from
   // `danger`, which is for destructive things like delete.
   const vs={primary:{background:T.accent,color:'#fff'},secondary:{background:T.surfaceWarm,color:T.text,border:`1px solid ${T.border}`},ghost:{background:'transparent',color:T.text2,border:`1px solid ${T.border}`},danger:{background:T.dangerLight,color:T.danger,border:`1px solid ${T.danger}33`},warning:{background:T.warningLight,color:T.warning,border:`1px solid ${T.warning}33`},success:{background:T.successLight,color:T.success,border:`1px solid ${T.success}33`}};
-  return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant]}}>{children}</button>;
+  const inert={background:T.surfaceWarm,color:T.text3,border:`1px solid ${T.border}`};
+  return <button onClick={onClick} disabled={disabled} style={{...base,...vs[variant],...(off?inert:{})}}>{children}</button>;
 }
 
 // The small uppercase label above a group of things.
