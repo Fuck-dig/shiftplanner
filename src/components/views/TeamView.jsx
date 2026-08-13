@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { dateToISO, LOCALE, getMonthOffsets, getWeekDates, weekKey } from '../../lib/dates';
-import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek } from '../../lib/schedule';
+import { isOnTimeOff, effectiveRolesFor, activeOnly, workingCount, rosterForWeek, swapTimes } from '../../lib/schedule';
 import { RoleBadge, Btn, GripDots, SectionLabel, TimePicker } from '../ui';
 
 // Planday-style grid — employees as rows, days as columns.
@@ -175,7 +175,7 @@ export default function TeamView({
                       somebody has claimed it, changing the hours underneath
                       them would be changing a deal they already accepted. */}
                   <button onClick={()=>sw.status==='open'&&openEditDialog(sw,day,di)} disabled={sw.status!=='open'} title={sw.status==='open'?t('open.edit'):t('open.claimedLocked')} style={{flex:1,minWidth:0,textAlign:'left',background:'none',border:'none',padding:0,cursor:sw.status==='open'?'pointer':'default',fontFamily:'inherit'}}>
-                    <span style={{display:'block',minWidth:0,fontSize:10,fontWeight:600,color:T.accentText,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{blocks.find(b=>b.id===sw.blockId)?.name||''}{sw.start&&sw.end?` ${sw.start}–${sw.end}`:''} · {sw.role}</span>
+                    <span style={{display:'block',minWidth:0,fontSize:10,fontWeight:600,color:T.accentText,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{blocks.find(b=>b.id===sw.blockId)?.name||''} {swapTimes(sw,blocks.find(b=>b.id===sw.blockId)).start}–{swapTimes(sw,blocks.find(b=>b.id===sw.blockId)).end} · {sw.role}</span>
                   </button>
                   {cancelOpenShift&&sw.status==='open'&&<button onClick={()=>cancelOpenShift(sw)} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:11,padding:0,fontFamily:'inherit'}}>✕</button>}
                 </div>

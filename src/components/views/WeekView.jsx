@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { T, DAYS, isDark, pal, initials, DEFAULT_ROLE_STYLES } from '../../lib/constants';
 import { toMin, fmt, dateToISO, LOCALE } from '../../lib/dates';
-import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange } from '../../lib/schedule';
+import { blockHours, getBlockRoles, effectiveHourlyRate, actualTimeRange, swapTimes } from '../../lib/schedule';
 import { Avatar, RoleBadge, EmpCard, Btn, SectionLabel, GripDots, TimePicker } from '../ui';
 
 // The week/day schedule grid: per-role×day assignment table, the day-isolated
@@ -557,7 +557,7 @@ export default function WeekView({
                         return(<div key={sw.id} onClick={()=>editable&&setEditOpen({sw,block})} title={editable?t('open.edit'):t('open.claimable')} style={{padding:'6px 8px',borderRadius:9,border:`1.5px dashed ${T.accent}77`,background:T.accentLight,display:'flex',alignItems:'center',gap:7,minWidth:0,boxSizing:'border-box',cursor:editable?'pointer':'default'}}>
                           <span style={{width:22,height:22,borderRadius:'50%',background:T.accent+'22',color:T.accent,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0}}>?</span>
                           <div style={{minWidth:0,flex:1}}>
-                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{sw.start&&sw.end?`${sw.start}–${sw.end}`:t('open.posted')}</div>
+                            <div style={{fontSize:11,fontWeight:600,color:T.accentText,lineHeight:1.25,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{(()=>{const tt=swapTimes(sw,block);return `${tt.start}–${tt.end}`;})()}</div>
                             {claimant&&<div style={{fontSize:9,color:T.accentText,opacity:0.85,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{t('swap.statusClaimed',{name:claimant.name})}</div>}
                           </div>
                           {cancelOpenShift&&sw.status==='open'&&<button onClick={e=>{e.stopPropagation();cancelOpenShift(sw);}} title={t('open.cancel')} style={{background:'none',border:'none',cursor:'pointer',color:T.accentText,opacity:0.6,fontSize:12,padding:2,fontFamily:'inherit',flexShrink:0}}>✕</button>}

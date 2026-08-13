@@ -69,6 +69,23 @@ export function sickHoursFor(a,b){
   return assignmentHours(a,b);
 }
 
+// The hours an open shift actually runs: its own when a manager gave it custom
+// times, otherwise the block's.
+//
+// Exists because this was got wrong in three separate places. Each render site
+// independently reached for `block.start`/`block.end`, which was correct until
+// open shifts could carry their own hours (20260811100000) and silently wrong
+// afterwards — the manager's Week grid, the Team chip and the staff's own
+// "Open shifts" row each had to be fixed, and the staff one was missed twice.
+// Showing block hours for an 18:00–22:00 shift tells someone they are taking
+// six hours when it is four, and they find out on the day.
+export function swapTimes(sw, block){
+  return {
+    start: sw?.start || block?.start || '',
+    end:   sw?.end   || block?.end   || '',
+  };
+}
+
 // A sick shift is still an unfilled slot. Coverage counts what will actually
 // be staffed, so a shift nobody is turning up for must read as a gap — that's
 // the operationally useful half of marking someone sick, and it is separate
