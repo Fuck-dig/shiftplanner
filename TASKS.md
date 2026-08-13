@@ -88,6 +88,14 @@ Nothing here can be closed by tests. These are the ones where "it builds and
 
 ## Bugs
 
+- [ ] **The add-a-shift modal's Custom row also hardcodes `blocks[0]`** — 3/10 —
+  same shortcut that made a custom-hours OPEN shift land on Lunch (fixed 13 Aug
+  in the open-shift dialog). Assigning a named person a custom-time shift picks
+  the first block silently. Less harmful there, because you can see the result
+  land on the rota immediately and the person is named — but it's the same
+  guess, and it should ask the same way.
+
+
 - [ ] **Archiving still leaves upcoming shifts on the rota when you decline** —
   3/10 — DOWNGRADED from 5/10, because the dangerous half is fixed: the shift is
   no longer invisible. `rosterForWeek` now gives an archived person a row in any

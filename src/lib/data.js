@@ -349,6 +349,15 @@ export async function updateShiftSwap(id, patch){
   const row = {};
   if ('status' in patch)         row.status = patch.status;
   if ('claimedByEmpId' in patch) row.claimed_by_emp_id = patch.claimedByEmpId;
+  // Editing a posted open shift: which block, which role, and its own hours.
+  // Each guarded by `in` rather than truthiness, so clearing the custom times
+  // back to null ("use the block's hours") is expressible — the CHECK constraint
+  // requires both or neither, which the caller honours.
+  if ('blockId' in patch)        row.block_id = patch.blockId;
+  if ('role' in patch)           row.role = patch.role;
+  if ('day' in patch)            row.day = patch.day;
+  if ('start' in patch)          row.start_time = patch.start || null;
+  if ('end' in patch)            row.end_time = patch.end || null;
   row.updated_at = new Date().toISOString();
   const { data, error } = await supabase.from('shift_swaps').update(row).eq('id', id).select().single();
   if (error) throw error;

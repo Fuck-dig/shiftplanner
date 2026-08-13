@@ -1422,6 +1422,14 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
       })
       .catch(err=>{console.error('Post open shift failed:',err);alert(t('save.failedGeneric'));});
   };
+  // Change a posted open shift in place. Only meaningful while it is still
+  // `open` — the UI enforces that, and doing it to a claimed shift would move
+  // the goalposts on somebody who already said yes.
+  const editOpenShift=(sw,patch)=>{
+    updateShiftSwap(sw.id,patch)
+      .then(reloadSwaps)
+      .catch(err=>{console.error('Edit open shift failed:',err);alert(t('save.failedGeneric'));});
+  };
   const cancelOpenShift=(sw)=>{
     deleteShiftSwap(sw.id).then(reloadSwaps).catch(err=>{console.error('Cancel open shift failed:',err);alert(t('save.failedGeneric'));});
   };
@@ -2121,7 +2129,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     generate={generate} generateMonth={generateMonth} offThisWeek={offThisWeek} isMobile={isMobile} reorderRoles={reorderRoles}
     onIsolateDay={day=>{setDayFilter(day);setCalMode('week');}}
     openShiftsForDay={day=>swaps.filter(sw=>!sw.fromEmpId&&sw.weekKey===wKey&&sw.day===day&&(sw.status==='open'||sw.status==='claimed'))}
-    postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift}
+    postOpenShift={postOpenShift} cancelOpenShift={cancelOpenShift} editOpenShift={editOpenShift}
     s={s} t={t}
   />
 )}
