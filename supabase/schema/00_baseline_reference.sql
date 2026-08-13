@@ -170,11 +170,18 @@ create policy "members manage schedules" on public.schedules for all
 
 
 -- ── Grants ──────────────────────────────────────────────────────────────────
--- STILL IN FORCE, and worth understanding: this hands full DML on every table
--- to any logged-in user, and the `alter default privileges` line extends that
--- to every table created in future, automatically. That is harmless while RLS
--- is enabled with good policies — and it is exactly how the next hole arrives
--- quietly, because a new table with RLS left off is wide open from birth.
+-- HISTORICAL. Reproduced as it was originally run, NOT as it stands.
+--
+-- The `alter default privileges` line below was REVOKED on 13 Aug 2026 by
+-- 20260813160000_no_blanket_grants.sql, because it meant every table created in
+-- future was fully writable by any logged-in user from the moment it existed —
+-- before anyone remembered to enable RLS on it. Grants are now explicit and by
+-- name in that migration; a new table starts with no access and fails loudly.
+--
+-- The first `grant ... on all tables` line did already apply, to tables that
+-- all have RLS. It was not revoked: RLS is what protects those rows.
+--
+-- If you are recreating this database from scratch, run the migration too.
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 

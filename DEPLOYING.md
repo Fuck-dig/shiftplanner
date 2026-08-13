@@ -86,6 +86,24 @@ But "it's a small change" is what everyone says right before the small change
 white-screens the app — and the small change *is* what white-screened the app
 on 3 August (a hook below an early return).
 
+## After any migration that adds a table
+
+Run this in the SQL editor:
+
+```sql
+select * from public.tables_missing_rls();
+```
+
+**Zero rows is the pass.** Anything returned is a table that either has RLS off
+(readable and writable by any logged-in user of any restaurant) or has RLS on
+with no policies (denies everyone — safe, but almost always a half-finished
+migration).
+
+Since 13 Aug a new table also arrives with *no* grants at all, so the app will
+fail loudly on it in development until you grant it explicitly. That is
+deliberate: a permission error in front of you beats a silent hole in front of a
+customer. Add the `grant` next to the `create table`, in the same migration.
+
 ## What still isn't covered
 
 - **Migrations.** They're applied by hand in the Supabase SQL editor and there
