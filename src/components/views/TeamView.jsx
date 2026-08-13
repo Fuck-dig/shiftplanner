@@ -22,15 +22,14 @@ export default function TeamView({
   const [dragRole,setDragRole]=useState(null);
   const [dragOverRole,setDragOverRole]=useState(null);
   // Which day's "post an open shift" picker is open. Team rows are per-PERSON,
-  // so unlike the Week grid there's no role/block context to infer — it has to
-  // be asked for.
+  // so unlike the Week grid the cell implies no ROLE — that one has to be asked
+  // for. The block does not: it is read from the hours (blockForTime).
   // {day, date, weekOffset, weekKey} — not just a day name, because the dialog
   // spans a whole month and the target week has to travel with the selection.
   const [openShiftDay,setOpenShiftDay]=useState(null);
   const [openShiftMonth,setOpenShiftMonth]=useState(()=>{const n=new Date();return{y:n.getFullYear(),m:n.getMonth()};});
   const [openShiftRole,setOpenShiftRole]=useState(null);
   const [openShiftTimes,setOpenShiftTimes]=useState(null);
-  const [openShiftBlock,setOpenShiftBlock]=useState(null);  // which block a custom-time open shift belongs to
   // Every date in the shown month, tagged with the week it belongs to.
   const openShiftDays=getMonthOffsets(openShiftMonth)
     .flatMap(off=>getWeekDates(off).map((date,di)=>({date,day:DAYS[di],weekOffset:off,weekKey:weekKey(off)})))
@@ -45,7 +44,6 @@ export default function TeamView({
     const date=weekDates[di];
     setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
     setOpenShiftRole(sw.role);
-    setOpenShiftBlock(sw.blockId);
     setOpenShiftTimes(sw.start&&sw.end?{start:sw.start,end:sw.end}:null);
     setEditingOpenShift(sw);
     setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
@@ -55,7 +53,6 @@ export default function TeamView({
     setOpenShiftMonth({y:date.getFullYear(),m:date.getMonth()});
     setOpenShiftRole(r=>r||allRoles[0]||null);
     setOpenShiftTimes(null);
-    setOpenShiftBlock(null);
     setEditingOpenShift(null);
     setOpenShiftDay({day:dayName,date,weekOffset,weekKey:weekKey(weekOffset)});
   };
@@ -207,7 +204,8 @@ export default function TeamView({
         // The block follows the start time unless the manager has overridden
         // it. Typing 18:00 puts the shift in Dinner without anyone being asked
         // — the hours already say which service it is part of.
-        const customBlockId=openShiftBlock||blockForTime(times.start,blocks)?.id||home?.id;
+        const customBlock=blockForTime(times.start,blocks)||home;
+        const customBlockId=customBlock?.id;
         const editing=editingOpenShift;
         const post=(blockId,start,end)=>{
           // Same button, two meanings, decided by how the dialog was opened.
@@ -266,24 +264,30 @@ export default function TeamView({
               {home&&(
                 <div style={{padding:'10px',borderRadius:8,borderTop:`1px solid ${T.border}`,marginTop:4}}>
                   <div style={{fontSize:13,fontWeight:500,color:T.text,marginBottom:8}}>{t('emp.customTime')}</div>
-                  {/* The block is an EXPLICIT choice here.
-                      It used to be hardcoded to blocks[0], so posting
-                      "Waiter, 18:00–22:00" silently filed it under Lunch — a
-                      nonsense pairing, and filed under the block you weren't
-                      looking at. An open shift still belongs to a block (that
-                      is what coverage and claiming are keyed on), so the answer
-                      is to ask, not to guess. */}
+                  {/* The block is READ from the hours, and cannot be set
+                      against them.
+
+                      Three versions of this. It was hardcoded to blocks[0], so
+                      "Waiter, 18:00–22:00" silently filed itself under Lunch.
+                      Then it was a picker, on the reasoning that an open shift
+                      has to belong to a block (coverage and claiming are keyed
+                      on one) so the app should ask rather than guess. But the
+                      hours are not a guess — they say which service it is —
+                      and a picker that can disagree with them exists only to
+                      let someone file 18:00–22:00 under Lunch by hand. That is
+                      the bug, offered as a feature.
+
+                      So it is stated, not chosen. Change the times and the
+                      service follows. */}
                   <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                      {blocks.map(b=>(
-                        <button key={b.id} onClick={()=>setOpenShiftBlock(b.id)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:customBlockId===b.id?600:400,background:customBlockId===b.id?T.accentLight:'transparent',color:customBlockId===b.id?T.accent:T.text2,border:`1px solid ${customBlockId===b.id?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{b.name}</button>
-                      ))}
-                    </div>
-                    <TimePicker small value={times.start} onChange={v=>{setOpenShiftTimes({...times,start:v});setOpenShiftBlock(null);}}/>
+                    <TimePicker small value={times.start} onChange={v=>setOpenShiftTimes({...times,start:v})}/>
                     <span style={{fontSize:11,color:T.text3}}>–</span>
                     <TimePicker small value={times.end} onChange={v=>setOpenShiftTimes({...times,end:v})}/>
                     <Btn small variant="secondary" onClick={()=>post(customBlockId,times.start,times.end)}>{t('emp.addShiftBtn')}</Btn>
                   </div>
+                  {customBlock&&(
+                    <div style={{fontSize:11,color:T.text3,marginTop:8}}>{t('open.landsIn',{block:customBlock.name})}</div>
+                  )}
                 </div>
               )}
             </div>
