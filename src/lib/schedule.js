@@ -228,6 +228,26 @@ function targetHoursOf(e){
 }
 export function coversBlock(av,b){ if(!av) return false; const es=toMin(av.from); let ee=toMin(av.to); if(ee<=es) ee+=1440; const bs=toMin(b.start); let be=toMin(b.end); if(be<=bs) be+=1440; return es<=bs&&ee>=be; }
 export function getBlockRoles(b,day){ return (b.overrides&&b.overrides[day])?b.overrides[day]:b.roles; }
+
+// Should the Week grid draw a row for this role in this block?
+//
+// THREE reasons a row must exist, and the third was missing until 13 Aug:
+//   required     — the block asks for this role, so the gap must be visible
+//   assigned     — somebody is on it, so they must be visible
+//   openShifts   — a shift is POSTED for it and waiting to be claimed
+//
+// The bug: an open shift lives in `shift_swaps`, not in the schedule, so it was
+// neither required nor assigned. Posting a Waiter shift on a day when Lunch
+// needs no waiters put it on the rota in a row that was never rendered — the
+// manager could not see the thing they had just created, and staff could. Team
+// view was fine throughout, because it has a dedicated "Open shifts" row, so
+// the two views disagreed about what was on the rota.
+//
+// A row with none of the three is genuinely empty and stays hidden; the grid is
+// roles × blocks and would otherwise be mostly blank.
+export function shouldShowRoleRow({ required = 0, assigned = 0, openShifts = 0 } = {}){
+  return required > 0 || assigned > 0 || openShifts > 0;
+}
 // What it costs to schedule an employee for a given number of hours this
 // week. Falls back to a priority-based heuristic (same scale schedule
 // generation itself uses to rank candidates) when no hourly/monthly wage is

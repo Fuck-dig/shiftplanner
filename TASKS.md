@@ -197,12 +197,19 @@ Nothing here can be closed by tests.
 
 ## Bugs
 
-- [ ] **Open shifts are invisible in Week view for a role the block doesn't
-  staff** — 4/10 — found 13 Aug. `WeekView` only draws a role row when the block
-  REQUIRES that role or somebody is assigned to it (`anyDay`, line ~457). An
-  open shift is neither — it lives in `swaps`. So posting a Waiter shift on a
-  day Lunch needs no waiters puts it on the rota where the manager cannot see
-  it. Team view is fine (it has a dedicated Open shifts row).
+- [x] **DONE 13 Aug — open shifts invisible in Week view for a role the block
+  doesn't staff** — was 4/10. `WeekView` drew a role row only when the block
+  REQUIRED that role or somebody was ASSIGNED to it. An open shift is neither —
+  it lives in `shift_swaps` — so posting a Waiter shift on a day Lunch needs no
+  waiters put it on the rota in a row that was never rendered. The manager could
+  not see what they had just created; staff could. Team view was right
+  throughout, so the two views disagreed about what was on the rota.
+  Fixed as `shouldShowRoleRow({required, assigned, openShifts})` in `lib`, which
+  names the three reasons a row exists rather than leaving them in an untested
+  inline `some()`. 5 tests, 3 mutations, all caught.
+  **Needs a human**: post an open shift for a role the block does not staff and
+  confirm it appears in Week view, in the right block, with the right hours.
+
 - [ ] **The add-a-shift modal's Custom row hardcodes `blocks[0]`** — 3/10 — the
   same shortcut fixed in the open-shift dialog on 13 Aug. Assigning a named
   person custom hours silently picks the first block. Should ask the same way:

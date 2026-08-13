@@ -22,6 +22,10 @@ been left alone.
 
 ### Selling Rorota — Tier 0 (13 Aug)
 
+- **An open shift could sit on the rota in a row the manager could not see** - `WeekView` drew a role row only when the block REQUIRED that role or somebody was ASSIGNED to it. An open shift is neither: it lives in `shift_swaps`. So posting a Waiter shift on a day when Lunch needs no waiters put a real shift on a real rota, invisible to the person who created it — while staff saw it fine in their own view, and Team view showed it too. Two of the app's three schedule views agreed and the third quietly disagreed.
+
+  Fixed as `shouldShowRoleRow({required, assigned, openShifts})` rather than a third clause in the inline `some()`, because the interesting content is that there are exactly THREE reasons a row should exist and one of them had never been written down. 5 tests, 3 mutations, all caught.
+
 - **Crashes are now reported instead of dying in a console nobody reads** — Sentry, initialised before render so a crash during boot still reports, and wired into the ErrorBoundary that until now only did `console.error` — on a customer's laptop that error screen WAS the entire signal.
 
   Privacy is enforced in code rather than by intention: `scrubEvent` redacts wages, names, phones, sick-pay percentages and email addresses from every event and every breadcrumb, and performance tracing plus session replay are off entirely because both would carry a screenful of exactly that. A crash report may say what broke and where; never who it happened to or what they earn. 10 tests, the important one being that `filename` and `function` are NOT redacted — matching sensitive keys as substrings would hit `filename`, gutting the stack trace and leaving a report that says something broke somewhere.
