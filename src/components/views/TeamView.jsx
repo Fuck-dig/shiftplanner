@@ -280,7 +280,7 @@ export default function TeamView({
                   pick Lunch and 18:00 is not selectable. They are for TRIMMING
                   a service, not for inventing one that spans two. */}
               <div style={{display:'flex',gap:4,flexWrap:'wrap',alignItems:'center'}}>
-                {[[false,t('open.wholeService')],[true,t('emp.customTime')]].map(([custom,label])=>{
+                {[[false,t('open.wholeService',{block:customBlock?.name||''})],[true,t('emp.customTime')]].map(([custom,label])=>{
                   const on=useCustom===custom;
                   return(<button key={label} onClick={()=>setOpenShiftTimes(custom?{start:customBlock?.start||'10:00',end:customBlock?.end||'16:00'}:null)} style={{padding:'5px 10px',borderRadius:7,fontSize:12,fontWeight:on?600:400,background:on?T.accentLight:'transparent',color:on?T.accent:T.text2,border:`1px solid ${on?T.accent+'55':T.border}`,cursor:'pointer',fontFamily:'inherit'}}>{label}</button>);
                 })}
