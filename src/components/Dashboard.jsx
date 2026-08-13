@@ -5,6 +5,8 @@ import { getWeekDates, weekKey, weekKeyToMonday, dateToISO, fmt, fmtLong, getMon
 import { blockHours, assignmentHours, actualAssignmentHours, coversBlock, getBlockRoles, isOnTimeOff, buildSchedule, calcWageCost, hasRestConflict, pruneOrphanedAssignments, applyAssignmentDrop, removeUpcomingAssignments, activeOnly, scheduledCount, sickHoursFor, coversSlot, effectiveSickPct, calcSickCost } from '../lib/schedule';
 import { logScheduleEvent, fetchScheduleAudit, fetchEmployees, syncEmployees, fetchBlocks, syncBlocks, fetchTimeOff, syncTimeOff, fetchSchedules, syncSchedules, createNotification, sendNotificationEmail, notifyPush, fetchShiftSwaps, createShiftSwap, updateShiftSwap, deleteShiftSwap, fetchTemplates, saveTemplate, deleteTemplate, fetchRoleStyles, saveRoleStyles, fetchUnseenMessageReplies, sendMessage, fetchDailyRevenue, saveDailyRevenue, fetchOrgCurrency, saveOrgCurrency, fetchOrgSickPct, saveOrgSickPct, fetchOrgPaySettings, saveOrgSetup } from '../lib/data';
 import { migrateEmployee, load, save } from '../lib/storage';
+import { collectShiftsInRange } from '../lib/earnings';
+import { calendarMonthRange } from '../lib/payPeriod';
 import { escapeHtml } from '../lib/html';
 import { mergeRoleOrder, reorderRoleList } from '../lib/roles';
 import { supabase } from '../lib/supabase';
@@ -1492,7 +1494,25 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   const costData=employees.map(e=>{const{hours,corrected,sickHrs}=hoursForSchedule(costsSchedule,e.id);return{emp:e,hours,corrected,sickHrs,sickCost:sickCostOf(e,sickHrs),costUnits:costFor(e,hours,sickHrs)};});
   const totalCostUnits=costData.reduce((s,d)=>s+d.costUnits,0);
   const maxCostUnits=Math.max(...costData.map(d=>d.costUnits),0.01);
-  const monthCostData=employees.map(e=>{let h=0,corrected=0,sickHrs=0;getMonthOffsets(displayMonth).forEach(off=>{const ws=schedules[weekKey(off)]?.schedule;if(!ws)return;DAYS.forEach(day=>blocks.forEach(b=>{const a=(ws[day]?.[b.id]||[]).find(a=>a.empId===e.id);if(a){h+=actualAssignmentHours(a,b);sickHrs+=sickHoursFor(a,b);if(a.noShow||a.sick||a.actualStart||a.actualEnd)corrected++;}}));});return{emp:e,hours:h,corrected,sickHrs,sickCost:sickCostOf(e,sickHrs),costUnits:costFor(e,h,sickHrs)};});
+  // "This month" now means the CALENDAR month, 1st to last day.
+  //
+  // It used to iterate getMonthOffsets — six whole WEEKS — so August 2026 was
+  // actually 27 July to 6 September, 42 days, displayed as "August 2026". That
+  // overstated every monthly cost figure, and worse, the labour-cost % divided
+  // those 42 days of wages by `monthRevenueTotal`, which was already a strict
+  // calendar month. Six weeks of wages over one month of sales.
+  //
+  // Found on 13 Aug because the same person showed 208.5h here and 141h on
+  // their own pay card. Both were right about their own range; only one of them
+  // was a month. Now both call collectShiftsInRange, so they cannot disagree.
+  //
+  // NOTE: an old assignment referencing a deleted block is skipped here (the
+  // helper looks blocks up by id), which matches how the week figures behave.
+  const monthRange=calendarMonthRange(displayMonth.y,displayMonth.m);
+  const monthCostData=employees.map(e=>{
+    const {hours,sickHours,corrected}=collectShiftsInRange({schedules,blocks,empId:e.id,range:monthRange});
+    return{emp:e,hours,corrected,sickHrs:sickHours,sickCost:sickCostOf(e,sickHours),costUnits:costFor(e,hours,sickHours)};
+  });
   const totalMonthCostUnits=monthCostData.reduce((s,d)=>s+d.costUnits,0);
   const maxMonthCostUnits=Math.max(...monthCostData.map(d=>d.costUnits),0.01);
   const mkRoleCosts=data=>allRoles.reduce((acc,r)=>{acc[r]=parseFloat(data.filter(d=>(d.emp.roles||[]).includes(r)).reduce((s,d)=>s+d.costUnits,0).toFixed(2));return acc;},{});

@@ -206,6 +206,109 @@ can move the other.
 
 ---
 
+## 11. Everything shipped 6–13 August — FULL PASS
+
+Ordered by what it costs if it's broken, not by when it was built. Stop and
+report at the first failure in sections A–C rather than working through; those
+are money, access and data-loss. D–F are cosmetic and can be batched up.
+
+**You need:** a manager/owner login (you), a **staff login**, and ideally a
+phone. Items marked 🔒 need the staff account; items marked 👥 need a second
+manager account that is NOT the owner.
+
+Two of these paths have never been executed by anyone, ever: the staff Requests
+tab (section 10 above) and the open-shift claim → approve round trip (B3).
+
+---
+
+### A. Money — wrong numbers here are the worst outcome
+
+1. **Pay card matches Costs.** Pick one person. Manager → Costs → note their
+   hours and cost for a week. 🔒 Staff → Schedule → "Your pay" → This week.
+   The hours must match exactly. The money will differ if they're salaried
+   (Costs shows cost, the card shows their pay) — for an hourly person it
+   should match.
+2. **The breakdown reconciles.** Click a pay tile. The per-shift amounts must
+   sum to the headline total shown in the popup footer. This is the number
+   someone will hold against a payslip.
+3. **Punch-out changes it.** Manager → edit a past shift → Adjusted, shorten it
+   by two hours → save. 🔒 Staff → their pay card drops accordingly.
+4. **Sick pay.** Manager → open a shift → **Mark as sick** → save. Then check:
+   - Their **hours do NOT include it** (Team grid, Costs, and the pay card).
+   - Costs shows a sick-pay line and the cost includes it at the set %.
+   - The week header shows the slot as **missing** — that's the point of it.
+   - 🔒 Staff pay card lists it tagged "sick", paid at the sick rate.
+5. **Pay period boundary.** Pay card → Pay period. With a 16th start, a shift
+   on the **15th** must be in the period ending that month, and one on the
+   **16th** must be in the next. Step back with ‹ and confirm the dates move a
+   whole period, not a month.
+6. **Payday date.** The card says "paid {date}". For 16 Jul–15 Aug it should be
+   the last **weekday** of August, not the 31st if that's a weekend.
+
+### B. Access and data loss
+
+1. 👥 **Owner-only pay settings.** Sign in as a MANAGER (not owner) → Settings.
+   Sick pay and pay period must be visibly locked with an "Owner only" badge.
+   If you can somehow submit, you should get an error, not a silent success.
+   Role colours must still save fine for that manager — that's what the trigger
+   is carefully not breaking.
+2. 🔒 **Staff see their own wage only.** Staff → Employees/Directory. Confirm
+   **no colleague's pay is visible anywhere**. This is the one security-relevant
+   change of the week; if a wage shows for anyone but themselves, stop and tell
+   me immediately.
+3. 🔒 **Open shift round trip — never tested.** Manager → Team → "+ Open" →
+   pick a day, a role, and use the **Custom** row with unusual times (say
+   18:00–22:00). Then staff → claim it → manager → approve. The shift must land
+   on the rota with **18:00–22:00**, not the block's full hours. Check the staff
+   side showed those times BEFORE they claimed it.
+4. **Generate does not silently destroy work.** Hand-edit a week (move someone,
+   add a shift). Press **Generate** → you must get a confirmation → press
+   **Cancel** → the rota is untouched. Then confirm a **published** week gives
+   the stronger warning that mentions staff not being told.
+5. **Generate month** warns with a count of weeks, and how many are published.
+
+### C. The scheduler
+
+1. **Role order no longer matters.** Note the generated rota. Schedule → Week →
+   drag the role legend into a different order → Generate again. **The rota
+   should be identical.** Different people or different gaps = a real bug.
+2. **No obvious avoidable gaps.** After generating, look at "N missing". If you
+   can fill a slot by hand that the generator left empty while someone eligible
+   sat idle, tell me — that's the greedy-vs-optimal limitation and it's worth
+   knowing whether it bites in practice.
+3. **Rest and caps still hold.** Nobody scheduled over their max hours, nobody
+   with under 11 hours between two shifts.
+
+### D. Restaurant setup and settings
+
+1. Create a **throwaway restaurant** with an odd pay period (say the 5th) and
+   sick pay 50%. Delete it afterwards from Supabase.
+2. Settings tab shows those values, and the live preview line matches the period
+   you'd expect.
+3. Change currency in Settings → Costs and the staff pay card both show the new
+   symbol.
+
+### E. Mobile (phone, not a narrow window)
+
+1. **Team grid**: swipe sideways — the day headings move WITH the cards. No
+   overlap, nothing under the wrong date.
+2. **Compact** in Team fits the whole week with no sideways scrolling.
+   **Comfortable** still scrolls. Week view still scrolls in both.
+3. Toolbar is two rows, not four. ☰ contains History / Print / Delete when a
+   week is open. Search collapses to a magnifier and still filters.
+4. Costs: the money column is visible without scrolling sideways.
+5. Employees: every action button is reachable (Add shift → … → delete).
+
+### F. Small things
+
+1. **Kiosk** shows a large clock and today's date, and it stays correct.
+2. **Density toggle** on the staff view persists across a reload. Same for the
+   manager's.
+3. Pay card is on the **Schedule** tab, not Requests.
+4. Posting an open shift uses the same centred dialog as adding a shift.
+
+---
+
 ## If something's wrong
 
 Tell me **what you did, what you expected, what happened** — and if it's an

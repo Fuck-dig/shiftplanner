@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { earningsInRange } from './earnings';
-import { payPeriodFor } from './payPeriod';
+import { earningsInRange, collectShiftsInRange } from './earnings';
+import { payPeriodFor, calendarMonthRange } from './payPeriod';
 
 // Mon 2026-08-10 is a Monday, so this is a valid week key.
 const WK = '2026-08-10';
@@ -143,6 +143,36 @@ describe('earningsInRange', () => {
     });
     expect(r.shifts).toHaveLength(1);
     expect(r.shifts[0].pay).toBe(0);
+  });
+
+  it('a calendar month is 1st to last day — NOT the six weeks that overlap it', () => {
+    // The bug this pair of functions was unified to kill. Costs used to sum
+    // getMonthOffsets, six whole weeks: for August 2026 that is 27 Jul – 6 Sep,
+    // 42 days, shown as "August 2026". The same person read 208.5h there and
+    // 141h on their own pay card, and both were internally consistent.
+    //
+    // WK is 10 Aug, and 03 Aug is the Monday of the week before — inside the
+    // six-week span but outside the month.
+    const schedules = {
+      '2026-08-03': { schedule: { Mon: { lunch: [shift()] } } },   // 3 Aug, in
+      '2026-07-27': { schedule: { Mon: { lunch: [shift()] } } },   // 27 Jul, OUT
+    };
+    const r = collectShiftsInRange({
+      schedules, blocks: [LUNCH], empId: 'me', range: calendarMonthRange(2026, 7),
+    });
+    expect(r.hours).toBe(8);
+    expect(r.shifts.map(x => x.iso)).toEqual(['2026-08-03']);
+  });
+
+  it('Costs and the pay card agree, because they share one walk', () => {
+    // Not a coincidence to be re-checked by hand — the same function backs both,
+    // so this asserts they stay wired to it.
+    const schedules = week({ Mon: { lunch: [shift()] }, Tue: { lunch: [shift()] } });
+    const range = calendarMonthRange(2026, 7);
+    const walk = collectShiftsInRange({ schedules, blocks: [LUNCH], empId: 'me', range });
+    const earn = earningsInRange({ schedules, blocks: [LUNCH], emp: ME, range });
+    expect(earn.hours).toBe(walk.hours);
+    expect(earn.shifts).toHaveLength(walk.shifts.length);
   });
 
   it('survives missing or malformed inputs rather than throwing', () => {
