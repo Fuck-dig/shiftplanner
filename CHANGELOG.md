@@ -22,6 +22,12 @@ been left alone.
 
 ### Selling Rorota — Tier 0 (13 Aug)
 
+- **Crashes are now reported instead of dying in a console nobody reads** — Sentry, initialised before render so a crash during boot still reports, and wired into the ErrorBoundary that until now only did `console.error` — on a customer's laptop that error screen WAS the entire signal.
+
+  Privacy is enforced in code rather than by intention: `scrubEvent` redacts wages, names, phones, sick-pay percentages and email addresses from every event and every breadcrumb, and performance tracing plus session replay are off entirely because both would carry a screenful of exactly that. A crash report may say what broke and where; never who it happened to or what they earn. 10 tests, the important one being that `filename` and `function` are NOT redacted — matching sensitive keys as substrings would hit `filename`, gutting the stack trace and leaving a report that says something broke somewhere.
+
+  Two things measured rather than assumed. The bundle cost is +29 kB gzip with a DSN and literally zero without one (581 bytes — this file alone), because Vite inlines `import.meta.env` at build and the dead branch tree-shakes the whole import away. Which gives the gotcha worth knowing: **the DSN is read at BUILD time**, so setting it in Vercel without redeploying reports nothing and looks identical to it working.
+
 - **Tenant isolation is now proven rather than believed** — `public.rorota_isolation_test()`, 20 checks across 9 tables, both directions, reads and writes, run against production: PASSED. Two throwaway restaurants are created, checked against each other and undone before the function returns, so it is safe to re-run any time and leaves nothing behind.
 
   The design point that matters: each table is checked TWICE — "A sees its own row" as well as "A cannot see B's row". The obvious version of this test only asks the second question, and if the impersonation silently fails it returns zero everywhere and every check passes. A vacuous pass is indistinguishable from a real one and worse than no test, because you then trust it. The summary distinguishes FAILED (the app leaks) from INCONCLUSIVE (the test broke).

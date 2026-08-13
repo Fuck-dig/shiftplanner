@@ -86,6 +86,39 @@ But "it's a small change" is what everyone says right before the small change
 white-screens the app — and the small change *is* what white-screened the app
 on 3 August (a hook below an early return).
 
+## Turning on error monitoring
+
+Rorota reports crashes to Sentry, but only if a DSN is present **at build time**.
+
+1. Create the Sentry **ORGANISATION** with Data Storage Location set to
+   **European Union**. It is a dropdown in the "Create a New Organization" step,
+   it is **irreversible**, and it is on the ORGANISATION — not the project. Get
+   it wrong and the only fix is a new organisation; moving the project does not
+   help. Events then live in Frankfurt and the DSN contains `de.sentry.io`.
+   Note what this does NOT cover: user accounts, DSN keys, project metadata,
+   org settings and audit logs stay in the US regardless. The error payloads —
+   the part that could carry anything about a restaurant's staff — are what stay
+   in the EU. Worth knowing precisely when the DPA conversation happens.
+2. Create a project inside it, platform **React**.
+3. In Vercel → Settings → Environment Variables, add `VITE_SENTRY_DSN` for
+   Production (and Preview, if you want preview crashes too).
+4. **Redeploy.** Vite inlines `import.meta.env` when it builds, so the variable
+   has no effect on the bundle already deployed. Adding it and not redeploying
+   reports nothing and looks exactly like everything working.
+
+To confirm it is live: the built `index-*.js` should contain the string
+`sentry`. With no DSN it is not in the bundle at all — that is deliberate, and
+worth 29 kB gzip.
+
+### What is deliberately not sent
+
+`scrubEvent` in `src/lib/monitoring.js` runs on every event and every
+breadcrumb, and is unit tested. Wages, names, phone numbers, sick-pay
+percentages and email addresses are redacted; performance tracing and session
+replay are switched off entirely, because both would carry a screen full of
+exactly that. A crash report may say what broke and where, never who it
+happened to or what they earn.
+
 ## After any migration that adds a table
 
 Run this in the SQL editor:
