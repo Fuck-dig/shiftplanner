@@ -902,7 +902,7 @@ export default function EmployeeView({ orgId, orgName, role='employee', theme, t
 
       <div style={{padding:isMobile?'16px 12px':'24px 28px'}}>
       {view==='profile' ? (
-        <ProfileSettings role={role} myEmp={me} orgId={orgId} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
+        <ProfileSettings role={role} myEmp={me} orgId={orgId} currency={paySettings?.currency} orgSickPct={paySettings?.sickPayPct} onSaveName={saveMyName} onSaveColor={saveMyColor} onSavePhone={saveMyPhone} onSaveAvailability={saveMyAvailability} onSaveEmailNotifications={saveMyEmailNotifications} onSavePushPrefs={saveMyPushPrefs} weekHours={empHoursMap[myId]||0} weekCorrected={empCorrectedMap[myId]||0} monthHours={myMonthHours} monthCorrected={myMonthCorrected} s={s} t={t}/>
       ) : view==='employees' ? (
         <Directory employees={activeEmployees} myId={myId} roleStyles={roleStyles} roleColorFor={roleColorFor} s={s} t={t}/>
       ) : view==='requests' ? (
