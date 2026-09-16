@@ -197,15 +197,22 @@ export default function CostsView({
       )}
       {/* The base rate is the fallback pricing for orgs with no wages entered:
           cost index x this number. Once everyone has a real wage it stops
-          affecting a single figure on the page and only the currency still
-          matters — so showing a rate box that silently does nothing is worse
-          than showing no rate box. Collapses to a currency field instead. */}
+          affecting a single figure on the page, so the whole box goes — a rate
+          box that silently does nothing is worse than no rate box.
+          The currency beside it is a LABEL, not a field. It used to be an
+          editable 36px text box, and it was the second editor for a setting
+          that Admin ▸ Settings owns — the same mistake the sick-pay default
+          below had, missed because it sat one line above it. Two text boxes
+          for one org setting is how an account ends up holding "kr" and "DKK"
+          and every total looks like a different product. */}
+      {!hasWages&&(
       <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:T.surface,border:`1px solid ${T.border}`,borderRadius:8,padding:'4px 10px'}}>
-        <span style={{fontSize:11,color:T.text3}}>{hasWages?t('cost.currency'):t('cost.baseRate')}</span>
-        {!hasWages&&<input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>}
-        <input value={hourlyRate.currency} onChange={e=>setHourlyRate(p=>({...p,currency:e.target.value.slice(0,5)}))} style={{width:36,padding:'2px 4px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',background:T.surfaceWarm}}/>
-        {!hasWages&&<span style={{fontSize:11,color:T.text3}}>/h</span>}
+        <span style={{fontSize:11,color:T.text3}}>{t('cost.baseRate')}</span>
+        <input type="number" min="1" step="1" value={hourlyRate.amount??''} onChange={e=>{const v=e.target.value;setHourlyRate(p=>({...p,amount:v===''?'':Number(v)}));}} onBlur={e=>{if(e.target.value==='')setHourlyRate(p=>({...p,amount:1}));}} style={{width:60,padding:'2px 6px',borderRadius:5,border:`1px solid ${T.border}`,fontSize:12,fontFamily:'inherit',textAlign:'right',background:T.surfaceWarm}}/>
+        <span style={{fontSize:12,color:T.text,fontWeight:500}}>{hourlyRate.currency}</span>
+        <span style={{fontSize:11,color:T.text3}}>/h</span>
       </div>
+      )}
       {/* The restaurant-wide sick pay default. Lives here beside currency
           because that is already where org-level cost settings are set.
           READ-ONLY, deliberately: sick pay is owner-only and is EDITED in
