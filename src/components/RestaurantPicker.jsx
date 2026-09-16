@@ -5,11 +5,8 @@ import { createOrg } from '../lib/org';
 import { saveOrgSetup } from '../lib/data';
 import { LANGUAGES, makeT, detectLang } from '../i18n';
 import { load, save } from '../lib/storage';
-
-// A rough starting guess only — the field right below it is always a plain
-// free-text input (matching how currency is edited everywhere else in the
-// app, e.g. Costs), so this never blocks picking anything else.
-const DEFAULT_CURRENCY_FOR_LANG = { da:'kr', de:'€', en:'$', es:'€', fr:'€' };
+import { defaultCurrencyFor } from '../lib/currencies';
+import CurrencySelect from './CurrencySelect';
 
 export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleTheme }) {
   const [showCreate, setShowCreate] = useState(false);
@@ -38,7 +35,7 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleThem
       // sane column default and is editable later from Costs, so the worst case
       // is defaults rather than a broken restaurant.
       saveOrgSetup(id, {
-        currency: currency.trim() || DEFAULT_CURRENCY_FOR_LANG[lang] || 'kr',
+        currency: currency.trim() || defaultCurrencyFor(lang),
         sickPayPct: sickPay,
         payPeriodStartDay: payStart,
       }).catch(err=>console.error('Could not save restaurant setup:',err));
@@ -126,10 +123,18 @@ export default function RestaurantPicker({ orgs, onSelect, onCreated, toggleThem
                 </div>
 
                 <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                  <div style={{flex:'1 1 90px',minWidth:90}}>
+                  {/* Wider than the 90px the text box needed: the options read
+                      "kr — Danish / Norwegian / Swedish krone", and a select
+                      truncates its own label rather than wrapping. */}
+                  <div style={{flex:'1 1 200px',minWidth:160}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.currencyLabel')}</div>
-                    <input placeholder={DEFAULT_CURRENCY_FOR_LANG[lang]||'kr'} maxLength={5} value={currency} onChange={e=>setCurrency(e.target.value)}
-                      onKeyDown={e=>e.key==='Enter'&&create()} style={{width:'100%',boxSizing:'border-box',padding:'8px 12px',borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,color:T.text,fontSize:13,fontFamily:'inherit',outline:'none'}} disabled={busy}/>
+                    {/* A list rather than free text, because the value here is
+                        a symbol that ends up in every total the restaurant
+                        reads — typed per restaurant it drifts into "kr",
+                        "Kr." and "DKK" meaning the same thing. "Other" is
+                        still there for anything the list misses. */}
+                    <CurrencySelect value={currency} onChange={setCurrency}
+                      placeholder={defaultCurrencyFor(lang)} disabled={busy} t={t}/>
                   </div>
                   <div style={{flex:'1 1 120px',minWidth:120}}>
                     <div style={{fontSize:11,color:T.text3,marginBottom:4}}>{t('picker.sickPayLabel')}</div>

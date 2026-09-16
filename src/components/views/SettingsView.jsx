@@ -3,6 +3,7 @@ import { T } from '../../lib/constants';
 import { payPeriodFor, payDateFor } from '../../lib/payPeriod';
 import { fmt } from '../../lib/dates';
 import { Btn, SectionLabel } from '../ui';
+import CurrencySelect from '../CurrencySelect';
 
 // Restaurant settings.
 //
@@ -68,10 +69,14 @@ export default function SettingsView({
         <div style={{fontSize:12,color:T.text2,marginBottom:16}}>{t('settings.subtitle',{name:orgName||''})}</div>
 
         <div style={{display:'flex',flexDirection:'column',gap:14}}>
-          <div style={{maxWidth:160}}>
+          <div style={{maxWidth:280}}>
             <div style={label}>{t('picker.currencyLabel')}</div>
-            <input maxLength={5} value={draft.currency} onChange={e=>set('currency',e.target.value)}
-              style={loading?locked:input} disabled={loading||saving}/>
+            {/* Same control as the create-restaurant form, deliberately: this
+                and that form are the two places this setting is owned, and a
+                dropdown in one with free text in the other is how the same
+                field ends up holding two different conventions. */}
+            <CurrencySelect value={draft.currency} onChange={v=>set('currency',v)}
+              disabled={loading||saving} t={t}/>
           </div>
 
           <div style={{borderTop:`1px solid ${T.border}`,paddingTop:14}}>
