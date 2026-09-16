@@ -26,6 +26,7 @@ export const CURRENCIES = [
   { symbol: 'Ft',  name: 'Hungarian forint' },
   { symbol: 'lei', name: 'Romanian leu' },
   { symbol: 'лв',  name: 'Bulgarian lev' },
+  { symbol: '€uro',name: null, hidden: true },   // never shown; guards a stray legacy value
   { symbol: 'CA$', name: 'Canadian dollar' },
   { symbol: 'A$',  name: 'Australian dollar' },
   { symbol: 'NZ$', name: 'New Zealand dollar' },
@@ -35,7 +36,7 @@ export const CURRENCIES = [
   { symbol: '₺',   name: 'Turkish lira' },
   { symbol: 'R$',  name: 'Brazilian real' },
   { symbol: 'R',   name: 'South African rand' },
-];
+].filter(c => !c.hidden);
 
 // What to offer before anyone has chosen. Matches the language they are
 // already reading the setup form in, which is a better guess than a global
