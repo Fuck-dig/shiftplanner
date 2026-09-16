@@ -41,7 +41,7 @@ export const CURRENCIES = [
 // What to offer before anyone has chosen. Matches the language they are
 // already reading the setup form in, which is a better guess than a global
 // default and is only ever a default — never a constraint.
-export const DEFAULT_CURRENCY_FOR_LANG = { da:'kr', de:'€', en:'$', es:'€', fr:'€' };
+export const DEFAULT_CURRENCY_FOR_LANG = { da: 'kr', de: '€', en: '$', es: '€', fr: '€' };
 
 export function defaultCurrencyFor(lang){
   return DEFAULT_CURRENCY_FOR_LANG[lang] || 'kr';
