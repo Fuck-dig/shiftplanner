@@ -187,6 +187,21 @@ export function AddRoleInline({onAdd,t}){
 export function TimePicker({value,onChange,small,min,max}){
   const [open,setOpen]=useState(false);
   const hourRef=useRef(null),minRef=useRef(null);
+  // Enter and Escape both finish the edit and then blur the field — which
+  // fires onBlur, so without this the blur handler runs a SECOND time on top
+  // of whatever the key already did.
+  //
+  // For Enter that was merely wasteful: commit twice, call onChange twice
+  // with the same value. For Escape it defeated the key entirely. `setText`
+  // is batched until the handler returns, while `.blur()` fires
+  // synchronously inside it — so onBlur read the DOM input, still holding the
+  // text Escape had just discarded, and committed it. Pressing Escape after
+  // typing 14:00 SAVED 14:00.
+  //
+  // Found by the component test, not in a browser. It needs the field to be
+  // genuinely focused to reproduce, which is why it survived every manual
+  // pass: clicking away to check tests blur, not Escape.
+  const keyHandled=useRef(false);
   const [hh,mm]=(value||'00:00').split(':');
   // `text` is genuinely local state (you can type a partial time into the
   // field), but it has to reset whenever the value prop changes from outside.
@@ -227,7 +242,7 @@ export function TimePicker({value,onChange,small,min,max}){
   };
   return (<>
     <div style={{display:'inline-flex',alignItems:'center',gap:2,borderRadius:8,border:`1px solid ${T.border}`,background:T.surfaceWarm,padding:small?'2px 3px 2px 8px':'3px 4px 3px 10px'}}>
-      <input value={text} onChange={e=>setText(e.target.value)} onBlur={e=>commitText(e.target.value)} onKeyDown={e=>{ if(e.key==='Enter'){ commitText(e.target.value); e.target.blur(); } else if(e.key==='Escape'){ setText(`${hh}:${mm}`); e.target.blur(); } }} placeholder="00:00" style={{width:small?36:42,border:'none',background:'transparent',color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',outline:'none',textAlign:'center',padding:small?'2px 0':'3px 0'}}/>
+      <input value={text} onChange={e=>setText(e.target.value)} onBlur={e=>{ if(keyHandled.current){ keyHandled.current=false; return; } commitText(e.target.value); }} onKeyDown={e=>{ if(e.key==='Enter'){ commitText(e.target.value); keyHandled.current=true; e.target.blur(); keyHandled.current=false; } else if(e.key==='Escape'){ setText(`${hh}:${mm}`); keyHandled.current=true; e.target.blur(); keyHandled.current=false; } }} placeholder="00:00" style={{width:small?36:42,border:'none',background:'transparent',color:T.text,fontSize:small?12:13,fontWeight:500,fontFamily:'inherit',outline:'none',textAlign:'center',padding:small?'2px 0':'3px 0'}}/>
       <button type="button" onClick={()=>setOpen(true)} title="Pick time" style={{border:'none',background:'none',cursor:'pointer',fontSize:small?10:11,opacity:0.55,padding:small?'2px 4px':'3px 6px',color:T.text,lineHeight:1}}>▾</button>
     </div>
     {open&&createPortal(
