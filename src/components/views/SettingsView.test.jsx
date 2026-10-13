@@ -17,7 +17,9 @@
 //
 // The fix is React's documented "adjusting state when a prop changes": compare
 // against the last prop during render and correct immediately. It is four
-// lines and it looks removable. These tests are what make it not removable.
+// lines and it looks removable. These tests are what make it not removable —
+// and the line HAS since been found commented out in a working tree, which is
+// exactly the scenario they were written for.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
