@@ -242,6 +242,54 @@ describe('KioskView', () => {
     });
   });
 
+  // A restaurant's wifi drops. The screen must not turn that into an
+  // accusation — "Wrong PIN" to someone whose PIN was right is how you get a
+  // waiter standing at the wall retyping a correct code until they give up.
+  describe('when the server cannot be reached', () => {
+    it('does not call a correct PIN wrong', async () => {
+      verifyKioskPin.mockRejectedValue(new Error('network down'));
+
+      await openKiosk();
+      fireEvent.click(screen.getByText('Ada'));
+      await type('1234');
+
+      expect(screen.getByText(t('kiosk.offline'))).toBeDefined();
+      expect(screen.queryByText(t('kiosk.wrongPin'))).toBeNull();
+    });
+
+    // The digits are not known to be wrong, so wiping them would be the UI
+    // inventing a verdict it does not have — and would make the retry six
+    // taps instead of one.
+    it('keeps the digits and retries them as they stand', async () => {
+      verifyKioskPin.mockRejectedValue(new Error('network down'));
+
+      await openKiosk();
+      fireEvent.click(screen.getByText('Ada'));
+      await type('1234');
+      verifyKioskPin.mockClear();
+      verifyKioskPin.mockResolvedValue({ ok: true });
+
+      fireEvent.click(screen.getByRole('button', { name: t('kiosk.retry') }));
+      await act(async () => {});
+
+      expect(verifyKioskPin).toHaveBeenCalledWith('e1', '1234');
+      expect(screen.getByTestId('punch-clock')).toBeDefined();
+    });
+
+    it('clears the message as soon as typing resumes', async () => {
+      verifyKioskPin.mockRejectedValue(new Error('network down'));
+
+      await openKiosk();
+      fireEvent.click(screen.getByText('Ada'));
+      await type('1234');
+      expect(screen.getByText(t('kiosk.offline'))).toBeDefined();
+
+      verifyKioskPin.mockResolvedValue({ ok: false, lockedSeconds: 0 });
+      await type('5');
+      expect(screen.queryByText(t('kiosk.offline'))).toBeNull();
+    });
+  });
+
   it('starts a different employee from a clean slate', async () => {
     await openKiosk();
     fireEvent.click(screen.getByText('Ada'));
