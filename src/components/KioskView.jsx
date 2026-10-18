@@ -34,6 +34,11 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   const [pinDigits, setPinDigits]         = useState('');
   const [pinError, setPinError]           = useState(false);
   const [pinLocked, setPinLocked]         = useState(0);   // seconds remaining
+  // "The server did not answer" is a DIFFERENT thing from "that PIN is wrong",
+  // and showing the second when the first happened is how somebody ends up
+  // standing at the wall retyping a code that was correct every time. A
+  // restaurant's wifi is exactly where this happens.
+  const [pinOffline, setPinOffline]       = useState(false);
   // Which check is the newest. Typing "1234" then "12345" fires two, and they
   // can come back out of order; only the latest may act.
   const verifySeq   = useRef(0);
@@ -80,7 +85,7 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
   }, [orgId]);
 
   const returnToList = () => {
-    setSelectedEmpId(null); setVerified(false); setPinDigits(''); setPinError(false);
+    setSelectedEmpId(null); setVerified(false); setPinDigits(''); setPinError(false); setPinOffline(false);
     if (idleTimer.current) { clearTimeout(idleTimer.current); idleTimer.current=null; }
   };
   const bumpIdleTimer = () => {
@@ -94,8 +99,12 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
 
   const selectEmployee = (emp) => {
     clearTimeout(wrongTimer.current); verifySeq.current++;
-    setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false); setPinLocked(0);
+    setSelectedEmpId(emp.id); setVerified(false); setPinDigits(''); setPinError(false); setPinLocked(0); setPinOffline(false);
   };
+
+  // Retry sends the digits that are still on screen. No retype, because
+  // nothing suggested they were wrong.
+  const retryVerify = () => { setPinOffline(false); if (pinDigits.length >= 4) runVerify(pinDigits); };
 
   // Signs in the moment the right digits are typed — no OK to press.
   //
@@ -121,11 +130,17 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
       wrongTimer.current = setTimeout(()=>{ setPinError(true); setPinDigits(''); }, 1200);
     } catch {
       if (seq !== verifySeq.current) return;
-      // A failed REQUEST must not read as a wrong PIN — somebody would stand
-      // there retyping a code that was correct all along.
+      // A failed REQUEST must not read as a wrong PIN. This used to set
+      // pinError and wipe the digits, which said "Wrong PIN, try again" to
+      // someone whose PIN was perfectly correct — and then made them start
+      // over, so the retry was slower too.
+      //
+      // The digits are KEPT deliberately. Nothing about them is known to be
+      // wrong, so throwing them away would be the UI inventing a verdict it
+      // does not have. Retrying is then one button, not six taps.
       clearTimeout(wrongTimer.current);
-      setPinError(true);
-      setPinDigits('');
+      setPinError(false);
+      setPinOffline(true);
     }
   };
 
@@ -145,6 +160,7 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
     const next = (pinDigits + d).slice(0, 8);
     setPinDigits(next);
     setPinError(false);
+    setPinOffline(false);
     clearTimeout(wrongTimer.current);
     if (next.length >= 4) runVerify(next);
   };
@@ -255,9 +271,17 @@ export default function KioskView({ orgId, orgName, toggleTheme, onExitKiosk }){
                 <div key={i} style={{width:14,height:14,borderRadius:'50%',border:`1.5px solid ${pinError?T.danger:T.border}`,background:i<pinDigits.length?(pinError?T.danger:T.accent):'transparent'}}/>
               ))}
             </div>
+            {/* Three states, deliberately distinct. Locked and wrong are the
+                person's problem and are red; offline is OURS, so it is not
+                dressed as a rejection and it comes with the way out. */}
             {pinLocked > 0
               ? <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.lockedFor',{n:pinLocked})}</div>
-              : pinError && <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.wrongPin')}</div>}
+              : pinOffline
+                ? <div style={{fontSize:12,color:T.text2,marginBottom:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8,flexWrap:'wrap'}}>
+                    <span>{t('kiosk.offline')}</span>
+                    <button onClick={retryVerify} style={{padding:'3px 10px',borderRadius:999,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontSize:11,fontFamily:'inherit'}}>{t('kiosk.retry')}</button>
+                  </div>
+                : pinError && <div style={{fontSize:12,color:T.danger,marginBottom:10}}>{t('kiosk.wrongPin')}</div>}
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
               {['1','2','3','4','5','6','7','8','9'].map(d=>(
                 <button key={d} onClick={()=>pressDigit(d)} style={{padding:'14px 0',borderRadius:10,fontSize:17,fontWeight:500,background:T.surfaceWarm,border:`1px solid ${T.border}`,color:T.text,cursor:'pointer',fontFamily:'inherit'}}>{d}</button>
