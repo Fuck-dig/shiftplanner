@@ -844,3 +844,143 @@ export async function fetchScheduleAudit(orgId, weekKey = null, limit = 100) {
     detail: r.detail || {}, actorName: r.actor_name || '', createdAt: r.created_at,
   }));
 }
+
+// ── Faktura (Invoices) ────────────────────────────────────────────────────────
+
+export const INVOICE_CATEGORIES = [
+  'Mad & Råvarer',
+  'Drikkevarer',
+  'Rengøring & Forbrugsstoffer',
+  'Forsyninger',
+  'Husleje & Leje',
+  'Andet',
+];
+
+export const INVOICE_STATUSES = ['draft', 'confirmed', 'paid'];
+
+export async function fetchInvoices(orgId) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, invoice_items(*)')
+    .eq('org_id', orgId)
+    .order('invoice_date', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, orgId: r.org_id,
+    vendorName: r.vendor_name, vendorRef: r.vendor_ref,
+    invoiceDate: r.invoice_date, dueDate: r.due_date,
+    subtotal: r.subtotal, tax: r.tax, total: r.total,
+    category: r.category, fileUrl: r.file_url, fileName: r.file_name,
+    parsedByAi: r.parsed_by_ai, rawAiJson: r.raw_ai_json,
+    notes: r.notes, status: r.status,
+    createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+    items: (r.invoice_items || []).map(it => ({
+      id: it.id, invoiceId: it.invoice_id, orgId: it.org_id,
+      description: it.description, quantity: it.quantity,
+      unitPrice: it.unit_price, lineTotal: it.line_total,
+      category: it.category, sortOrder: it.sort_order,
+    })),
+  }));
+}
+
+export async function saveInvoice(orgId, userId, inv, items = []) {
+  const row = {
+    org_id: orgId,
+    vendor_name: inv.vendorName || '',
+    vendor_ref: inv.vendorRef || null,
+    invoice_date: inv.invoiceDate || null,
+    due_date: inv.dueDate || null,
+    subtotal: inv.subtotal || 0,
+    tax: inv.tax || 0,
+    total: inv.total || 0,
+    category: inv.category || 'Andet',
+    file_url: inv.fileUrl || null,
+    file_name: inv.fileName || null,
+    parsed_by_ai: inv.parsedByAi || false,
+    raw_ai_json: inv.rawAiJson || null,
+    notes: inv.notes || null,
+    status: inv.status || 'draft',
+    created_by: userId,
+  };
+  if (inv.id) row.id = inv.id;
+  const { data, error } = await supabase
+    .from('invoices')
+    .upsert(row, { onConflict: 'id' })
+    .select()
+    .single();
+  if (error) throw error;
+
+  if (items.length) {
+    const itemRows = items.map((it, i) => ({
+      ...(it.id ? { id: it.id } : {}),
+      invoice_id: data.id,
+      org_id: orgId,
+      description: it.description || '',
+      quantity: it.quantity || 1,
+      unit_price: it.unitPrice || 0,
+      category: it.category || null,
+      sort_order: i,
+    }));
+    const { error: ie } = await supabase
+      .from('invoice_items')
+      .upsert(itemRows, { onConflict: 'id' });
+    if (ie) throw ie;
+  }
+  return data.id;
+}
+
+export async function deleteInvoice(invoiceId) {
+  const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
+  if (error) throw error;
+}
+
+export async function fetchInvoiceEmails(orgId) {
+  const { data, error } = await supabase
+    .from('invoice_emails')
+    .select('*')
+    .eq('org_id', orgId)
+    .order('created_at');
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, orgId: r.org_id, email: r.email,
+    label: r.label, isActive: r.is_active, createdAt: r.created_at,
+  }));
+}
+
+export async function saveInvoiceEmail(orgId, entry) {
+  const row = {
+    org_id: orgId,
+    email: entry.email,
+    label: entry.label || null,
+    is_active: entry.isActive !== false,
+    ...(entry.id ? { id: entry.id } : {}),
+  };
+  const { error } = await supabase
+    .from('invoice_emails')
+    .upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function deleteInvoiceEmail(id) {
+  const { error } = await supabase.from('invoice_emails').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function uploadInvoiceFile(orgId, invoiceId, file) {
+  const ext = file.name.split('.').pop();
+  const path = `${orgId}/${invoiceId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('invoices')
+    .upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from('invoices').getPublicUrl(path);
+  return { url: data.publicUrl, name: file.name, path };
+}
+
+export async function parseInvoiceWithAI(orgId, fileUrl, fileName) {
+  const { data, error } = await supabase.functions.invoke('parse-invoice', {
+    body: { orgId, fileUrl, fileName },
+  });
+  if (error) throw error;
+  return data;
+}
