@@ -28,6 +28,7 @@ import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
 // is actually opened.
 const ComposeMessageModal = lazy(() => import('./ComposeMessageModal'));
 const MessageThreadModal  = lazy(() => import('./MessageThreadModal'));
+const Faktura             = lazy(() => retryChunkLoad(() => import('./Faktura')));
 
 // The whole manager-side app: schedule, employees, coverage, costs, requests,
 // profile. Lifted out of App.jsx, which had grown to ~1900 lines with this
@@ -1584,7 +1585,7 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
   // small section label) since everything there is already behind the
   // hamburger, so a second layer of nesting would just add taps.
   const navItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},{k:'profile',l:t('nav.profile')}];
-  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'settings',l:t('nav.settings')}];
+  const adminNavItems=[{k:'timeoff',l:attentionCount?`${t('nav.timeoff')} · ${attentionCount}`:t('nav.timeoff')},{k:'coverage',l:t('nav.coverage')},{k:'costs',l:t('nav.costs')},{k:'faktura',l:'Faktura'},{k:'settings',l:t('nav.settings')}];
   const mobileNavItems=[{k:'schedule',l:t('nav.schedule')},{k:'employees',l:t('nav.employees')},...adminNavItems,{k:'profile',l:t('nav.profile')}];
   const notes=weekData?.notes||'',warnings=weekData?.warnings||[];
 
@@ -2169,6 +2170,12 @@ export default function Dashboard({ orgId, orgName='Restaurant', isOwner=false, 
     onSave={saveSettings} saving={settingsSaving} error={settingsError}
     s={s} t={t}
   />
+)}
+
+{view==='faktura'&&(
+  <Suspense fallback={<div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',color:T.subtext,fontFamily:"'Hanken Grotesk',sans-serif"}}>Loading…</div>}>
+    <Faktura orgId={orgId} userId={myId} currency={hourlyRate.currency} isManager={isOwner||role==='manager'}/>
+  </Suspense>
 )}
 
 {view==='costs'&&(
