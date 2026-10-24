@@ -323,23 +323,25 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
         <div style={{ padding: '20px 24px' }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <input
-              placeholder="Søg leverandør, vare…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ flex: 1, minWidth: 180, padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', colorScheme: 'light', backgroundImage: 'none', boxShadow: 'none', WebkitBoxShadow: 'none' }}
-            />
-            <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
+            <div style={{ flex: 1, minWidth: 180, borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface }}>
+              <input
+                placeholder="Søg leverandør, vare…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{position:'relative',display:'inline-flex',alignItems:'center',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface}}>
               <select
                 value={filterCat}
                 onChange={e => setFilterCat(e.target.value)}
-                style={{ padding: '8px 28px 8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none', colorScheme: 'light', backgroundImage: 'none', boxShadow: 'none', WebkitBoxShadow: 'none' }}
+                style={{ padding: '8px 28px 8px 10px', background: 'transparent', border: 'none', fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none' }}
               >
                 <option value="">Alle kategorier</option>
                 {INVOICE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <span style={{position:'absolute',right:9,pointerEvents:'none',fontSize:10,color:T.text2}}>▾</span>
-            </span>
+            </div>
           </div>
 
           {/* Table */}
