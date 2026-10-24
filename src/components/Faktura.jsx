@@ -327,13 +327,13 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
               placeholder="Søg leverandør, vare…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{ flex: 1, minWidth: 180, padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none' }}
+              style={{ flex: 1, minWidth: 180, padding: '8px 12px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', colorScheme: 'normal' }}
             />
             <span style={{position:'relative',display:'inline-flex',alignItems:'center'}}>
               <select
                 value={filterCat}
                 onChange={e => setFilterCat(e.target.value)}
-                style={{ padding: '8px 28px 8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none' }}
+                style={{ padding: '8px 28px 8px 10px', borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface, fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none', colorScheme: 'normal' }}
               >
                 <option value="">Alle kategorier</option>
                 {INVOICE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
