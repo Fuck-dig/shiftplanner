@@ -85,10 +85,14 @@ export async function syncEmployees(orgId, employees){
     if (error) throw error;
   }
   const ids = employees.map(e => e.id);
-  let del = supabase.from('employees').delete().eq('org_id', orgId);
-  if (ids.length) del = del.not('id', 'in', `(${ids.join(',')})`);
-  const { error: e2 } = await del;
-  if (e2) throw e2;
+  // Guard: never wipe the whole roster when the local list is empty —
+  // that's more likely a state bug than an intentional wipe, and it's
+  // not recoverable without a DB restore.
+  if (ids.length) {
+    const { error: e2 } = await supabase.from('employees').delete().eq('org_id', orgId)
+      .not('id', 'in', `(${ids.join(',')})`);
+    if (e2) throw e2;
+  }
 
   const wageRows = employees.map(e => ({ employee_id:e.id, org_id:orgId, wage:e.wage||0, contract_type:e.contractType||'hourly', contract_period:e.contractPeriod||'week',
     // '' (a cleared input) and undefined both mean inherit, and must land as
@@ -98,10 +102,11 @@ export async function syncEmployees(orgId, employees){
     const { error: e3 } = await supabase.from('employee_wages').upsert(wageRows, { onConflict: 'employee_id' });
     if (e3) throw e3;
   }
-  let delWages = supabase.from('employee_wages').delete().eq('org_id', orgId);
-  if (ids.length) delWages = delWages.not('employee_id', 'in', `(${ids.join(',')})`);
-  const { error: e4 } = await delWages;
-  if (e4) throw e4;
+  if (ids.length) {
+    const { error: e4 } = await supabase.from('employee_wages').delete().eq('org_id', orgId)
+      .not('employee_id', 'in', `(${ids.join(',')})`);
+    if (e4) throw e4;
+  }
 }
 
 // ── Blocks (coverage blocks) ─────────────────────────────────────────────────
@@ -135,10 +140,12 @@ export async function syncBlocks(orgId, blocks){
     if (error) throw error;
   }
   const ids = blocks.map(b => b.id);
-  let del = supabase.from('blocks').delete().eq('org_id', orgId);
-  if (ids.length) del = del.not('id', 'in', `(${ids.join(',')})`);
-  const { error: e2 } = await del;
-  if (e2) throw e2;
+  // Guard: same empty-list protection as syncEmployees.
+  if (ids.length) {
+    const { error: e2 } = await supabase.from('blocks').delete().eq('org_id', orgId)
+      .not('id', 'in', `(${ids.join(',')})`);
+    if (e2) throw e2;
+  }
 }
 
 // ── Time off ─────────────────────────────────────────────────────────────────
@@ -195,10 +202,12 @@ export async function syncTimeOff(orgId, timeOff){
     if (error) throw error;
   }
   const ids = timeOff.map(x => x.id);
-  let del = supabase.from('time_off').delete().eq('org_id', orgId);
-  if (ids.length) del = del.not('id', 'in', `(${ids.join(',')})`);
-  const { error: e2 } = await del;
-  if (e2) throw e2;
+  // Guard: same empty-list protection as syncEmployees.
+  if (ids.length) {
+    const { error: e2 } = await supabase.from('time_off').delete().eq('org_id', orgId)
+      .not('id', 'in', `(${ids.join(',')})`);
+    if (e2) throw e2;
+  }
 }
 
 // ── Schedules (keyed by week) ────────────────────────────────────────────────
@@ -269,25 +278,18 @@ export async function syncSchedules(orgId, schedules, baseline){
 // doesn't risk clobbering a manager's unrelated concurrent edit to the same
 // week the way overwriting the whole blob from stale local state would.
 export async function updateShiftAssignment(orgId, weekKey, day, blockId, empId, patch){
-  const { data, error } = await supabase
-    .from('schedules').select('data').eq('org_id', orgId).eq('week_key', weekKey).maybeSingle();
+  // Atomic server-side update via RPC — replaces the old read→patch→upsert
+  // which had a race window when two kiosk clock-ins hit the same row at once.
+  const { data, error } = await supabase.rpc('update_shift_assignment', {
+    p_org_id:   orgId,
+    p_week_key: weekKey,
+    p_day:      day,
+    p_block_id: blockId,
+    p_emp_id:   empId,
+    p_patch:    patch,
+  });
   if (error) throw error;
-  const current = data?.data || {};
-  const scheduleObj = { ...(current.schedule || {}) };
-  const dayObj = { ...(scheduleObj[day] || {}) };
-  const list = [...(dayObj[blockId] || [])];
-  const idx = list.findIndex(a => a.empId === empId);
-  if (idx >= 0) list[idx] = { ...list[idx], ...patch };
-  else list.push({ empId, ...patch });
-  dayObj[blockId] = list;
-  scheduleObj[day] = dayObj;
-  const nextData = { ...current, schedule: scheduleObj };
-  const { error: upErr } = await supabase.from('schedules').upsert(
-    { org_id: orgId, week_key: weekKey, data: nextData, status: nextData.confirmed ? 'confirmed' : 'draft' },
-    { onConflict: 'org_id,week_key' }
-  );
-  if (upErr) throw upErr;
-  return nextData;
+  return data; // full updated data blob — same shape as before
 }
 
 // ── Shift swaps ──────────────────────────────────────────────────────────────
@@ -381,7 +383,7 @@ export async function fetchNotifications(empId){
   const { data, error } = await supabase
     .from('notifications').select('*').eq('emp_id', empId)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(100);
   if (error) throw error;
   return (data || []).map(notifFromRow);
 }
@@ -425,7 +427,7 @@ const msgFromRow = (r) => ({
 export async function fetchMessages(empId){
   const { data, error } = await supabase
     .from('messages').select('*').eq('recipient_emp_id', empId)
-    .order('created_at', { ascending: false }).limit(50);
+    .order('created_at', { ascending: false }).limit(100);
   if (error) throw error;
   return (data || []).map(msgFromRow);
 }
@@ -841,4 +843,144 @@ export async function fetchScheduleAudit(orgId, weekKey = null, limit = 100) {
     id: r.id, weekKey: r.week_key, action: r.action,
     detail: r.detail || {}, actorName: r.actor_name || '', createdAt: r.created_at,
   }));
+}
+
+// ── Faktura (Invoices) ────────────────────────────────────────────────────────
+
+export const INVOICE_CATEGORIES = [
+  'Mad & Råvarer',
+  'Drikkevarer',
+  'Rengøring & Forbrugsstoffer',
+  'Forsyninger',
+  'Husleje & Leje',
+  'Andet',
+];
+
+export const INVOICE_STATUSES = ['draft', 'confirmed', 'paid'];
+
+export async function fetchInvoices(orgId) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, invoice_items(*)')
+    .eq('org_id', orgId)
+    .order('invoice_date', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, orgId: r.org_id,
+    vendorName: r.vendor_name, vendorRef: r.vendor_ref,
+    invoiceDate: r.invoice_date, dueDate: r.due_date,
+    subtotal: r.subtotal, tax: r.tax, total: r.total,
+    category: r.category, fileUrl: r.file_url, fileName: r.file_name,
+    parsedByAi: r.parsed_by_ai, rawAiJson: r.raw_ai_json,
+    notes: r.notes, status: r.status,
+    createdBy: r.created_by, createdAt: r.created_at, updatedAt: r.updated_at,
+    items: (r.invoice_items || []).map(it => ({
+      id: it.id, invoiceId: it.invoice_id, orgId: it.org_id,
+      description: it.description, quantity: it.quantity,
+      unitPrice: it.unit_price, lineTotal: it.line_total,
+      category: it.category, sortOrder: it.sort_order,
+    })),
+  }));
+}
+
+export async function saveInvoice(orgId, userId, inv, items = []) {
+  const row = {
+    org_id: orgId,
+    vendor_name: inv.vendorName || '',
+    vendor_ref: inv.vendorRef || null,
+    invoice_date: inv.invoiceDate || null,
+    due_date: inv.dueDate || null,
+    subtotal: inv.subtotal || 0,
+    tax: inv.tax || 0,
+    total: inv.total || 0,
+    category: inv.category || 'Andet',
+    file_url: inv.fileUrl || null,
+    file_name: inv.fileName || null,
+    parsed_by_ai: inv.parsedByAi || false,
+    raw_ai_json: inv.rawAiJson || null,
+    notes: inv.notes || null,
+    status: inv.status || 'draft',
+    created_by: userId,
+  };
+  if (inv.id) row.id = inv.id;
+  const { data, error } = await supabase
+    .from('invoices')
+    .upsert(row, { onConflict: 'id' })
+    .select()
+    .single();
+  if (error) throw error;
+
+  if (items.length) {
+    const itemRows = items.map((it, i) => ({
+      ...(it.id ? { id: it.id } : {}),
+      invoice_id: data.id,
+      org_id: orgId,
+      description: it.description || '',
+      quantity: it.quantity || 1,
+      unit_price: it.unitPrice || 0,
+      category: it.category || null,
+      sort_order: i,
+    }));
+    const { error: ie } = await supabase
+      .from('invoice_items')
+      .upsert(itemRows, { onConflict: 'id' });
+    if (ie) throw ie;
+  }
+  return data.id;
+}
+
+export async function deleteInvoice(invoiceId) {
+  const { error } = await supabase.from('invoices').delete().eq('id', invoiceId);
+  if (error) throw error;
+}
+
+export async function fetchInvoiceEmails(orgId) {
+  const { data, error } = await supabase
+    .from('invoice_emails')
+    .select('*')
+    .eq('org_id', orgId)
+    .order('created_at');
+  if (error) throw error;
+  return (data || []).map(r => ({
+    id: r.id, orgId: r.org_id, email: r.email,
+    label: r.label, isActive: r.is_active, createdAt: r.created_at,
+  }));
+}
+
+export async function saveInvoiceEmail(orgId, entry) {
+  const row = {
+    org_id: orgId,
+    email: entry.email,
+    label: entry.label || null,
+    is_active: entry.isActive !== false,
+    ...(entry.id ? { id: entry.id } : {}),
+  };
+  const { error } = await supabase
+    .from('invoice_emails')
+    .upsert(row, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+export async function deleteInvoiceEmail(id) {
+  const { error } = await supabase.from('invoice_emails').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function uploadInvoiceFile(orgId, invoiceId, file) {
+  const ext = file.name.split('.').pop();
+  const path = `${orgId}/${invoiceId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('invoices')
+    .upload(path, file, { upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from('invoices').getPublicUrl(path);
+  return { url: data.publicUrl, name: file.name, path };
+}
+
+export async function parseInvoiceWithAI(orgId, fileUrl, fileName) {
+  const { data, error } = await supabase.functions.invoke('parse-invoice', {
+    body: { orgId, fileUrl, fileName },
+  });
+  if (error) throw error;
+  return data;
 }
