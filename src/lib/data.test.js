@@ -129,17 +129,15 @@ describe('syncEmployees', () => {
     expect(del.filters).toContainEqual({ op: 'not', col: 'id', operator: 'in', val: '(e1,e2)' });
   });
 
-  it('DELETES EVERY EMPLOYEE IN THE ORG when handed an empty list', async () => {
-    // Documenting a genuinely sharp edge rather than asserting it's desirable.
-    // With no ids there's no `not in (...)` filter, so the delete is scoped to
-    // org_id alone — i.e. the whole roster. That's correct when a manager
-    // removes the last employee, and catastrophic if an empty array ever
-    // reaches here by accident. Anything calling this must be sure the list is
-    // real and not a not-yet-loaded empty default.
+  it('does NOT delete anything when handed an empty list (safety guard)', async () => {
+    // Previously an empty list wiped the whole roster — a recoverable-only-via-
+    // DB-restore footgun. The guard added alongside the Faktura feature skips
+    // the delete entirely when ids is empty, so an accidental empty-state flush
+    // can never nuke everyone. The last-employee case is handled by the caller
+    // (Dashboard) passing a real single-item list.
     await syncEmployees('org1', []);
     const del = opsFor('employees', 'delete')[0];
-    expect(del.filters).toEqual([{ op: 'eq', col: 'org_id', val: 'org1' }]);
-    expect(del.filters.some(f => f.op === 'not')).toBe(false);
+    expect(del).toBeUndefined();
   });
 
   it('writes wages to the separate employee_wages table, keyed by employee', async () => {
