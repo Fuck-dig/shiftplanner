@@ -1,5 +1,9 @@
 *, *::before, *::after { box-sizing: border-box; }
 
+:root {
+  color-scheme: light;
+}
+
 html, body, #root {
   width: 100%;
   margin: 0;
