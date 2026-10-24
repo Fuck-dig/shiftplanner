@@ -323,19 +323,19 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
         <div style={{ padding: '20px 24px' }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 180, borderRadius: 10, border: `1px solid ${T.border}`, background: T.bg }}>
+            <div style={{ flex: 1, minWidth: 180, borderRadius: 12, border: `1px solid ${T.border}`, background: T.bg, overflow: 'hidden' }}>
               <input
                 placeholder="Søg leverandør, vare…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', boxSizing: 'border-box' }}
+                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', borderRadius: 12, fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', boxSizing: 'border-box', display: 'block' }}
               />
             </div>
-            <div style={{position:'relative',display:'inline-flex',alignItems:'center',borderRadius:10,border:`1px solid ${T.border}`,background:T.bg}}>
+            <div style={{position:'relative',display:'inline-flex',alignItems:'center',borderRadius:12,border:`1px solid ${T.border}`,background:T.bg,overflow:'hidden'}}>
               <select
                 value={filterCat}
                 onChange={e => setFilterCat(e.target.value)}
-                style={{ padding: '8px 28px 8px 10px', background: 'transparent', border: 'none', fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none' }}
+                style={{ padding: '8px 28px 8px 10px', background: 'transparent', border: 'none', borderRadius: 12, fontSize: 13, color: T.text, cursor: 'pointer', WebkitAppearance: 'none', appearance: 'none', outline: 'none' }}
               >
                 <option value="">Alle kategorier</option>
                 {INVOICE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
