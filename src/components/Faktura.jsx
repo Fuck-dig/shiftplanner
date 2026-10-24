@@ -323,7 +323,7 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
         <div style={{ padding: '20px 24px' }}>
           {/* Filters */}
           <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ flex: 1, minWidth: 180, borderRadius: 8, border: `1px solid ${T.border}`, background: T.surface }}>
+            <div style={{ flex: 1, minWidth: 180, borderRadius: 10, border: `1px solid ${T.border}`, background: T.bg }}>
               <input
                 placeholder="Søg leverandør, vare…"
                 value={search}
@@ -331,7 +331,7 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
                 style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', fontSize: 13, color: T.text, outline: 'none', WebkitAppearance: 'none', appearance: 'none', boxSizing: 'border-box' }}
               />
             </div>
-            <div style={{position:'relative',display:'inline-flex',alignItems:'center',borderRadius:8,border:`1px solid ${T.border}`,background:T.surface}}>
+            <div style={{position:'relative',display:'inline-flex',alignItems:'center',borderRadius:10,border:`1px solid ${T.border}`,background:T.bg}}>
               <select
                 value={filterCat}
                 onChange={e => setFilterCat(e.target.value)}
