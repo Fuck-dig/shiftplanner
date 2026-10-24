@@ -1,6 +1,7 @@
 // src/components/Faktura.jsx
 // Faktura (Invoice) tab — Phase 1: manual entry + AI PDF/image parsing
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { T, isDark } from '../lib/constants';
 import {
   fetchInvoices, saveInvoice, deleteInvoice,
   fetchInvoiceEmails, saveInvoiceEmail, deleteInvoiceEmail,
@@ -8,31 +9,13 @@ import {
   INVOICE_CATEGORIES, INVOICE_STATUSES,
 } from '../lib/data';
 
-// ─── Design tokens (mirror App.jsx) ─────────────────────────────────────────
-const T = {
-  bg:          '#F5F0E6',
-  surface:     '#FFFEFB',
-  surfaceWarm: '#FBF6EE',
-  border:      '#E6DDCD',
-  text:        '#211B15',
-  text2:       '#5C5248',
-  text3:       '#9C9088',
-  accent:      '#BF5A2C',
-  accentLight: '#F5EAE2',
-  accentText:  '#7A3318',
-  success:     '#3D7A52',
-  successLight:'#E5F0E9',
-  warning:     '#956B18',
-  warningLight:'#FBF0D5',
-  danger:      '#963030',
-  dangerLight: '#F5E2E2',
-};
 
-const STATUS_STYLE = {
-  draft:     { bg: T.warningLight, color: T.warning, label: 'Kladde'    },
+
+const getStatusStyle = () => ({
+  draft:     { bg: T.warningLight, color: T.warning,   label: 'Kladde'    },
   confirmed: { bg: T.accentLight,  color: T.accentText, label: 'Bekræftet' },
-  paid:      { bg: T.successLight, color: T.success,  label: 'Betalt'   },
-};
+  paid:      { bg: T.successLight, color: T.success,   label: 'Betalt'   },
+});
 
 const CAT_COLORS = {
   'Mad & Råvarer':              { bg:'#EAF3FB', color:'#165C8C', dot:'#1A6FA8' },
@@ -379,7 +362,7 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
                 )}
                 {visible.map((inv, idx) => {
                   const cat = CAT_COLORS[inv.category] || CAT_COLORS['Andet'];
-                  const st  = STATUS_STYLE[inv.status] || STATUS_STYLE.draft;
+                  const st  = getStatusStyle()[inv.status] || getStatusStyle().draft;
                   return (
                     <tr key={inv.id} onClick={() => openEdit(inv)} style={{
                       borderTop: idx > 0 ? `1px solid ${T.border}` : 'none',
@@ -648,7 +631,7 @@ export default function Faktura({ orgId, userId, currency = 'DKK', isManager = t
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14, marginBottom: 20 }}>
               <Field label="Status">
                 <select value={formData.status} onChange={e => setFormData(p => ({ ...p, status: e.target.value }))} style={inputStyle}>
-                  {INVOICE_STATUSES.map(s => <option key={s} value={s}>{STATUS_STYLE[s]?.label || s}</option>)}
+                  {INVOICE_STATUSES.map(s => <option key={s} value={s}>{getStatusStyle()[s]?.label || s}</option>)}
                 </select>
               </Field>
               <Field label="Noter">
