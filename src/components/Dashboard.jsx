@@ -23,6 +23,7 @@ import TeamView from './views/TeamView';
 import WeekView from './views/WeekView';
 import ProfileSettings from './ProfileSettings';
 import { LANGUAGES, makeT, detectLang, LOCALES } from '../i18n';
+import { retryChunkLoad } from '../lib/chunkReload';
 
 // Lazy — each is only reachable from a manager session, and only once a modal
 // is actually opened.
